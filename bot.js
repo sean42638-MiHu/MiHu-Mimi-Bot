@@ -1,8 +1,6 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Collection, Events } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { registerGuildCommands } = require('./utils/discordCommandRegistry');
 const {
     hasDiscordAdministrator,
     isCommandAllowedInGuild,
@@ -18,7 +16,6 @@ const { handleReviewModal } = require('./handlers/reviewModalHandler');       //
 const { handleAssignModal } = require('./handlers/assignModalHandler');       // E. 指定陪玩
 const { handleCreateOrderModal } = require('./handlers/createOrderModalHandler'); // F. 建立訂單
 
-const botToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -40,34 +37,9 @@ for (const file of commandFiles) {
     }
 }
 
-async function registerSlashCommands() {
-    if (!botToken || !process.env.DISCORD_CLIENT_ID) {
-        client.commandRegistration = { status: 'failed', error: 'Missing Discord application credentials' };
-        return false;
-    }
-    try {
-        const rest = new REST({ version: '10' }).setToken(botToken);
-        const registration = await registerGuildCommands(rest, process.env.DISCORD_CLIENT_ID, client.commands);
-        client.commandRegistration = {
-            ...registration,
-            status: registration.success ? 'registered' : 'partial',
-            syncedAt: new Date().toISOString()
-        };
-        console.log('✅ [Command Handler] Guild Slash command registration result:', registration.guildResults);
-        if (!registration.success) {
-            console.error('❌ Slash command registration was partial:', registration.failedGuilds, registration.globalError);
-        }
-        return registration.success;
-    } catch (error) {
-        client.commandRegistration = { status: 'failed', error: error.message };
-        console.error('❌ 斜線指令熱重載失敗:', error);
-        return false;
-    }
-}
-
 client.once(Events.ClientReady, () => {
     console.log(`🤖 米胡電競 Discord 機器人全新重構上線：${client.user.tag}`);
-    registerSlashCommands();
+    client.commandRegistration = { status: 'registration-is-explicit' };
 });
 
 // 🚀 全局事件極致分發器
@@ -148,7 +120,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     try {
-        await command.execute(interaction, client, registerSlashCommands);
+        await command.execute(interaction, client);
     } catch (error) {
         console.error(`❌ 執行指令 ${interaction.commandName} 發生錯誤:`, error);
         if (!interaction.replied && !interaction.deferred) {
@@ -170,6 +142,4 @@ client.on('error', (error) => {
     console.error('❌ [Discord Client 錯誤]:', error);
 });
 
-if (botToken) client.login(botToken);
-
-module.exports = { client, registerSlashCommands };
+module.exports = { client };

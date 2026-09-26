@@ -1,24 +1,21 @@
 const db = require('../database');
 
-/**
- * 💡 預設 5 大類別工作室抽成率 (Studio Cut Rate)
- * 例如 0.20 代表工作室抽 20% (陪陪實得 80%)
- */
-const DEFAULT_COMMISSION_RATES = {
-    '陪玩單': 0.20, // 陪陪得 80%
-    '禮物單': 0.15, // 陪陪得 85%
-    '有獎單': 0.10, // 陪陪得 90%
-    '冠名單': 0.15, // 陪陪得 85%
-    '獎金':   0.00  // 陪陪得 100%
+const DEFAULT_TALENT_SHARE_RATES = {
+    '陪玩單': 0.80,
+    '禮物單': 0.85,
+    '有獎單': 0.90,
+    '冠名單': 0.85,
+    '其他單': 0.80,
+    '獎金單': 1.00
 };
 
 const CATEGORY_ALIASES = {
-    '有獎': ['有獎單', '有獎'],
     '有獎單': ['有獎單', '有獎'],
-    '冠名': ['冠名單', '冠名'],
-    '冠名單': ['冠名單', '冠名']
+    '冠名單': ['冠名單', '冠名'],
+    '獎金單': ['獎金單', '獎金'],
+    '其他單': ['其他單', '其他', '活動單']
 };
-const CANONICAL_CATEGORIES = { '有獎': '有獎單', '冠名': '冠名單' };
+const CANONICAL_CATEGORIES = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
 
 function normalizeTalentShareRate(value) {
     if (value === null || value === undefined) return null;
@@ -52,27 +49,31 @@ function getCategoryAliases(category) {
 }
 
 async function resolveServiceId(studioId, serviceName, category = '陪玩單') {
+    const trustedStudioId = Number(studioId);
+    if (!Number.isInteger(trustedStudioId) || trustedStudioId <= 0) throw new Error('缺少有效工作室範圍');
     const name = String(serviceName || '').trim();
     if (!name) return null;
 
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
         db.run(
             'INSERT OR IGNORE INTO studio_services (studio_id, name, category) VALUES (?, ?, ?)',
-            [Number(studioId) || 1, name, category || '陪玩單'],
-            () => resolve()
+            [trustedStudioId, name, category || '陪玩單'],
+            error => error ? reject(error) : resolve()
         );
     });
 
     const service = await getRow(
         'SELECT id FROM studio_services WHERE studio_id = ? AND name = ? AND is_active = 1',
-        [Number(studioId) || 1, name]
+        [trustedStudioId, name]
     );
     return service ? Number(service.id) : null;
 }
 
 async function getStudioIdForUser(userId) {
     const user = await getRow('SELECT studio_id FROM users WHERE id = ?', [userId]);
-    return Number(user && user.studio_id) || 1;
+    const studioId = Number(user && user.studio_id);
+    if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('使用者沒有已授權的工作室範圍');
+    return studioId;
 }
 
 async function getPersonalTalentShareRate(userId) {
@@ -93,63 +94,26 @@ async function calculateCommissionByCategory(category, finalPrice, originalPrice
     const baseOriginalPrice = (originalPrice !== null && originalPrice !== undefined && Number(originalPrice) > 0)
         ? Number(originalPrice)
         : actualFinalPrice;
-    const catKey = category || '陪玩單';
-    const studioId = Number(context.studioId) || 1;
+    const requestedCategory = String(category || '陪玩單').trim();
+    const catKey = CANONICAL_CATEGORIES[requestedCategory] || requestedCategory;
     const categoryAliases = getCategoryAliases(catKey);
+    const placeholders = categoryAliases.map(() => '?').join(',');
+    const categorySetting = await getRow(
+        `SELECT category, rate FROM commission_settings WHERE category IN (${placeholders}) ORDER BY CASE category WHEN ? THEN 0 ELSE 1 END LIMIT 1`,
+        [...categoryAliases, categoryAliases[0]]
+    );
 
-    let studioShareRate = null;
-    let itemShareRate = null;
-
-    if (context.serviceId) {
-        const item = await getRow(
-            'SELECT talent_share_rate FROM studio_services WHERE id = ? AND studio_id = ? AND is_active = 1',
-            [context.serviceId, studioId]
-        );
-        itemShareRate = normalizeTalentShareRate(item && item.talent_share_rate);
-    } else if (context.serviceName) {
-        const item = await getRow(
-            'SELECT talent_share_rate FROM studio_services WHERE studio_id = ? AND name = ? AND is_active = 1',
-            [studioId, String(context.serviceName).trim()]
-        );
-        itemShareRate = normalizeTalentShareRate(item && item.talent_share_rate);
+    let categoryShareRate = normalizeTalentShareRate(categorySetting && categorySetting.rate);
+    if (categoryShareRate === null && catKey !== '其他單') {
+        const otherAliases = getCategoryAliases('其他單');
+        const otherPlaceholders = otherAliases.map(() => '?').join(',');
+        const otherSetting = await getRow(`SELECT rate FROM commission_settings WHERE category IN (${otherPlaceholders}) ORDER BY CASE category WHEN ? THEN 0 ELSE 1 END LIMIT 1`, [...otherAliases, otherAliases[0]]);
+        categoryShareRate = normalizeTalentShareRate(otherSetting && otherSetting.rate);
     }
-
-    if (itemShareRate === null) {
-        const placeholders = categoryAliases.map(() => '?').join(',');
-        const studioSetting = await getRow(
-            `SELECT talent_share_rate FROM studio_commissions WHERE studio_id = ? AND category IN (${placeholders}) ORDER BY CASE category WHEN ? THEN 0 ELSE 1 END LIMIT 1`,
-            [studioId, ...categoryAliases, catKey]
-        );
-        studioShareRate = normalizeTalentShareRate(studioSetting && studioSetting.talent_share_rate);
-    }
-
-    if (studioShareRate === null && itemShareRate === null) {
-        const placeholders = categoryAliases.map(() => '?').join(',');
-        const legacySetting = await getRow(
-            `SELECT rate FROM commission_settings WHERE category IN (${placeholders}) ORDER BY CASE category WHEN ? THEN 0 ELSE 1 END LIMIT 1`,
-            [...categoryAliases, catKey]
-        );
-        if (legacySetting && legacySetting.rate !== null && legacySetting.rate !== undefined) {
-            let studioCutRate = Number(legacySetting.rate);
-            if (studioCutRate > 1 && studioCutRate <= 100) studioCutRate /= 100;
-            if (Number.isFinite(studioCutRate) && studioCutRate >= 0 && studioCutRate <= 1) {
-                studioShareRate = 1 - studioCutRate;
-            }
-        }
-    }
-
-    if (studioShareRate === null && itemShareRate === null) {
-        const canonicalCategory = CANONICAL_CATEGORIES[catKey] || catKey;
-        const defaultCutRate = DEFAULT_COMMISSION_RATES[canonicalCategory] !== undefined
-            ? DEFAULT_COMMISSION_RATES[canonicalCategory]
-            : 0.20;
-        studioShareRate = 1 - defaultCutRate;
-    }
+    if (categoryShareRate === null) categoryShareRate = DEFAULT_TALENT_SHARE_RATES['其他單'];
 
     const personalShareRate = normalizeTalentShareRate(personalOverrideRate);
-    const talentShareRate = itemShareRate !== null
-        ? itemShareRate
-        : (personalShareRate > 0 ? personalShareRate : studioShareRate);
+    const talentShareRate = personalShareRate > 0 ? personalShareRate : categoryShareRate;
     const studioCutRate = 1 - talentShareRate;
     const talentNetEarning = Math.round(baseOriginalPrice * talentShareRate);
     const platformCommission = Math.max(0, actualFinalPrice - talentNetEarning);
@@ -166,7 +130,8 @@ async function calculateCommissionByCategory(category, finalPrice, originalPrice
 
 module.exports = {
     calculateCommissionByCategory,
-    DEFAULT_COMMISSION_RATES,
+    DEFAULT_TALENT_SHARE_RATES,
+    DEFAULT_COMMISSION_RATES: DEFAULT_TALENT_SHARE_RATES,
     normalizeTalentShareRate,
     resolveServiceId,
     getStudioIdForUser,

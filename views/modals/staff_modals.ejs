@@ -66,8 +66,7 @@
                 </div>
 
                 <% 
-                    const isSuperId = (typeof currentUser !== 'undefined' && currentUser && (currentUser.id === '604610298581876746' || currentUser.role === 'admin'));
-                    const canViewPayroll = isSuperId || (typeof hasPerm === 'function' ? hasPerm('staff_view_payroll') : false);
+                    const canViewPayroll = typeof hasPerm === 'function' ? hasPerm('payout.view_sensitive') : false;
                 %>
 
                 <% if (canViewPayroll) { %>

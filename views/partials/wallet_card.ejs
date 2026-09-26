@@ -4,6 +4,7 @@
     const cardHolder = user.nickname || user.global_name || user.username || 'XiaoMi';
     const memberId = user.id ? `•••• ${user.id.slice(-4)}` : '•••• 6746';
     const totalBalance = Number(user.balance || 0);
+    const resolvedVipColor = user.vip_color || (typeof vipColor !== 'undefined' ? vipColor : null) || '#A855F7';
 %>
 
 <style>
@@ -79,23 +80,6 @@
     }
 
     /* VIP 勳章 Badge (高質感黑金漸層) */
-    .vip-badge {
-        background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(168, 85, 247, 0.2));
-        border: 1px solid rgba(245, 158, 11, 0.5);
-        backdrop-filter: blur(12px);
-        padding: 7px 18px;
-        border-radius: 30px;
-        font-size: 0.92rem;
-        font-weight: 800;
-        color: #fef08a;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        letter-spacing: 0.8px;
-        box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);
-        text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
-    }
-
     /* 右下水印 Logo 圖片 (質感微光與立體浮雕) */
     .card-watermark {
         position: absolute;
@@ -123,10 +107,7 @@
             <div class="sim-chip"></div>
             <i class="fa-solid fa-wifi text-light" style="transform: rotate(90deg); font-size: 1.2rem; opacity: 0.75; text-shadow: 0 0 8px rgba(255,255,255,0.4);"></i>
         </div>
-        <div class="vip-badge">
-            <i class="fa-solid fa-crown text-warning"></i>
-            <span><%= vipLevel %></span>
-        </div>
+        <%- include('vip_badge', { level: vipLevel, color: resolvedVipColor, extraClass: 'vip-badge--card' }) %>
     </div>
 
     <!-- 中排：總餘額大字展示 -->

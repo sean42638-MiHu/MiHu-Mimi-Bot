@@ -1,51 +1,36 @@
-require('dotenv').config();
-const { REST, Routes } = require('discord.js');
-const { getConfiguredGuilds, getMissingGuildVariables } = require('./config/discordCommandPolicy');
-
-const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN;
-const clientId = process.env.DISCORD_CLIENT_ID;
-
-if (!token || !clientId) {
-    console.error('❌ 錯誤：請確認 .env 中已正確配置 DISCORD_BOT_TOKEN (或 DISCORD_TOKEN) 與 DISCORD_CLIENT_ID！');
-    process.exit(1);
-}
-
-const rest = new REST({ version: '10' }).setToken(token);
-
 async function clearAllCommands() {
-    console.log('==========================================');
-    console.log('🧹 開始徹底清除米胡電競機器人所有舊指令...');
-    console.log('==========================================');
-
-    try {
-        // 1. 清除全域斜線指令 (Global Commands)
-        console.log('🌍 [1/2] 正在清除所有全域指令 (Global Commands)...');
-        await rest.put(
-            Routes.applicationCommands(clientId),
-            { body: [] }
-        );
-        console.log('✅ 全域斜線指令已清空！');
-
-        const missingVariables = getMissingGuildVariables();
-        if (missingVariables.length > 0) {
-            throw new Error(`Missing Discord Guild configuration: ${missingVariables.join(', ')}`);
-        }
-
-        const guilds = getConfiguredGuilds();
-        for (const [guildKey, guildId] of Object.entries(guilds)) {
-            await rest.put(
-                Routes.applicationGuildCommands(clientId, guildId),
-                { body: [] }
-            );
-            console.log(`✅ 已清除 ${guildKey} Guild 的伺服器指令。`);
-        }
-
-        console.log('🎉 已清除 Global 與四個設定 Guild 的舊指令。');
-
-    } catch (error) {
-        console.error('❌ 清除指令時發生錯誤：', error);
-        process.exit(1);
+    if (process.env.NODE_ENV === 'test' && process.env.ALLOW_EXTERNAL_MUTATIONS_IN_TEST !== 'true') {
+        throw new Error('Discord REST mutations are disabled in tests');
     }
+    if (process.env.DISCORD_COMMAND_CLEAR_ENABLED !== 'true') {
+        throw new Error('Set DISCORD_COMMAND_CLEAR_ENABLED=true for explicit command clearing');
+    }
+
+    const { REST, Routes } = require('discord.js');
+    const { getConfiguredGuilds, getMissingGuildVariables } = require('./config/discordCommandPolicy');
+    const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN;
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    if (!token || !clientId) throw new Error('Discord command-clear credentials are unavailable');
+
+    const missingVariables = getMissingGuildVariables(process.env);
+    if (missingVariables.length) throw new Error('Explicit MAIN, STAFF, and DEV Guild targets are required');
+    const guilds = getConfiguredGuilds(process.env);
+    console.log(JSON.stringify({ environment: process.env.NODE_ENV || 'production', targets: guilds, commandCount: 0 }));
+
+    const rest = new REST({ version: '10' }).setToken(token);
+    await rest.put(Routes.applicationCommands(clientId), { body: [] });
+    for (const guildId of Object.values(guilds)) {
+        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [] });
+    }
+    console.log('Discord commands cleared for the explicitly configured targets.');
 }
 
-clearAllCommands();
+if (require.main === module) {
+    require('dotenv').config();
+    clearAllCommands().catch(() => {
+        console.error('Discord command clearing failed; credential details were suppressed.');
+        process.exitCode = 1;
+    });
+}
+
+module.exports = { clearAllCommands };

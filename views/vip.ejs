@@ -57,6 +57,19 @@
             backdrop-filter: blur(15px);
         }
 
+        .vip-scroll-container {
+            max-height: calc(var(--vip-header-height, 54px) + (var(--vip-row-height, 64px) * 5));
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(168, 85, 247, 0.55) rgba(15, 23, 42, 0.6);
+        }
+        .vip-scroll-container::-webkit-scrollbar { width: 6px; }
+        .vip-scroll-container::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 999px; }
+        .vip-scroll-container::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.42); border-radius: 999px; box-shadow: 0 0 8px rgba(168, 85, 247, 0.14); }
+        .vip-scroll-container::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.78); box-shadow: 0 0 10px rgba(168, 85, 247, 0.22); }
+        .vip-scroll-container .mihu-table thead th { position: sticky; top: 0; z-index: 5; background: rgba(11, 9, 20, 0.96); }
+
         .table-responsive { margin: 0; }
         .mihu-table {
             width: 100%;
@@ -92,19 +105,6 @@
         }
         .mihu-table tbody tr:last-child td {
             border-bottom: none;
-        }
-
-        .vip-badge-pill {
-            background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(236, 72, 153, 0.2));
-            border: 1px solid rgba(168, 85, 247, 0.4);
-            color: #fde047;
-            font-weight: 800;
-            padding: 4px 12px;
-            border-radius: 20px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.88rem;
         }
 
         .rewards-preview-badges {
@@ -249,6 +249,9 @@
                 ✅ VIP 設定已成功更新！
             </div>
         <% } %>
+        <% if (typeof error !== 'undefined' && error) { %>
+            <div class="alert alert-danger py-2 px-3 small mb-4 border-0 bg-danger bg-opacity-25 text-danger"><%= error %></div>
+        <% } %>
 
         <!-- 📊 1. 獨立模組：VIP 門檻與特權對照表格 -->
         <%- include('partials/vip_table', { vipTiers: vipTiers }) %>
@@ -266,7 +269,7 @@
             </div>
 
             <!-- 引用獨立模組：單張卡片展示與切換 -->
-            <%- include('partials/vip_cards_showcase', { cardUser: typeof user !== 'undefined' ? user : undefined }) %>
+            <%- include('partials/vip_cards_showcase', { cardUser: typeof user !== 'undefined' ? user : undefined, vipTiers: vipTiers }) %>
         </div>
     </div>
 </div>
@@ -277,11 +280,49 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     const viewModal = new bootstrap.Modal(document.getElementById('viewVipModal'));
-    const editModal = new bootstrap.Modal(document.getElementById('editVipModal'));
+        const editModal = new bootstrap.Modal(document.getElementById('editVipModal'));
 
-    function openViewModal(level, name, spent, deposit, el) {
+        function normalizeVipColorInput(value) {
+            const raw = String(value || '').trim().toUpperCase();
+            const candidate = raw.startsWith('#') ? raw : `#${raw}`;
+            return /^#[0-9A-F]{6}$/.test(candidate) ? candidate : null;
+        }
+
+        function setupVipColorPicker(colorInputId, hexInputId, previewId, nameInputId) {
+            const colorInput = document.getElementById(colorInputId);
+            const hexInput = document.getElementById(hexInputId);
+            const preview = document.getElementById(previewId);
+            const nameInput = nameInputId ? document.getElementById(nameInputId) : null;
+            if (!colorInput || !hexInput || !preview) return;
+            const updatePreview = (value) => {
+                const normalized = normalizeVipColorInput(value);
+                if (!normalized) return false;
+                colorInput.value = normalized;
+                hexInput.value = normalized;
+                preview.style.setProperty('--vip-color', normalized);
+                if (nameInput) preview.querySelector('[data-vip-preview-name]')?.replaceChildren(nameInput.value || 'VIP');
+                return true;
+            };
+            colorInput.addEventListener('input', () => updatePreview(colorInput.value));
+            hexInput.addEventListener('input', () => { if (normalizeVipColorInput(hexInput.value)) updatePreview(hexInput.value); });
+            hexInput.addEventListener('blur', () => updatePreview(hexInput.value || '#A855F7'));
+            nameInput?.addEventListener('input', () => { preview.querySelector('[data-vip-preview-name]')?.replaceChildren(nameInput.value || 'VIP'); });
+        }
+
+        setupVipColorPicker('editVipColorPicker', 'editVipColor', 'editVipColorPreview', null);
+        setupVipColorPicker('addVipColorPicker', 'addVipColor', 'addVipColorPreview', 'addVipName');
+        document.getElementById('addVipModal')?.addEventListener('show.bs.modal', () => {
+            document.getElementById('addVipColorPicker').value = '#A855F7';
+            document.getElementById('addVipColor').value = '#A855F7';
+            document.getElementById('addVipColorPreview').style.setProperty('--vip-color', '#A855F7');
+            document.querySelector('#addVipColorPreview [data-vip-preview-name]')?.replaceChildren('VIP');
+        });
+
+    function openViewModal(level, name, spent, deposit, color, el) {
         const rewards = JSON.parse(el.getAttribute('data-rewards') || '[]');
-        document.getElementById('viewVipTitleBadge').innerHTML = `<i class="fa-solid fa-gem"></i> ${name}`;
+        const viewBadge = document.getElementById('viewVipTitleBadge');
+        viewBadge.style.setProperty('--vip-color', normalizeVipColorInput(color) || '#A855F7');
+        viewBadge.querySelector('.vip-badge__label')?.replaceChildren(name);
         document.getElementById('viewSpent').textContent = `${Number(spent).toLocaleString()} T`;
         document.getElementById('viewDeposit').textContent = `${Number(deposit).toLocaleString()} T`;
         
@@ -296,12 +337,17 @@
         viewModal.show();
     }
 
-    function openEditModal(level, name, spent, deposit, el) {
+    function openEditModal(level, name, spent, deposit, color, el) {
         const rewards = JSON.parse(el.getAttribute('data-rewards') || '[]');
         document.getElementById('editVipForm').action = `/system/vip/update/${level}`;
         document.getElementById('editVipModalTitle').textContent = `編輯 ${name} 設定`;
         document.getElementById('editSpent').value = spent;
         document.getElementById('editDeposit').value = deposit;
+        const normalizedColor = normalizeVipColorInput(color) || '#A855F7';
+        document.getElementById('editVipColorPicker').value = normalizedColor;
+        document.getElementById('editVipColor').value = normalizedColor;
+        document.getElementById('editVipColorPreview').style.setProperty('--vip-color', normalizedColor);
+        document.querySelector('#editVipColorPreview [data-vip-preview-name]')?.replaceChildren(name);
 
         const container = document.getElementById('editRewardsContainer');
         container.innerHTML = '';

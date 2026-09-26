@@ -1,9 +1,38 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./utils/vipColor');
+const { ensurePayoutSchema } = require('./utils/payoutSchema');
+const { withTransactionGate } = require('./utils/transactionGate');
+const {
+    assertEncryptionKey,
+    isEncryptedSensitiveValue,
+    encryptSensitiveValue,
+    decryptSensitiveValue
+} = require('./utils/sensitiveDataCrypto');
 
-const dbPath = path.join(__dirname, 'database.sqlite');
+const productionDbPath = path.join(__dirname, 'database.sqlite');
+const testDbPath = process.env.TEST_DATABASE_PATH;
+if (process.env.NODE_ENV === 'test' && !testDbPath) {
+    throw new Error('NODE_ENV=test requires TEST_DATABASE_PATH; refusing to open the production database');
+}
+const dbPath = process.env.NODE_ENV === 'test'
+    ? path.resolve(testDbPath)
+    : path.resolve(process.env.DATABASE_PATH || productionDbPath);
+if (process.env.NODE_ENV === 'test' && dbPath === path.resolve(productionDbPath)) {
+    throw new Error('Test database must not point to the production database');
+}
+if (process.env.NODE_ENV === 'test') {
+    const tempRoot = path.resolve(os.tmpdir());
+    const relativeTestPath = path.relative(tempRoot, dbPath);
+    if (relativeTestPath === '..' || relativeTestPath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeTestPath)) {
+        throw new Error('Test database must be located under the operating system temporary directory');
+    }
+}
 const db = new sqlite3.Database(dbPath);
+let initialized = false;
+let startupReady = Promise.resolve();
 
 function ensureColumn(tableName, columnDefinition, callback = () => {}) {
     const columnName = columnDefinition.trim().split(/\s+/)[0];
@@ -14,50 +43,295 @@ function ensureColumn(tableName, columnDefinition, callback = () => {}) {
     });
 }
 
-function removeLegacyTalentRateDefault(callback = () => {}) {
-    db.all('PRAGMA table_info(talents)', (infoErr, columns) => {
-        if (infoErr) return callback(infoErr);
-        const rateColumn = (columns || []).find(column => column.name === 'commission_rate');
-        const defaultValue = String(rateColumn && rateColumn.dflt_value || '').replace(/^['"]|['"]$/g, '');
-        if (defaultValue !== '0.7' && defaultValue !== '0.70') return callback(null);
+function migrationRun(sql, params = []) {
+    return new Promise((resolve, reject) => db.run(sql, params, function (error) {
+        if (error) return reject(error);
+        resolve({ lastID: this.lastID, changes: this.changes });
+    }));
+}
 
-        const run = (sql) => new Promise((resolve, reject) => {
-            db.run(sql, (err) => err ? reject(err) : resolve());
-        });
+function migrationGet(sql, params = []) {
+    return new Promise((resolve, reject) => db.get(sql, params, (error, row) => error ? reject(error) : resolve(row || null)));
+}
 
-        (async () => {
-            try {
-                await run('BEGIN IMMEDIATE');
-                await run('DROP TABLE IF EXISTS talents_commission_migration');
-                await run(`
-                    CREATE TABLE talents_commission_migration (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id TEXT UNIQUE NOT NULL,
-                        nickname TEXT,
-                        staff_channel_id TEXT,
-                        commission_rate REAL DEFAULT NULL,
-                        status TEXT DEFAULT 'idle',
-                        skill_permissions TEXT DEFAULT '[]',
-                        FOREIGN KEY (user_id) REFERENCES users (id)
-                    )
-                `);
-                await run(`
-                    INSERT INTO talents_commission_migration (id, user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions)
-                    SELECT id, user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions FROM talents
-                `);
-                await run('DROP TABLE talents');
-                await run('ALTER TABLE talents_commission_migration RENAME TO talents');
-                await run('COMMIT');
-                callback(null);
-            } catch (err) {
-                await run('ROLLBACK').catch(() => {});
-                callback(err);
+function migrationAll(sql, params = []) {
+    return new Promise((resolve, reject) => db.all(sql, params, (error, rows) => error ? reject(error) : resolve(rows || [])));
+}
+
+function createDeferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    promise.catch(() => {});
+    return { promise, resolve, reject };
+}
+
+async function migrateSensitivePayrollData() {
+    assertEncryptionKey();
+    await withTransactionGate(async () => {
+        await migrationRun('BEGIN IMMEDIATE');
+        try {
+            await migrationRun(`
+                CREATE TABLE IF NOT EXISTS sensitive_data_migrations (
+                    migration_key TEXT PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    encrypted_value_count INTEGER NOT NULL DEFAULT 0
+                )
+            `);
+            let encryptedValueCount = 0;
+            for (const [tableName, idColumn, fields] of [
+                ['users', 'id', ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account']],
+                ['payouts', 'id', ['bank_name_snapshot', 'bank_code_snapshot', 'bank_branch_snapshot', 'account_name_snapshot', 'bank_account_snapshot']]
+            ]) {
+                const rows = await migrationAll(`SELECT ${[idColumn, ...fields].join(',')} FROM ${tableName}`);
+                for (const row of rows) {
+                    const updatedFields = {};
+                    for (const field of fields) {
+                        const value = row[field];
+                        if (value !== null && value !== undefined && value !== '') {
+                            if (isEncryptedSensitiveValue(value)) decryptSensitiveValue(value);
+                            else updatedFields[field] = encryptSensitiveValue(value);
+                        }
+                    }
+                    const entries = Object.entries(updatedFields);
+                    if (!entries.length) continue;
+                    const assignments = entries.map(([field]) => `${field} = ?`).join(', ');
+                    await migrationRun(`UPDATE ${tableName} SET ${assignments} WHERE ${idColumn} = ?`, [
+                        ...entries.map(([, value]) => value), row[idColumn]
+                    ]);
+                    encryptedValueCount += entries.length;
+                }
             }
-        })();
+            await migrationRun(`
+                INSERT INTO sensitive_data_migrations (migration_key, encrypted_value_count)
+                VALUES ('payroll-aes-gcm-v1', ?)
+                ON CONFLICT(migration_key) DO UPDATE SET
+                    applied_at = CURRENT_TIMESTAMP,
+                    encrypted_value_count = sensitive_data_migrations.encrypted_value_count + excluded.encrypted_value_count
+            `, [encryptedValueCount]);
+            await migrationRun('COMMIT');
+        } catch (error) {
+            await migrationRun('ROLLBACK').catch(() => {});
+            throw error;
+        }
+    });
+
+    await new Promise((resolve, reject) => {
+        require('./utils/dataSync').syncUsersJsonFromDb(error => error ? reject(error) : resolve());
     });
 }
 
-db.serialize(() => {
+function removeLegacyTalentRateDefault(callback = () => {}) {
+    withTransactionGate(async () => {
+        const columns = await migrationAll('PRAGMA table_info(talents)');
+        const rateColumn = columns.find(column => column.name === 'commission_rate');
+        const defaultValue = String(rateColumn && rateColumn.dflt_value || '').replace(/^['"]|['"]$/g, '');
+        if (defaultValue !== '0.7' && defaultValue !== '0.70') return;
+        await migrationRun('BEGIN IMMEDIATE');
+        try {
+            await migrationRun('DROP TABLE IF EXISTS talents_commission_migration');
+            await migrationRun(`
+                CREATE TABLE talents_commission_migration (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE NOT NULL,
+                    nickname TEXT,
+                    staff_channel_id TEXT,
+                    commission_rate REAL DEFAULT NULL,
+                    status TEXT DEFAULT 'idle',
+                    skill_permissions TEXT DEFAULT '[]',
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            `);
+            await migrationRun(`
+                INSERT INTO talents_commission_migration (id, user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions)
+                SELECT id, user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions FROM talents
+            `);
+            await migrationRun('DROP TABLE talents');
+            await migrationRun('ALTER TABLE talents_commission_migration RENAME TO talents');
+            await migrationRun('COMMIT');
+        } catch (error) {
+            await migrationRun('ROLLBACK').catch(() => {});
+            throw error;
+        }
+    }).then(() => callback(null), callback);
+}
+
+function canonicalCommissionCategory(category) {
+    const aliases = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
+    const normalizedCategory = String(category || '').trim();
+    return aliases[normalizedCategory] || normalizedCategory;
+}
+
+function normalizeCommissionShareRate(value) {
+    let rate = Number(value);
+    if (rate > 1 && rate <= 100) rate /= 100;
+    return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : null;
+}
+
+function syncCommissionJsonCache() {
+    try {
+        require('./utils/dataSync').syncCommissionJsonFromDb(syncErr => {
+            if (syncErr) console.error('❌ 同步 commission.json 失敗:', syncErr.message);
+        });
+    } catch (syncErr) {
+        console.error('❌ 載入 commission JSON sync helper 失敗:', syncErr.message);
+    }
+}
+
+function ensureCanonicalCommissionCategories() {
+    return withTransactionGate(async () => {
+        const marker = await migrationGet('SELECT migration_key FROM commission_settings_migrations WHERE migration_key = ?', ['commission-settings-category-labels-v3']);
+        if (marker) return;
+        await migrationRun('BEGIN IMMEDIATE');
+        try {
+            const defaultRates = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
+            const aliases = {
+                '有獎單': ['有獎單', '有獎'],
+                '冠名單': ['冠名單', '冠名'],
+                '其他單': ['其他單', '其他', '活動單'],
+                '獎金單': ['獎金單', '獎金']
+            };
+            for (const [category, rate] of Object.entries(defaultRates)) {
+                const categoryAliases = aliases[category] || [category];
+                const placeholders = categoryAliases.map(() => '?').join(',');
+                const row = await migrationGet(`
+                    SELECT rate FROM commission_settings
+                    WHERE category IN (${placeholders})
+                    ORDER BY CASE category WHEN ? THEN 0 ELSE 1 END LIMIT 1
+                `, [...categoryAliases, category]);
+                const normalizedRate = row ? normalizeCommissionShareRate(row.rate) : rate;
+                await migrationRun('INSERT OR IGNORE INTO commission_settings (category, rate) VALUES (?, ?)', [category, normalizedRate]);
+            }
+            await migrationRun('DELETE FROM commission_settings WHERE category = ?', ['活動單']);
+            await migrationRun('INSERT OR IGNORE INTO commission_settings_migrations (migration_key) VALUES (?)', ['commission-settings-category-labels-v3']);
+            await migrationRun('COMMIT');
+        } catch (error) {
+            await migrationRun('ROLLBACK').catch(() => {});
+            throw error;
+        }
+    }).then(() => syncCommissionJsonCache(), error => {
+        console.error('❌ canonical commission migration 失敗:', error.message);
+        throw error;
+    });
+}
+
+function initializeCommissionSettings(callback = () => {}) {
+    let completed = false;
+    const finish = error => {
+        if (completed) return;
+        completed = true;
+        callback(error || null);
+    };
+    db.run(`
+        CREATE TABLE IF NOT EXISTS commission_settings_migrations (
+            migration_key TEXT PRIMARY KEY,
+            applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `, (tableErr) => {
+        if (tableErr) {
+            console.error('❌ 建立 commission migration marker 失敗:', tableErr.message);
+            return finish(tableErr);
+        }
+
+        migrationGet('SELECT migration_key FROM commission_settings_migrations WHERE migration_key = ?', ['commission-rate-is-talent-share-v1'])
+            .then(marker => {
+                if (marker) return ensureCanonicalCommissionCategories();
+                return withTransactionGate(async () => {
+                    await migrationRun('BEGIN IMMEDIATE');
+                    try {
+                        const settingsRows = await migrationAll('SELECT category, rate, updated_at FROM commission_settings');
+                        const existingCanonicalCategories = new Set(settingsRows.map(row => canonicalCommissionCategory(row.category)));
+                        for (const row of settingsRows) {
+                            const canonicalCategory = canonicalCommissionCategory(row.category);
+                            const legacyAlias = canonicalCategory === '有獎單' ? '有獎' : (canonicalCategory === '冠名單' ? '冠名' : (canonicalCategory === '其他單' ? '其他' : (canonicalCategory === '獎金單' ? '獎金' : canonicalCategory)));
+                            const studioRow = await migrationGet(`
+                                SELECT category, talent_share_rate, updated_at
+                                FROM studio_commissions
+                                WHERE studio_id = 1 AND category IN (?, ?)
+                                ORDER BY CASE category WHEN ? THEN 0 ELSE 1 END
+                                LIMIT 1
+                            `, [canonicalCategory, legacyAlias, canonicalCategory]);
+                            const legacyRate = Number(row.rate);
+                            const legacyShare = Number.isFinite(legacyRate)
+                                ? (legacyRate > 1 && legacyRate <= 100 ? 1 - legacyRate / 100 : 1 - legacyRate)
+                                : null;
+                            const studioUpdated = studioRow && Date.parse(studioRow.updated_at || '') || 0;
+                            const settingsUpdated = Date.parse(row.updated_at || '') || 0;
+                            const studioShare = normalizeCommissionShareRate(studioRow && studioRow.talent_share_rate);
+                            const migratedRate = studioShare !== null && studioUpdated >= settingsUpdated
+                                ? studioShare
+                                : legacyShare;
+                            if (migratedRate === null || migratedRate < 0 || migratedRate > 1) {
+                                throw new Error(`無法轉換類別「${row.category}」的抽佣比例`);
+                            }
+                            await migrationRun('UPDATE commission_settings SET rate = ? WHERE category = ?', [migratedRate, row.category]);
+                        }
+
+                        const defaultRates = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
+                        const seedRates = {};
+                        const jsonPath = path.join(__dirname, 'data', 'commission.json');
+                        try {
+                            if (fs.existsSync(jsonPath)) {
+                                const savedRates = JSON.parse(fs.readFileSync(jsonPath, 'utf8') || '{}');
+                                Object.entries(savedRates).forEach(([category, value]) => {
+                                    const canonicalCategory = canonicalCommissionCategory(category);
+                                    const rate = normalizeCommissionShareRate(value);
+                                    if (canonicalCategory && rate !== null) seedRates[canonicalCategory] = rate;
+                                });
+                            }
+                        } catch (jsonErr) {
+                            console.error('❌ 讀取 commission.json 失敗，改用預設類別:', jsonErr.message);
+                        }
+
+                        const studioRows = await migrationAll('SELECT category, talent_share_rate, updated_at FROM studio_commissions WHERE studio_id = 1');
+                        const latestStudioRows = new Map();
+                        studioRows.forEach(row => {
+                            const category = canonicalCommissionCategory(row.category);
+                            const previous = latestStudioRows.get(category);
+                            const rowIsCanonical = row.category === category;
+                            const previousIsCanonical = previous && previous.category === category;
+                            if (!previous || (rowIsCanonical && !previousIsCanonical)) latestStudioRows.set(category, row);
+                        });
+                        latestStudioRows.forEach((row, category) => {
+                            if (existingCanonicalCategories.has(category)) return;
+                            const rate = normalizeCommissionShareRate(row.talent_share_rate);
+                            if (rate !== null) seedRates[category] = rate;
+                        });
+                        Object.entries(defaultRates).forEach(([category, rate]) => {
+                            if (!Object.prototype.hasOwnProperty.call(seedRates, category)) seedRates[category] = rate;
+                        });
+                        for (const [category, rate] of Object.entries(seedRates)) {
+                            if (!existingCanonicalCategories.has(category)) {
+                                await migrationRun('INSERT OR IGNORE INTO commission_settings (category, rate) VALUES (?, ?)', [category, rate]);
+                            }
+                        }
+                        await migrationRun('INSERT OR IGNORE INTO commission_settings_migrations (migration_key) VALUES (?)', ['commission-rate-is-talent-share-v1']);
+                        await migrationRun('COMMIT');
+                    } catch (error) {
+                        await migrationRun('ROLLBACK').catch(() => {});
+                        throw error;
+                    }
+                }).then(() => ensureCanonicalCommissionCategories());
+            })
+            .then(() => finish(null), error => {
+                console.error('❌ commission category/rate migration 失敗:', error.message);
+                finish(error);
+            });
+    });
+}
+
+function initializeDatabase() {
+    if (initialized) return db;
+    initialized = true;
+    const payoutStartup = createDeferred();
+    const commissionStartup = createDeferred();
+    startupReady = Promise.all([payoutStartup.promise, commissionStartup.promise]).then(() => undefined);
+    startupReady.catch(() => {});
+    db.startupReady = startupReady;
+    db.serialize(() => {
     db.run(`
         CREATE TABLE IF NOT EXISTS studios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +339,11 @@ db.serialize(() => {
             owner_user_id TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    `, () => {
+    `, (studioCreateError) => {
+        if (studioCreateError) {
+            commissionStartup.reject(studioCreateError);
+            return;
+        }
         db.run('INSERT OR IGNORE INTO studios (id, name, owner_user_id) VALUES (1, ?, ?)', ['預設工作室', '604610298581876746']);
     });
 
@@ -92,15 +370,24 @@ db.serialize(() => {
             bank_code TEXT,
             bank_branch TEXT,
             bank_account TEXT,
+            email TEXT,
+            email_verified INTEGER NOT NULL DEFAULT 0,
+            email_verified_at DATETIME,
             studio_id INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `, () => {
         ensureColumn('users', 'studio_id INTEGER DEFAULT 1', () => {
             db.run('UPDATE users SET studio_id = 1 WHERE studio_id IS NULL');
+            ensureColumn('users', 'email TEXT', () => {
+                ensureColumn('users', 'email_verified INTEGER NOT NULL DEFAULT 0', () => {
+                    ensureColumn('users', 'email_verified_at DATETIME');
+                });
+            });
         });
         const usersJsonPath = path.join(__dirname, 'data', 'users.json');
-        if (fs.existsSync(usersJsonPath)) {
+        db.get('SELECT COUNT(*) AS count FROM users', (countErr, countRow) => {
+        if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(usersJsonPath)) return;
             try {
                 const raw = fs.readFileSync(usersJsonPath, 'utf8');
                 const jsonUsers = JSON.parse(raw || '[]');
@@ -151,7 +438,7 @@ db.serialize(() => {
             } catch (e) {
                 console.error('❌ 同步 users.json 至資料庫失敗:', e);
             }
-        }
+        });
     });
 
     // 🚀 1.1 會員資金獨立資料表 (user_wallets - 獨立當前餘額、贈送金、累積消費與累積實充)
@@ -176,6 +463,28 @@ db.serialize(() => {
         });
     });
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS wallet_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            balance_before REAL NOT NULL,
+            balance_after REAL NOT NULL,
+            reference_type TEXT,
+            reference_id TEXT,
+            description TEXT,
+            operator_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `, () => {
+        db.run(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_transactions_reference
+            ON wallet_transactions (reference_type, reference_id, type)
+            WHERE reference_type IS NOT NULL AND reference_id IS NOT NULL
+        `);
+    });
+
     // 2. 陪玩師資產/細節資料表 (自動與 data/talents.json 雙向同步)
     db.run(`
         CREATE TABLE IF NOT EXISTS talents (
@@ -195,7 +504,8 @@ db.serialize(() => {
                 return;
             }
         const talentsJsonPath = path.join(__dirname, 'data', 'talents.json');
-        if (fs.existsSync(talentsJsonPath)) {
+            db.get('SELECT COUNT(*) AS count FROM talents', (countErr, countRow) => {
+            if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(talentsJsonPath)) return;
             try {
                 const raw = fs.readFileSync(talentsJsonPath, 'utf8');
                 const jsonTalents = JSON.parse(raw || '[]');
@@ -229,7 +539,7 @@ db.serialize(() => {
             } catch (e) {
                 console.error('❌ 同步 talents.json 至資料庫失敗:', e);
             }
-        }
+        });
         });
     });
 
@@ -250,14 +560,19 @@ db.serialize(() => {
             PRIMARY KEY (studio_id, category),
             FOREIGN KEY (studio_id) REFERENCES studios(id) ON DELETE CASCADE
         )
-    `, () => {
-        const defaults = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '獎金': 1.00 };
+    `, (studioCommissionCreateError) => {
+        if (studioCommissionCreateError) {
+            commissionStartup.reject(studioCommissionCreateError);
+            return;
+        }
+        const defaults = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
         const commissionJsonPath = path.join(__dirname, 'data', 'commission.json');
         try {
             if (fs.existsSync(commissionJsonPath)) {
                 const savedRates = JSON.parse(fs.readFileSync(commissionJsonPath, 'utf8') || '{}');
                 Object.entries(savedRates).forEach(([category, rate]) => {
-                    const canonicalCategory = category === '有獎' ? '有獎單' : (category === '冠名' ? '冠名單' : category);
+                    const aliases = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
+                    const canonicalCategory = aliases[category] || category;
                     defaults[canonicalCategory] = rate;
                 });
             }
@@ -268,7 +583,14 @@ db.serialize(() => {
             const rate = Number(rawRate);
             if (Number.isFinite(rate) && rate >= 0 && rate <= 1) stmt.run(category, rate);
         });
-        stmt.finalize();
+        stmt.finalize(seedErr => {
+            if (seedErr) {
+                console.error('❌ 初始化工作室類別比率失敗:', seedErr.message);
+                commissionStartup.reject(seedErr);
+                return;
+            }
+            initializeCommissionSettings(error => error ? commissionStartup.reject(error) : commissionStartup.resolve());
+        });
     });
 
     db.run(`
@@ -348,7 +670,7 @@ db.serialize(() => {
                                                             LIMIT 1
                                                         )
                                                         WHERE service_id IS NULL
-                                                    `, () => backfillLegacyOrderSnapshots(syncOrdersJson));
+                                                    `, () => backfillLegacyOrderSnapshots());
                                                 });
                                             });
                                         });
@@ -364,20 +686,9 @@ db.serialize(() => {
 
     function backfillLegacyOrderSnapshots(callback = () => {}) {
         const shareRate = `COALESCE(
-            (SELECT s.talent_share_rate FROM studio_services s WHERE s.id = o.service_id AND s.studio_id = o.studio_id AND s.talent_share_rate IS NOT NULL),
-            (SELECT sc.talent_share_rate FROM studio_commissions sc WHERE sc.studio_id = o.studio_id AND sc.category = o.category),
-            (SELECT CASE WHEN cs.rate BETWEEN 0 AND 1 THEN 1 - cs.rate WHEN cs.rate > 1 AND cs.rate <= 100 THEN 1 - cs.rate / 100 END FROM commission_settings cs WHERE cs.category = o.category),
-            CASE o.category
-                WHEN '陪玩單' THEN 0.80
-                WHEN '禮物單' THEN 0.85
-                WHEN '有獎' THEN 0.90
-                WHEN '有獎單' THEN 0.90
-                WHEN '冠名' THEN 0.85
-                WHEN '冠名單' THEN 0.85
-                WHEN '獎金' THEN 1.00
-                WHEN '活動單' THEN 0.90
-                ELSE 0.80
-            END
+            (SELECT cs.rate FROM commission_settings cs WHERE cs.category = CASE o.category WHEN '有獎' THEN '有獎單' WHEN '冠名' THEN '冠名單' WHEN '獎金' THEN '獎金單' WHEN '其他' THEN '其他單' WHEN '活動單' THEN '其他單' ELSE o.category END),
+            (SELECT fallback.rate FROM commission_settings fallback WHERE fallback.category = '其他單'),
+            0.80
         )`;
         const originalAmount = 'COALESCE(NULLIF(o.unit_price, 0) * COALESCE(o.duration, 1), o.total_amount + COALESCE(o.discount, 0), o.total_amount)';
 
@@ -399,84 +710,6 @@ db.serialize(() => {
         });
     }
 
-    function syncOrdersJson() {
-        const ordersJsonPath = path.join(__dirname, 'data', 'orders.json');
-        if (fs.existsSync(ordersJsonPath)) {
-            try {
-                const raw = fs.readFileSync(ordersJsonPath, 'utf8');
-                const jsonOrders = JSON.parse(raw || '[]');
-                if (jsonOrders.length > 0) {
-                    const stmt = db.prepare(`
-                        INSERT INTO orders (
-                            id, order_no, boss_id, cs_id, cs_name, category, game, content_tier, 
-                            duration, unit, unit_price, headcount, tag, extra, 
-                            discount, note, talent_message, talent_id, channel_id, 
-                            message_id, total_amount, status, start_time, end_time, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(order_no) DO UPDATE SET
-                            cs_id = excluded.cs_id,
-                            cs_name = excluded.cs_name,
-                            category = excluded.category,
-                            game = excluded.game,
-                            content_tier = excluded.content_tier,
-                            duration = excluded.duration,
-                            unit = excluded.unit,
-                            unit_price = excluded.unit_price,
-                            headcount = excluded.headcount,
-                            tag = excluded.tag,
-                            extra = excluded.extra,
-                            discount = excluded.discount,
-                            note = excluded.note,
-                            talent_message = excluded.talent_message,
-                            talent_id = excluded.talent_id,
-                            channel_id = excluded.channel_id,
-                            message_id = excluded.message_id,
-                            total_amount = excluded.total_amount,
-                            status = excluded.status,
-                            start_time = excluded.start_time,
-                            end_time = excluded.end_time
-                    `);
-
-                    jsonOrders.forEach(o => {
-                        stmt.run(
-                            o.id || null, o.order_no, o.boss_id, o.cs_id || null, o.cs_name || null, o.category || '陪玩單',
-                            o.game, o.content_tier || null, o.duration || 1, o.unit || '小時',
-                            o.unit_price || 0, o.headcount || 1, o.tag || null, o.extra || null,
-                            o.discount || 0, o.note || null, o.talent_message || null,
-                            o.talent_id || null, o.channel_id || null, o.message_id || null,
-                            o.total_amount, o.status || 'pending', o.start_time || null,
-                            o.end_time || null, o.created_at || new Date().toISOString()
-                        );
-                    });
-                    stmt.finalize(() => {
-                        db.run(`
-                            INSERT OR IGNORE INTO studio_services (studio_id, name, category)
-                            SELECT 1, TRIM(game), COALESCE(NULLIF(category, ''), '陪玩單')
-                            FROM orders
-                            WHERE game IS NOT NULL AND TRIM(game) <> ''
-                        `, () => {
-                            db.run(`
-                                UPDATE orders
-                                SET service_id = (
-                                    SELECT s.id FROM studio_services s
-                                    WHERE s.studio_id = orders.studio_id AND s.name = TRIM(orders.game)
-                                    LIMIT 1
-                                )
-                                WHERE service_id IS NULL
-                            `, () => {
-                                backfillLegacyOrderSnapshots(() => {
-                                    console.log('✅ 成功從 data/orders.json 同步訂單資料至資料庫！');
-                                });
-                            });
-                        });
-                    });
-                }
-            } catch (e) {
-                console.error('❌ 同步 orders.json 至資料庫失敗:', e);
-            }
-        }
-    }
-
     // 4. 加值儲值紀錄表 (自動與 data/topups.json 雙向同步)
     db.run(`
         CREATE TABLE IF NOT EXISTS topups (
@@ -491,7 +724,8 @@ db.serialize(() => {
         )
     `, () => {
         const topupsJsonPath = path.join(__dirname, 'data', 'topups.json');
-        if (fs.existsSync(topupsJsonPath)) {
+        db.get('SELECT COUNT(*) AS count FROM topups', (countErr, countRow) => {
+        if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(topupsJsonPath)) return;
             try {
                 const raw = fs.readFileSync(topupsJsonPath, 'utf8');
                 const jsonTopups = JSON.parse(raw || '[]');
@@ -527,7 +761,7 @@ db.serialize(() => {
             } catch (e) {
                 console.error('❌ 同步 topups.json 至資料庫失敗:', e);
             }
-        }
+        });
     });
 
     // 5. VIP 階級設定表 (自動與 data/vip.json 同步)
@@ -538,39 +772,52 @@ db.serialize(() => {
             spent_threshold REAL NOT NULL,
             deposit_threshold REAL NOT NULL,
             rewards TEXT DEFAULT '[]',
+            color TEXT DEFAULT '#A855F7',
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `, () => {
-        const vipJsonPath = path.join(__dirname, 'data', 'vip.json');
-        if (fs.existsSync(vipJsonPath)) {
-            try {
+        ensureColumn('vip_tiers', `color TEXT DEFAULT '${DEFAULT_VIP_COLOR}'`, (columnErr) => {
+            if (columnErr) return console.error('❌ VIP color 欄位 migration 失敗:', columnErr.message);
+
+            db.all('SELECT level, color FROM vip_tiers', (colorErr, rows) => {
+                if (colorErr) return console.error('❌ 讀取 VIP color 失敗:', colorErr.message);
+                const stmt = db.prepare('UPDATE vip_tiers SET color = ? WHERE level = ?');
+                (rows || []).forEach(row => {
+                    const color = isValidVipColor(row.color) ? normalizeVipColor(row.color) : DEFAULT_VIP_COLOR;
+                    stmt.run(color, row.level);
+                });
+                stmt.finalize(() => syncVipTiersFromJson());
+            });
+        });
+
+        function syncVipTiersFromJson() {
+            const vipJsonPath = path.join(__dirname, 'data', 'vip.json');
+            if (!fs.existsSync(vipJsonPath)) return;
+            db.get('SELECT COUNT(*) AS count FROM vip_tiers', (countErr, countRow) => {
+                if (countErr || Number(countRow && countRow.count) > 0) return;
+                try {
                 const jsonVip = JSON.parse(fs.readFileSync(vipJsonPath, 'utf8'));
                 const stmt = db.prepare(`
-                    INSERT INTO vip_tiers (level, name, spent_threshold, deposit_threshold, rewards)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO vip_tiers (level, name, spent_threshold, deposit_threshold, rewards, color)
+                    VALUES (?, ?, ?, ?, ?, COALESCE(?, ?))
                     ON CONFLICT(level) DO UPDATE SET
                         name = excluded.name,
                         spent_threshold = excluded.spent_threshold,
                         deposit_threshold = excluded.deposit_threshold,
                         rewards = excluded.rewards,
+                        color = COALESCE(excluded.color, vip_tiers.color, '${DEFAULT_VIP_COLOR}'),
                         updated_at = CURRENT_TIMESTAMP
                 `);
 
                 jsonVip.forEach(v => {
-                    stmt.run(
-                        v.level,
-                        v.name,
-                        v.spent_threshold,
-                        v.deposit_threshold,
-                        JSON.stringify(v.rewards)
-                    );
+                    const jsonColor = isValidVipColor(v.color) ? normalizeVipColor(v.color) : null;
+                    stmt.run(v.level, v.name, v.spent_threshold, v.deposit_threshold, JSON.stringify(v.rewards), jsonColor, DEFAULT_VIP_COLOR);
                 });
-                stmt.finalize(() => {
-                    console.log('✅ 成功從 data/vip.json 同步 VIP 1 ~ 7 設定至資料庫！');
-                });
-            } catch (e) {
-                console.error('❌ 同步 vip.json 至資料庫失敗:', e);
-            }
+                stmt.finalize(() => console.log('✅ 成功從 data/vip.json 同步 VIP 設定至資料庫！'));
+                } catch (e) {
+                    console.error('❌ 初始 seed vip.json 至資料庫失敗:', e);
+                }
+            });
         }
     });
 
@@ -589,7 +836,8 @@ db.serialize(() => {
         )
     `, () => {
         const rolesJsonPath = path.join(__dirname, 'data', 'roles.json');
-        if (fs.existsSync(rolesJsonPath)) {
+        db.get('SELECT COUNT(*) AS count FROM roles', (countErr, countRow) => {
+        if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(rolesJsonPath)) return;
             try {
                 const jsonRoles = JSON.parse(fs.readFileSync(rolesJsonPath, 'utf8'));
                 const stmt = db.prepare(`
@@ -622,7 +870,7 @@ db.serialize(() => {
             } catch (e) {
                 console.error('❌ 同步 roles.json 至資料庫失敗:', e);
             }
-        }
+        });
     });
 
     // 7. 公告資料表
@@ -635,16 +883,14 @@ db.serialize(() => {
         )
     `);
 
-    // 8. 提領薪資紀錄表
-    db.run(`
-        CREATE TABLE IF NOT EXISTS payouts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            amount REAL NOT NULL,
-            status TEXT DEFAULT 'completed',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+    // 8. 提領薪資紀錄與提款事件 Ledger
+    ensurePayoutSchema(db, ensureColumn, migrationError => {
+        if (migrationError) {
+            payoutStartup.reject(migrationError);
+            return;
+        }
+        migrateSensitivePayrollData().then(payoutStartup.resolve, payoutStartup.reject);
+    });
 
     // 9. Discord 機器人指令設定表 (修正 ON CONFLICT，防止 UNIQUE constraint failed: bot_commands.id)
     db.run(`
@@ -659,7 +905,8 @@ db.serialize(() => {
         )
     `, () => {
         const commandsJsonPath = path.join(__dirname, 'data', 'commands.json');
-        if (fs.existsSync(commandsJsonPath)) {
+        db.get('SELECT COUNT(*) AS count FROM bot_commands', (countErr, countRow) => {
+        if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(commandsJsonPath)) return;
             try {
                 const raw = fs.readFileSync(commandsJsonPath, 'utf8');
                 const jsonCommands = JSON.parse(raw || '[]');
@@ -691,7 +938,7 @@ db.serialize(() => {
             } catch (e) {
                 console.error('❌ 同步 commands.json 至資料庫失敗:', e);
             }
-        }
+        });
     });
 
     // 10. 角色權限關聯表
@@ -702,6 +949,43 @@ db.serialize(() => {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
-});
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS email_verifications (
+            user_id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            expires_at DATETIME NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            used_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_id TEXT,
+            studio_id INTEGER,
+            action TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT,
+            before_data TEXT,
+            after_data TEXT,
+            metadata TEXT,
+            ip_address TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `, auditTableErr => {
+        if (auditTableErr) return console.error('❌ 建立 audit_logs 失敗:', auditTableErr.message);
+        ensureColumn('audit_logs', 'studio_id INTEGER', columnErr => {
+            if (columnErr) console.error('❌ audit_logs studio_id migration 失敗:', columnErr.message);
+        });
+    });
+    });
+    return db;
+}
+
+db.initializeDatabase = initializeDatabase;
 module.exports = db;

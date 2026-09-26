@@ -1,0 +1,15 @@
+<%
+    const rawLevel = typeof level !== 'undefined' && level !== null && String(level).trim() ? String(level).trim() : 'VIP';
+    const rawColor = typeof color !== 'undefined' && color !== null ? String(color).trim().toUpperCase() : '';
+    const safeVipColor = /^#[0-9A-F]{6}$/.test(rawColor)
+        ? rawColor
+        : (/^[0-9A-F]{6}$/.test(rawColor) ? `#${rawColor}` : '#A855F7');
+    const safeExtraClass = typeof extraClass !== 'undefined' && extraClass ? String(extraClass).replace(/[^A-Za-z0-9_-]/g, '') : '';
+    const safeId = typeof id !== 'undefined' && id ? String(id).replace(/[^A-Za-z0-9_-]/g, '') : '';
+    const safeIconId = typeof iconId !== 'undefined' && iconId ? String(iconId).replace(/[^A-Za-z0-9_-]/g, '') : '';
+    const safeLabelId = typeof labelId !== 'undefined' && labelId ? String(labelId).replace(/[^A-Za-z0-9_-]/g, '') : '';
+%>
+<span<% if (safeId) { %> id="<%= safeId %>"<% } %> class="vip-badge<% if (safeExtraClass) { %> <%= safeExtraClass %><% } %>" style="--vip-color: <%= safeVipColor %>;">
+    <i<% if (safeIconId) { %> id="<%= safeIconId %>"<% } %> class="fa-solid fa-crown vip-badge__icon"></i>
+    <span<% if (safeLabelId) { %> id="<%= safeLabelId %>"<% } %> class="vip-badge__label" data-vip-preview-name><%= rawLevel %></span>
+</span>

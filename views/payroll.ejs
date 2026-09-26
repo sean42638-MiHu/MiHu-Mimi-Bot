@@ -102,15 +102,16 @@
             </div>
 
             <div class="d-flex align-items-center gap-3">
-                <!-- 🚀 Excel 匯出按鈕 -->
-                <a href="/management/payroll/export" class="btn-excel-export" title="匯出完整薪轉 Excel 表格">
-                    <i class="fa-solid fa-file-excel"></i>
-                    <span>匯出薪轉 Excel</span>
-                </a>
+                <% if (canExportPayouts) { %>
+                    <a href="/management/payroll/export" class="btn-excel-export" title="匯出待撥款資料">
+                        <i class="fa-solid fa-file-excel"></i>
+                        <span>匯出待撥款</span>
+                    </a>
+                <% } %>
 
                 <div class="search-box-wrap">
                     <i class="fa-solid fa-magnifying-glass search-icon-left"></i>
-                    <input type="text" id="payrollSearchInput" class="search-input-glass" placeholder="搜尋暱稱 / 本名 / 銀行 / 帳號...">
+                    <input type="text" id="payrollSearchInput" class="search-input-glass" placeholder="搜尋員工暱稱...">
                     <button type="button" id="clearPayrollSearchBtn" class="search-clear-btn" title="清除搜尋"><i class="fa-solid fa-circle-xmark"></i></button>
                 </div>
             </div>
@@ -121,14 +122,108 @@
                 ✅ <%= successMsg %>
             </div>
         <% } %>
+        <% if (errorMsg) { %>
+            <div class="alert alert-danger py-2 px-3 small mb-4"><%= errorMsg %></div>
+        <% } %>
 
-        <!-- 📊 3. 7 列自訂滾動表格清單組件 -->
-        <%- include('partials/payroll_table', { staffList: typeof staffList !== 'undefined' ? staffList : [] }) %>
+        <% if (canViewPayouts) { %>
+            <section class="mb-4 p-3 p-lg-4 rounded-3" style="background: var(--card-bg); border: 1px solid var(--card-border);">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div>
+                        <h2 class="h5 fw-bold mb-1">提款申請</h2>
+                        <div class="small text-secondary">僅顯示目前工作室紀錄；已撥款不會再次扣除會員錢包</div>
+                    </div>
+                    <% if (canMarkPayoutPaid) { %>
+                        <button type="button" class="btn btn-sm btn-success" id="batchPaidButton" disabled><i class="fa-solid fa-check-double me-1"></i>批次標記已撥款</button>
+                    <% } %>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm align-middle mb-0">
+                        <thead><tr>
+                            <% if (canMarkPayoutPaid) { %><th><input class="form-check-input" type="checkbox" id="selectAllPending" aria-label="全選待撥款"></th><% } %>
+                            <th>提款編號</th><th>員工</th><th class="text-end">金額</th><th>狀態</th><th>薪轉資料</th><th>申請時間</th><th>處理</th>
+                        </tr></thead>
+                        <tbody>
+                            <% if (!payouts.length) { %>
+                                <tr><td colspan="8" class="text-center text-secondary py-4">目前沒有提款紀錄</td></tr>
+                            <% } %>
+                            <% payouts.forEach(payout => { %>
+                                <tr>
+                                    <% if (canMarkPayoutPaid) { %><td><% if (payout.status === 'pending') { %><input class="form-check-input pending-payout-check" type="checkbox" value="<%= payout.id %>" aria-label="選取 <%= payout.withdrawal_no %>"><% } %></td><% } %>
+                                    <td><%= payout.withdrawal_no || `#${payout.id}` %></td>
+                                    <td><%= payout.custom_nickname || payout.global_name || payout.username %><div class="text-secondary small"><%= payout.real_name || '' %></div></td>
+                                    <td class="text-end">$<%= Number(payout.amount).toLocaleString() %></td>
+                                    <td><%= payout.status === 'pending' ? '撥款中' : payout.status === 'paid' ? '已撥款' : payout.status === 'rejected' ? '已退回' : payout.status %></td>
+                                    <td>
+                                        <% if (canViewSensitive) { %>
+                                            <%= payout.bank_name_snapshot || '-' %> <%= payout.bank_code_snapshot || '' %> <%= payout.bank_branch_snapshot || '' %><br>
+                                            <%= payout.account_name || '-' %> · <span class="font-monospace"><%= payout.bank_account || '-' %></span>
+                                        <% } else { %>敏感資料已遮罩<% } %>
+                                    </td>
+                                    <td><%= payout.requested_at || '-' %></td>
+                                    <td class="text-nowrap">
+                                        <% if (payout.status === 'pending' && canMarkPayoutPaid) { %><button class="btn btn-sm btn-outline-success payout-paid-button" data-payout-id="<%= payout.id %>" title="標記已撥款"><i class="fa-solid fa-check"></i></button><% } %>
+                                        <% if (payout.status === 'pending' && canRejectPayout) { %><button class="btn btn-sm btn-outline-danger payout-reject-button" data-payout-id="<%= payout.id %>" title="退回申請"><i class="fa-solid fa-rotate-left"></i></button><% } %>
+                                    </td>
+                                </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        <% } %>
+
+        <% if (canViewStaffPayroll) { %>
+            <!-- 📊 3. 7 列自訂滾動表格清單組件 -->
+            <%- include('partials/payroll_table', { staffList: typeof staffList !== 'undefined' ? staffList : [], canViewSensitive }) %>
+        <% } %>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    async function payoutPost(path, payload = {}) {
+        const response = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '<%= csrfToken %>' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || '操作失敗');
+        window.location.reload();
+    }
+
+    document.querySelectorAll('.payout-paid-button').forEach(button => button.addEventListener('click', async () => {
+        if (!window.confirm('確認此提款已完成匯款？系統只會更新提款狀態，不會再次扣款。')) return;
+        try { await payoutPost(`/management/payroll/payouts/${button.dataset.payoutId}/paid`); }
+        catch (error) { window.alert(error.message); }
+    }));
+
+    document.querySelectorAll('.payout-reject-button').forEach(button => button.addEventListener('click', async () => {
+        const reason = window.prompt('請填寫退回原因');
+        if (!reason || !reason.trim()) return;
+        try { await payoutPost(`/management/payroll/payouts/${button.dataset.payoutId}/reject`, { reason }); }
+        catch (error) { window.alert(error.message); }
+    }));
+
+    const payoutChecks = Array.from(document.querySelectorAll('.pending-payout-check'));
+    const batchPaidButton = document.getElementById('batchPaidButton');
+    const selectAllPending = document.getElementById('selectAllPending');
+    function updateBatchButton() {
+        if (batchPaidButton) batchPaidButton.disabled = !payoutChecks.some(check => check.checked);
+    }
+    payoutChecks.forEach(check => check.addEventListener('change', updateBatchButton));
+    selectAllPending?.addEventListener('change', () => {
+        payoutChecks.forEach(check => { check.checked = selectAllPending.checked; });
+        updateBatchButton();
+    });
+    batchPaidButton?.addEventListener('click', async () => {
+        const payoutIds = payoutChecks.filter(check => check.checked).map(check => Number(check.value));
+        if (!payoutIds.length || !window.confirm(`整批標記 ${payoutIds.length} 筆提款已撥款？`)) return;
+        try { await payoutPost('/management/payroll/payouts/batch-paid', { payout_ids: payoutIds }); }
+        catch (error) { window.alert(error.message); }
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
         const searchInput = document.getElementById('payrollSearchInput');
         const clearBtn = document.getElementById('clearPayrollSearchBtn');

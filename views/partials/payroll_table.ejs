@@ -93,18 +93,20 @@
             <thead>
                 <tr>
                     <th style="width: 18%;">員工暱稱</th>
+                    <% if (canViewSensitive) { %>
                     <th style="width: 12%;">本名</th>
                     <th style="width: 15%;">銀行名稱</th>
                     <th style="width: 10%; text-align: center;">機構代碼</th>
                     <th style="width: 15%;">分行名稱</th>
                     <th style="width: 18%;">銀行帳戶</th>
+                    <% } %>
                     <th style="width: 12%; text-align: right;">已累積薪資</th>
                 </tr>
             </thead>
             <tbody id="payrollTableBody">
                 <% if (!staffList || staffList.length === 0) { %>
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-secondary">尚無員工薪轉資料紀錄</td>
+                        <td colspan="<%= canViewSensitive ? 7 : 2 %>" class="text-center py-5 text-secondary">尚無員工薪轉資料紀錄</td>
                     </tr>
                 <% } else { %>
                     <% staffList.forEach(s => { 
@@ -112,18 +114,18 @@
                             ? `https://cdn.discordapp.com/avatars/${s.id}/${s.avatar}.png` 
                             : `https://cdn.discordapp.com/embed/avatars/0.png`;
                         const displayName = s.custom_nickname || s.global_name || s.username;
-                        const realName = s.real_name || '未填寫';
-                        const bankName = s.bank_name || '未填寫';
-                        const bankCode = s.bank_code || '---';
-                        const bankBranch = s.bank_branch || '未填寫';
-                        const bankAccount = s.bank_account || '未填寫';
+                        const realName = canViewSensitive ? (s.real_name || '未填寫') : '';
+                        const bankName = canViewSensitive ? (s.bank_name || '未填寫') : '';
+                        const bankCode = canViewSensitive ? (s.bank_code || '---') : '';
+                        const bankBranch = canViewSensitive ? (s.bank_branch || '未填寫') : '';
+                        const bankAccount = canViewSensitive ? (s.bank_account || '未填寫') : '';
                         const accumulatedPayout = Number(s.accumulated_payout || 0);
 
                         const searchStr = `${displayName} ${s.username} ${realName} ${bankName} ${bankCode} ${bankAccount}`.toLowerCase();
                     %>
                         <tr class="payroll-row" data-search="<%= searchStr %>">
                             <!-- 1. 員工暱稱 -->
-                            <td>
+                            <% if (canViewSensitive) { %><td>
                                 <div class="d-flex align-items-center gap-2">
                                     <img src="<%= avUrl %>" alt="頭像" class="staff-avatar-sm">
                                     <div>
@@ -131,14 +133,14 @@
                                         <div class="text-secondary font-monospace" style="font-size: 0.7rem;">@<%= s.username %></div>
                                     </div>
                                 </div>
-                            </td>
+                            </td><% } %>
 
                             <!-- 2. 本名 -->
-                            <td>
+                            <% if (canViewSensitive) { %><td>
                                 <span class="fw-bold <%= s.real_name ? 'text-white' : 'text-secondary opacity-75' %>">
                                     <%= realName %>
                                 </span>
-                            </td>
+                            </td><% } %>
 
                             <!-- 3. 銀行名稱 -->
                             <td>
@@ -148,23 +150,23 @@
                             </td>
 
                             <!-- 4. 機構代碼 -->
-                            <td class="text-center">
+                            <% if (canViewSensitive) { %><td class="text-center">
                                 <span class="bank-code-badge"><%= bankCode %></span>
-                            </td>
+                            </td><% } %>
 
                             <!-- 5. 分行名稱 -->
-                            <td>
+                            <% if (canViewSensitive) { %><td>
                                 <span class="<%= s.bank_branch ? 'text-light' : 'text-secondary opacity-75' %> small">
                                     <%= bankBranch %>
                                 </span>
-                            </td>
+                            </td><% } %>
 
                             <!-- 6. 銀行帳戶 -->
-                            <td>
+                            <% if (canViewSensitive) { %><td>
                                 <span class="bank-account-text">
                                     <%= bankAccount %>
                                 </span>
-                            </td>
+                            </td><% } %>
 
                             <!-- 7. 已累積薪資 -->
                             <td class="text-end">

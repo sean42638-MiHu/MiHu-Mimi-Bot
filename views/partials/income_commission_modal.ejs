@@ -48,15 +48,25 @@
                                     '禮物單': 0.85,
                                     '有獎單': 0.90,
                                     '冠名單': 0.85,
-                                    '獎金':   1.00
+                                    '其他單': 0.80,
+                                    '獎金單': 1.00
                                 };
 
-                                const categories = ["陪玩單", "禮物單", "有獎單", "冠名單", "獎金"];
+                                const categoryNames = (typeof globalCommissions !== 'undefined' && globalCommissions)
+                                    ? Object.keys(globalCommissions)
+                                    : Object.keys(defaultNetShareRates);
+                                const categoryAliases = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
+                                const categoryOrder = ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單'];
+                                const categories = Array.from(new Set(categoryNames.map(cat => categoryAliases[cat] || cat))).sort((left, right) => {
+                                    const leftRank = categoryOrder.indexOf(left);
+                                    const rightRank = categoryOrder.indexOf(right);
+                                    return (leftRank === -1 ? categoryOrder.length : leftRank) - (rightRank === -1 ? categoryOrder.length : rightRank);
+                                });
                                 categories.forEach(cat => {
-                                    let studioNetRate = defaultNetShareRates[cat];
+                                    let studioNetRate = defaultNetShareRates[cat] ?? defaultNetShareRates['其他單'];
                                     
                                     // globalCommissions 一律為陪陪實拿比例。
-                                    const legacyCat = cat === '有獎單' ? '有獎' : (cat === '冠名單' ? '冠名' : cat);
+                                    const legacyCat = Object.keys(categoryAliases).find(alias => categoryAliases[alias] === cat) || cat;
                                     const categoryRate = globalCommissions && (globalCommissions[cat] ?? globalCommissions[legacyCat]);
                                     if (typeof globalCommissions !== 'undefined' && globalCommissions && categoryRate !== undefined) {
                                         const rawVal = Number(categoryRate);

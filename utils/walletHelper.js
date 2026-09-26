@@ -1,5 +1,7 @@
 const db = require('../database');
 const { checkAndUpdateVipLevel } = require('./vipHelper');
+const { writeAuditLog } = require('./auditService');
+const { withTransactionGate } = require('./transactionGate');
 
 /**
  * 💡 1. 補齊：查詢使用者最新錢包狀態 (供 select.js、dispatchModalHandler 使用)
@@ -8,10 +10,11 @@ async function getUserWallet(userId) {
     return new Promise((resolve) => {
         const getWalletSql = `
             SELECT 
-                COALESCE(w.balance, u.balance, 0) as balance,
-                COALESCE(w.bonus_balance, u.bonus_balance, 0) as bonus_balance,
-                COALESCE(w.manual_spent, u.manual_spent, 0) as manual_spent,
-                COALESCE(w.manual_deposited, u.manual_deposited, 0) as manual_deposited
+                u.studio_id as studio_id,
+                COALESCE(w.balance, 0) as balance,
+                COALESCE(w.bonus_balance, 0) as bonus_balance,
+                COALESCE(w.manual_spent, 0) as manual_spent,
+                COALESCE(w.manual_deposited, 0) as manual_deposited
             FROM users u
             LEFT JOIN user_wallets w ON u.id = w.user_id
             WHERE u.id = ?
@@ -45,7 +48,11 @@ async function getUserWallet(userId) {
 /**
  * 💳 2. 完整保留：全後台統一帳務調整與資金處理核心 (獨立資金表 user_wallets 100% 整合)
  */
-async function adjustUserWallet({
+function adjustUserWallet(input) {
+    return withTransactionGate(() => adjustUserWalletInternal(input));
+}
+
+async function adjustUserWalletInternal({
     userId,
     addAmount = null,
     bonusChange = null,
@@ -61,18 +68,22 @@ async function adjustUserWallet({
         // 1. 從獨立資金表 user_wallets 讀取最新帳務 (沒有則取 users 舊紀錄防呆)
         const getWalletSql = `
             SELECT 
-                COALESCE(w.balance, u.balance, 0) as balance,
-                COALESCE(w.bonus_balance, u.bonus_balance, 0) as bonus_balance,
-                COALESCE(w.manual_spent, u.manual_spent, 0) as manual_spent,
-                COALESCE(w.manual_deposited, u.manual_deposited, 0) as manual_deposited
+                COALESCE(w.balance, 0) as balance,
+                COALESCE(w.bonus_balance, 0) as bonus_balance,
+                COALESCE(w.manual_spent, 0) as manual_spent,
+                COALESCE(w.manual_deposited, 0) as manual_deposited
             FROM users u
             LEFT JOIN user_wallets w ON u.id = w.user_id
             WHERE u.id = ?
         `;
 
+        db.run('BEGIN IMMEDIATE', (beginErr) => {
+            if (beginErr) return reject(beginErr);
+            const rollback = (error) => db.run('ROLLBACK', () => reject(error));
+
         db.get(getWalletSql, [userId], async (err, currentWallet) => {
             if (err || !currentWallet) {
-                return reject(new Error('找不到目標會員帳務資料'));
+                return rollback(new Error('找不到目標會員帳務資料'));
             }
 
             // 取得當下會員的真實資金狀態
@@ -128,10 +139,10 @@ async function adjustUserWallet({
             }
 
             // 5. 零負數防護驗證 (防呆鎖)
-            if (newBalance < 0) return reject(new Error(`計算後實充餘額小於 0 (最終為 $${newBalance})，數目不得為負數！`));
-            if (newBonus < 0) return reject(new Error(`計算後贈送金小於 0 (最終為 $${newBonus})，數目不得為負數！`));
-            if (newSpent < 0) return reject(new Error('累積消費不得設定為負數！'));
-            if (newDeposited < 0) return reject(new Error('累積實充不得設定為負數！'));
+            if (newBalance < 0) return rollback(new Error(`計算後實充餘額小於 0 (最終為 $${newBalance})，數目不得為負數！`));
+            if (newBonus < 0) return rollback(new Error(`計算後贈送金小於 0 (最終為 $${newBonus})，數目不得為負數！`));
+            if (newSpent < 0) return rollback(new Error('累積消費不得設定為負數！'));
+            if (newDeposited < 0) return rollback(new Error('累積實充不得設定為負數！'));
 
             // 6. UPSERT 寫入獨立資金表 user_wallets
             const upsertWalletSql = `
@@ -146,36 +157,61 @@ async function adjustUserWallet({
             `;
 
             db.run(upsertWalletSql, [userId, newBalance, newBonus, newSpent, newDeposited], async function (uErr) {
-                if (uErr) return reject(uErr);
+                if (uErr) return rollback(uErr);
 
                 // 雙重保險：同步寫回 users 主表，確保不管從哪裡讀資料都一致
                 db.run(`UPDATE users SET balance = ?, bonus_balance = ?, manual_spent = ?, manual_deposited = ? WHERE id = ?`,
-                    [newBalance, newBonus, newSpent, newDeposited, userId], () => {
+                    [newBalance, newBonus, newSpent, newDeposited, userId], (mirrorErr) => {
+                    if (mirrorErr) return rollback(mirrorErr);
 
+                    const ledgerType = singleTopupAmount > 0 ? 'recharge' : (Number(addAmount || 0) < 0 ? 'order_payment' : 'admin_adjustment');
+                    db.run(`
+                        INSERT INTO wallet_transactions
+                            (user_id, type, amount, balance_before, balance_after, reference_type, description, operator_id)
+                        VALUES (?, ?, ?, ?, ?, 'wallet', ?, ?)
+                    `, [userId, ledgerType, newBalance - currBalance, currBalance, newBalance, reason, operatorId], (ledgerErr) => {
+                        if (ledgerErr) return rollback(ledgerErr);
+
+                    writeAuditLog({
+                        operatorId,
+                        studioId: currentWallet.studio_id,
+                        action: 'wallet_adjustment',
+                        targetType: 'user',
+                        targetId: userId,
+                        before: { balance: currBalance, bonus: currBonus, spent: currSpent, deposited: currDeposited },
+                        after: { balance: newBalance, bonus: newBonus, spent: newSpent, deposited: newDeposited },
+                        metadata: { reason, ledgerType }
+                    }).then(() => {
+
+                    const commitWallet = () => db.run('COMMIT', (commitErr) => {
+                        if (commitErr) return rollback(commitErr);
+                        // 8. 交易完成後才重算 VIP，避免 VIP 更新影響錢包 transaction。
+                        checkAndUpdateVipLevel(userId, singleTopupAmount).catch(vErr => console.error('❌ VIP 重算失敗:', vErr.message));
+                        resolve({
+                            success: true,
+                            newBalance,
+                            newBonus,
+                            newSpent,
+                            newDeposited
+                        });
+                    });
                     // 7. 寫入 topups 儲值歷史流水紀錄
                     if (singleTopupAmount > 0) {
                         db.run(`
                             INSERT INTO topups (user_id, amount, bonus, channel_type, note, operator_id, created_at)
                             VALUES (?, ?, ?, '後台手動充值', ?, ?, DATETIME('now', 'localtime'))
-                        `, [userId, singleTopupAmount, bonusChange || 0, reason, operatorId], () => {});
+                        `, [userId, singleTopupAmount, bonusChange || 0, reason, operatorId], (topupErr) => {
+                            if (topupErr) return rollback(topupErr);
+                            commitWallet();
+                        });
+                    } else {
+                        commitWallet();
                     }
-
-                    // 8. 傳遞本次儲值金額至 VIP 判定器，即刻重算 VIP
-                    try {
-                        checkAndUpdateVipLevel(userId, singleTopupAmount);
-                    } catch (vErr) {
-                        console.error('❌ VIP 重算失敗:', vErr);
-                    }
-
-                    resolve({
-                        success: true,
-                        newBalance,
-                        newBonus,
-                        newSpent,
-                        newDeposited
+                    }).catch(rollback);
                     });
                 });
             });
+        });
         });
     });
 }

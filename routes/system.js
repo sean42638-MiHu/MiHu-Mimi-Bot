@@ -1,18 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { client, registerSlashCommands } = require('../bot');
+const { client } = require('../bot');
 const { 
-    saveVipJsonFromDb, getRolesData, saveRolesData, 
+    saveVipJsonFromDb, getRolesDataFromDb,
     syncCommandsJsonFromDb
 } = require('../utils/dataSync');
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
+const { withTransactionGate } = require('../utils/transactionGate');
 const { normalizeTalentShareRate } = require('../utils/commissionHelper');
+const { writeAuditLog } = require('../utils/auditService');
+const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('../utils/vipColor');
 const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExecutionRole } = require('../config/discordCommandPolicy');
 
-const commissionCategories = ['陪玩單', '禮物單', '有獎單', '冠名單', '獎金'];
-const legacyCategoryAliases = { '有獎單': '有獎', '冠名單': '冠名' };
-const canonicalCategoryAliases = { '有獎': '有獎單', '冠名': '冠名單' };
+const commissionCategories = ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單'];
+const legacyCategoryAliases = { '有獎': '有獎單', '冠名': '冠名單', '其他': '其他單', '獎金': '獎金單' };
+const canonicalCategoryAliases = { '有獎單': '有獎', '冠名單': '冠名', '其他單': '其他', '獎金單': '獎金' };
 
 function isCommissionAdministrator(req, res) {
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
@@ -22,8 +25,8 @@ function isCommissionAdministrator(req, res) {
 function requireStudioCommissionAccess(req, res, next) {
     if (!req.user) return res.redirect('/login');
 
-    const requestedId = Number((req.body && req.body.studio_id) || req.query.studio_id || 1);
-    if (requestedId !== 1) return res.status(400).send('米胡電競是系統唯一工作室');
+    const requestedId = Number(req.user.studio_id);
+    if (!Number.isInteger(requestedId) || requestedId <= 0) return res.status(403).send('找不到已授權的工作室範圍');
 
     db.get('SELECT id, name, owner_user_id FROM studios WHERE id = ?', [requestedId], (err, studio) => {
         if (err || !studio) return res.status(404).send('找不到工作室');
@@ -49,6 +52,20 @@ function runSql(sql, params = []) {
             if (err) return reject(err);
             resolve({ changes: this.changes, lastID: this.lastID });
         });
+    });
+}
+
+async function runSystemTransaction(task) {
+    return withTransactionGate(async () => {
+        await runSql('BEGIN IMMEDIATE');
+        try {
+            const result = await task();
+            await runSql('COMMIT');
+            return result;
+        } catch (error) {
+            await runSql('ROLLBACK').catch(() => {});
+            throw error;
+        }
     });
 }
 
@@ -94,18 +111,17 @@ router.get('/system/bot-settings', ensureAuth, checkPerm('sys_settings'), (req, 
                 return {
                     name: saved.name || localizedName || commandKey,
                     command: `/${commandKey}${localizedName ? ` (${localizedName})` : ''}`,
-                    command_key: commandKey,
                     min_role: getMinimumExecutionRole(commandKey),
                     guilds: getCommandGuildLabels(commandKey),
                     description: definition.description || saved.description || '此指令目前沒有說明',
-                    status: fullyRegistered ? 'enabled' : 'failed',
-                    statusLabel
+                    status: client.commandRegistration?.status === 'registered' ? 'enabled' : 'loaded',
+                    statusLabel: client.commandRegistration?.status === 'registered' ? '啟用中' : '程式已載入（尚未同步）'
                 };
             });
 
-            res.render('system_bot_settings', { 
-                user: currentUser || req.user, 
-                commands: commands, 
+            res.render('system_bot_settings', {
+                user: currentUser || req.user,
+                commands,
                 activePage: 'bot-settings',
                 syncResult: req.query.sync || null,
                 registration: client.commandRegistration || null,
@@ -116,216 +132,270 @@ router.get('/system/bot-settings', ensureAuth, checkPerm('sys_settings'), (req, 
 });
 
 router.post('/system/bot-settings/sync', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
-    const synced = await registerSlashCommands();
-    const syncResult = client.commandRegistration?.status === 'partial'
-        ? 'partial'
-        : (synced ? 'success' : 'failed');
-    res.redirect(`/system/bot-settings?sync=${syncResult}`);
+    res.status(410).send('指令註冊已移至明確部署命令，網站不會呼叫 Discord REST API。');
+});
+
+router.get('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+    try {
+        const settings = await queryAll(`
+            SELECT setting_key, setting_value FROM system_settings
+            WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount','business_timezone')
+        `);
+        const values = Object.fromEntries(settings.map(row => [row.setting_key, row.setting_value]));
+        res.render('payout_settings', {
+            user: req.user,
+            values: {
+                startDay: Number(values.withdrawal_start_day || 2),
+                endDay: Number(values.withdrawal_end_day || 6),
+                minimumAmount: Number(values.withdrawal_min_amount || 100),
+                timeZone: values.business_timezone || 'Asia/Taipei'
+            },
+            error: req.query.error || null,
+            saved: req.query.saved === '1'
+        });
+    } catch (error) {
+        return res.status(500).send('無法載入提款設定');
+    }
+});
+
+router.post('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+    const startDay = Number(req.body.start_day);
+    const endDay = Number(req.body.end_day);
+    const minimumAmount = Number(req.body.minimum_amount);
+    const timeZone = String(req.body.time_zone || '').trim();
+    if (!Number.isInteger(startDay) || startDay < 1 || startDay > 31
+        || !Number.isInteger(endDay) || endDay < startDay || endDay > 31
+        || !Number.isFinite(minimumAmount) || minimumAmount <= 0 || minimumAmount > 100000000) {
+        return res.redirect('/system/payout-settings?error=' + encodeURIComponent('提款日期或最低金額設定無效'));
+    }
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+    } catch (error) {
+        return res.redirect('/system/payout-settings?error=' + encodeURIComponent('請輸入有效的 IANA 時區'));
+    }
+    const next = {
+        withdrawal_start_day: String(startDay),
+        withdrawal_end_day: String(endDay),
+        withdrawal_min_amount: String(minimumAmount),
+        business_timezone: timeZone
+    };
+    try {
+        const beforeRows = await queryAll(`
+            SELECT setting_key, setting_value FROM system_settings
+            WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount','business_timezone')
+        `);
+        const before = Object.fromEntries(beforeRows.map(row => [row.setting_key, row.setting_value]));
+        await runSystemTransaction(async () => {
+            for (const [key, value] of Object.entries(next)) {
+                await runSql(`
+                    INSERT INTO system_settings (setting_key, setting_value, updated_by, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value,
+                        updated_by = excluded.updated_by, updated_at = CURRENT_TIMESTAMP
+                `, [key, value, req.user.id]);
+            }
+            await writeAuditLog({
+                operatorId: req.user.id,
+                studioId: req.user.studio_id ?? null,
+                action: 'PAYOUT_SETTINGS_UPDATED',
+                targetType: 'system_settings',
+                targetId: 'withdrawal',
+                before,
+                after: next
+            });
+        });
+        return res.redirect('/system/payout-settings?saved=1');
+    } catch (error) {
+        return res.redirect('/system/payout-settings?error=' + encodeURIComponent('儲存提款設定失敗'));
+    }
 });
 
 // VIP 設定
 router.get('/system/vip', ensureAuth, checkPerm('sys_vip'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
         db.all('SELECT * FROM vip_tiers ORDER BY level ASC', (vErr, tiers) => {
-            res.render('vip', { user: currentUser || req.user, vipTiers: tiers || [], success: req.query.saved === '1' });
+            const normalizedTiers = (tiers || []).map(tier => ({
+                ...tier,
+                color: normalizeVipColor(tier.color, DEFAULT_VIP_COLOR)
+            }));
+            res.render('vip', { user: currentUser || req.user, vipTiers: normalizedTiers, success: req.query.saved === '1', error: req.query.error || null });
         });
     });
 });
 
-router.post('/system/vip/update/:level', ensureAuth, checkPerm('sys_vip'), (req, res) => {
+router.post('/system/vip/update/:level', ensureAuth, checkPerm('sys_vip'), async (req, res) => {
     const level = req.params.level;
-    const { spent_threshold, deposit_threshold } = req.body;
+    const { spent_threshold, deposit_threshold, color } = req.body;
     let rewards = req.body['rewards[]'] || req.body.rewards || [];
     if (!Array.isArray(rewards)) rewards = [rewards];
     rewards = rewards.map(r => r.trim()).filter(Boolean);
+    if (color !== undefined && color !== null && String(color).trim() !== '' && !isValidVipColor(color)) {
+        return res.redirect('/system/vip?error=VIP色碼格式無效');
+    }
+    const normalizedColor = normalizeVipColor(color, DEFAULT_VIP_COLOR);
 
-    db.run('UPDATE vip_tiers SET spent_threshold = ?, deposit_threshold = ?, rewards = ?, updated_at = CURRENT_TIMESTAMP WHERE level = ?',
-        [spent_threshold, deposit_threshold, JSON.stringify(rewards), level], (err) => {
-            if (err) return res.redirect('/system/vip?error=更新失敗');
-            saveVipJsonFromDb();
-            res.redirect('/system/vip?saved=1');
+    const before = await new Promise((resolve, reject) => db.get(
+        'SELECT level, name, spent_threshold, deposit_threshold, rewards, color FROM vip_tiers WHERE level = ?',
+        [level], (error, row) => error ? reject(error) : resolve(row || null)
+    ));
+    if (!before) return res.redirect('/system/vip?error=找不到VIP等級');
+    try {
+        await runSystemTransaction(async () => {
+        await runSql('UPDATE vip_tiers SET spent_threshold = ?, deposit_threshold = ?, rewards = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE level = ?',
+            [spent_threshold, deposit_threshold, JSON.stringify(rewards), normalizedColor, level]);
+        await writeAuditLog({
+            operatorId: req.user.id,
+            action: 'vip_tier_update',
+            targetType: 'vip_tier',
+            targetId: level,
+            before,
+            after: { ...before, spent_threshold, deposit_threshold, rewards, color: normalizedColor },
+            metadata: { source: 'system-route' }
         });
+        });
+        saveVipJsonFromDb();
+        return res.redirect('/system/vip?saved=1');
+    } catch (error) {
+        return res.redirect('/system/vip?error=更新失敗');
+    }
 });
 
-router.post('/system/vip/add', ensureAuth, checkPerm('sys_vip'), (req, res) => {
-    const { level, name, spent_threshold, deposit_threshold, initial_reward } = req.body;
+router.post('/system/vip/add', ensureAuth, checkPerm('sys_vip'), async (req, res) => {
+    const { level, name, spent_threshold, deposit_threshold, initial_reward, color } = req.body;
     const rewards = initial_reward ? [initial_reward.trim()] : [];
+    if (color !== undefined && color !== null && String(color).trim() !== '' && !isValidVipColor(color)) {
+        return res.redirect('/system/vip?error=VIP色碼格式無效');
+    }
+    const normalizedColor = normalizeVipColor(color, DEFAULT_VIP_COLOR);
 
-    db.run('INSERT INTO vip_tiers (level, name, spent_threshold, deposit_threshold, rewards) VALUES (?, ?, ?, ?, ?)',
-        [level, name, spent_threshold, deposit_threshold, JSON.stringify(rewards)], (err) => {
-            if (err) return res.redirect('/system/vip?error=新增失敗');
-            saveVipJsonFromDb();
-            res.redirect('/system/vip?saved=1');
-        });
-});
-
-// 工作室抽佣設定與服務項目成數
-router.get('/system/commission', ensureAuth, requireStudioCommissionAccess, async (req, res) => {
     try {
-        const studioId = req.commissionStudioId;
-        const [commissionRows, services] = await Promise.all([
-            queryAll('SELECT category, talent_share_rate FROM studio_commissions WHERE studio_id = ?', [studioId]),
-            queryAll('SELECT id, name, category, talent_share_rate, is_active FROM studio_services WHERE studio_id = ? ORDER BY name COLLATE NOCASE', [studioId])
-        ]);
-        const defaults = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '獎金': 1.00 };
-        const commission = { ...defaults };
-        commissionRows.forEach(row => {
-            const canonicalCategory = canonicalCategoryAliases[row.category] || row.category;
-            const hasCanonicalRow = commissionRows.some(candidate => candidate.category === canonicalCategory);
-            if (row.category !== canonicalCategory && hasCanonicalRow) return;
-            commission[canonicalCategory] = Number(row.talent_share_rate);
+        await runSystemTransaction(async () => {
+        const insert = await runSql('INSERT INTO vip_tiers (level, name, spent_threshold, deposit_threshold, rewards, color) VALUES (?, ?, ?, ?, ?, ?)',
+            [level, name, spent_threshold, deposit_threshold, JSON.stringify(rewards), normalizedColor]);
+        await writeAuditLog({
+            operatorId: req.user.id,
+            action: 'vip_tier_add',
+            targetType: 'vip_tier',
+            targetId: insert.lastID,
+            before: null,
+            after: { level, name, spent_threshold, deposit_threshold, rewards, color: normalizedColor },
+            metadata: { source: 'system-route' }
         });
-
-        res.render('commission', {
-            user: req.user,
-            activePage: 'commission',
-            commission,
-            services,
-            studio: req.commissionStudio,
-            selectedStudioId: studioId,
-            success: req.query.saved === '1',
-            error: req.query.error || null
         });
-    } catch (err) {
-        console.error('載入工作室抽佣設定失敗:', err);
-        res.status(500).send('載入抽佣設定失敗');
+        saveVipJsonFromDb();
+        return res.redirect('/system/vip?saved=1');
+    } catch (error) {
+        return res.redirect('/system/vip?error=新增失敗');
     }
 });
 
-router.post('/system/commission/update', ensureAuth, requireStudioCommissionAccess, async (req, res) => {
-    const studioId = req.commissionStudioId;
-    let transactionStarted = false;
-    try {
-        const rates = req.body.rates || {};
-        const categoryUpdates = [];
-        for (const category of commissionCategories) {
-            const submittedCategory = Object.prototype.hasOwnProperty.call(rates, category)
-                ? category
-                : legacyCategoryAliases[category];
-            if (!submittedCategory || !Object.prototype.hasOwnProperty.call(rates, submittedCategory)) continue;
-            const rate = normalizeTalentShareRate(rates[submittedCategory]);
-            if (rate === null) throw new Error(`「${category}」分潤比例無效`);
-            categoryUpdates.push([category, rate]);
-        }
-
-        const serviceUpdates = [];
-        for (const [fieldName, rawRate] of Object.entries(req.body)) {
-            const serviceMatch = /^service_rate_(\d+)$/.exec(fieldName);
-            if (!serviceMatch) continue;
-            const serviceId = Number(serviceMatch[1]);
-            const rate = rawRate === '' ? null : normalizeTalentShareRate(rawRate);
-            if (!Number.isInteger(serviceId) || serviceId < 1 || (rawRate !== '' && rate === null)) {
-                throw new Error('服務項目分潤比例無效');
-            }
-            serviceUpdates.push([serviceId, rate]);
-        }
-
-        await runSql('BEGIN IMMEDIATE');
-        transactionStarted = true;
-        for (const [category, rate] of categoryUpdates) {
-            await runSql(`
-                INSERT INTO studio_commissions (studio_id, category, talent_share_rate)
-                VALUES (?, ?, ?)
-                ON CONFLICT(studio_id, category) DO UPDATE SET
-                    talent_share_rate = excluded.talent_share_rate,
-                    updated_at = CURRENT_TIMESTAMP
-            `, [studioId, category, rate]);
-        }
-        for (const [serviceId, rate] of serviceUpdates) {
-            const result = await runSql(
-                'UPDATE studio_services SET talent_share_rate = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND studio_id = ?',
-                [rate, serviceId, studioId]
-            );
-            if (result.changes !== 1) throw new Error('服務項目不存在或不屬於此工作室');
-        }
-        await runSql('COMMIT');
-        transactionStarted = false;
-
-        res.redirect(`/system/commission?studio_id=${studioId}&saved=1`);
-    } catch (err) {
-        if (transactionStarted) await runSql('ROLLBACK').catch(() => {});
-        res.redirect(`/system/commission?studio_id=${studioId}&error=${encodeURIComponent(err.message || '更新失敗')}`);
-    }
+// 相容舊入口，抽佣管理統一交由獨立 management route 處理。
+router.get('/system/commission', ensureAuth, checkPerm('sys_commission'), (req, res) => {
+    res.redirect('/management/commission');
 });
 
-router.post('/system/commission/services', ensureAuth, requireStudioCommissionAccess, async (req, res) => {
-    const studioId = req.commissionStudioId;
-    const name = String(req.body.name || '').trim();
-    const requestedCategory = req.body.category;
-    const category = commissionCategories.includes(requestedCategory)
-        ? requestedCategory
-        : (canonicalCategoryAliases[requestedCategory] || '陪玩單');
-    const rawRate = req.body.talent_share_rate;
-    const rate = rawRate === '' || rawRate === undefined ? null : normalizeTalentShareRate(rawRate);
+router.post('/system/commission/update', ensureAuth, checkPerm('sys_commission'), (req, res) => {
+    res.redirect('/management/commission');
+});
 
-    if (!name || name.length > 100 || (rawRate !== '' && rawRate !== undefined && rate === null)) {
-        return res.redirect(`/system/commission?studio_id=${studioId}&error=${encodeURIComponent('服務名稱或分潤比例無效')}`);
-    }
-
-    db.run(
-        'INSERT INTO studio_services (studio_id, name, category, talent_share_rate) VALUES (?, ?, ?, ?)',
-        [studioId, name, category, rate],
-        (err) => res.redirect(`/system/commission?studio_id=${studioId}&${err ? 'error=' + encodeURIComponent('服務名稱已存在或新增失敗') : 'saved=1'}`)
-    );
+router.post('/system/commission/services', ensureAuth, checkPerm('sys_commission'), (req, res) => {
+    res.redirect('/management/commission');
 });
 
 // 身分權限管理
-router.get('/system/roles', ensureAuth, checkPerm('sys_roles'), (req, res) => {
-    const rolesData = getRolesData();
+router.get('/system/roles', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
+    const rolesData = await getRolesDataFromDb();
     res.render('roles', { user: req.user, activePage: 'roles', roles: rolesData, rolesData, saved: req.query.saved === '1' });
 });
 
-router.post('/system/roles/update-permissions', ensureAuth, checkPerm('sys_roles'), (req, res) => {
+router.post('/system/roles/update-permissions', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
     try {
         const { role, permissions } = req.body;
         if (!role) return res.status(400).send('<script>alert("目標身分組不可為空！"); history.back();</script>');
         const permsArray = Array.isArray(permissions) ? permissions : (permissions ? [permissions] : []);
-        let rolesArray = getRolesData();
-        if (!Array.isArray(rolesArray)) rolesArray = [];
-
-        const roleIndex = rolesArray.findIndex(r => r.role_key === role);
-        if (roleIndex !== -1) {
-            rolesArray[roleIndex].permissions = permsArray;
-            saveRolesData(rolesArray);
-        }
+        const before = await new Promise((resolve, reject) => db.get(
+            'SELECT role_key, permissions FROM roles WHERE role_key = ?', [role],
+            (error, row) => error ? reject(error) : resolve(row || null)
+        ));
+        if (!before) return res.status(404).send('找不到身分組');
+        await runSystemTransaction(async () => {
+            await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE role_key = ?', [JSON.stringify(permsArray), role]);
+            await writeAuditLog({
+                operatorId: req.user.id,
+                action: 'role_permissions_update',
+                targetType: 'role',
+                targetId: role,
+                before: { permissions: JSON.parse(before.permissions || '[]') },
+                after: { permissions: permsArray },
+                metadata: { source: 'system-role-route' }
+            });
+        });
         return res.redirect('/system/roles?saved=1');
     } catch (err) {
         return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
 
-router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('sys_roles'), (req, res) => {
+router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
     const roleId = Number(req.params.id);
     const { name, category, tier_level, description } = req.body;
     const badgeMap = { '最高權限': 'danger', '主管職位': 'warning', '客服職位': 'info', '一般職位': 'primary', '會員': 'secondary' };
 
-    let roles = getRolesData();
-    const idx = roles.findIndex(r => r.id === roleId);
-    if (idx !== -1) {
-        roles[idx] = { ...roles[idx], name, category, tier_level: Number(tier_level), color_badge: badgeMap[category] || 'primary', description };
-        saveRolesData(roles);
-        db.run('UPDATE roles SET name = ?, category = ?, tier_level = ?, color_badge = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-            [name, category, tier_level, badgeMap[category] || 'primary', description, roleId]);
+    const before = await new Promise((resolve, reject) => db.get(
+        'SELECT role_key, name, category, tier_level, color_badge, description FROM roles WHERE id = ?',
+        [roleId], (error, row) => error ? reject(error) : resolve(row || null)
+    ));
+    if (!before) return res.status(404).send('找不到身分組');
+    try {
+        await runSystemTransaction(async () => {
+            await runSql('UPDATE roles SET name = ?, category = ?, tier_level = ?, color_badge = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                [name, category, tier_level, badgeMap[category] || 'primary', description, roleId]);
+            await writeAuditLog({
+                operatorId: req.user.id,
+                action: 'role_info_update',
+                targetType: 'role',
+                targetId: before.role_key,
+                before,
+                after: { ...before, name, category, tier_level: Number(tier_level), color_badge: badgeMap[category] || 'primary', description },
+                metadata: { source: 'system-role-route' }
+            });
+        });
+        return res.redirect('/system/roles?saved=1');
+    } catch (error) {
+        return res.redirect('/system/roles?error=' + encodeURIComponent('身分組更新失敗'));
     }
-    res.redirect('/system/roles?saved=1');
 });
 
-router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('sys_roles'), (req, res) => {
+router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
     const roleId = Number(req.params.id);
     let permissions = req.body['perms[]'] || req.body.perms || [];
     if (!Array.isArray(permissions)) permissions = [permissions];
 
-    let roles = getRolesData();
-    const idx = roles.findIndex(r => r.id === roleId);
-    if (idx !== -1) {
-        roles[idx].permissions = permissions;
-        saveRolesData(roles);
-        db.run('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [JSON.stringify(permissions), roleId]);
+    const before = await new Promise((resolve, reject) => db.get(
+        'SELECT role_key, permissions FROM roles WHERE id = ?', [roleId],
+        (error, row) => error ? reject(error) : resolve(row || null)
+    ));
+    if (!before) return res.status(404).send('找不到身分組');
+    try {
+        await runSystemTransaction(async () => {
+            await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [JSON.stringify(permissions), roleId]);
+            await writeAuditLog({
+                operatorId: req.user.id,
+                action: 'role_permissions_update',
+                targetType: 'role',
+                targetId: before.role_key,
+                before: { permissions: JSON.parse(before.permissions || '[]') },
+                after: { permissions },
+                metadata: { source: 'system-role-route' }
+            });
+        });
+        return res.redirect('/system/roles?saved=1');
+    } catch (error) {
+        return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
-    res.redirect('/system/roles?saved=1');
 });
 
-router.post('/system/roles/add', ensureAuth, checkPerm('sys_roles'), (req, res) => {
+router.post('/system/roles/add', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
     const { name, category, tier_level, description } = req.body;
     let permissions = req.body['perms[]'] || req.body.perms || [];
     if (!Array.isArray(permissions)) permissions = [permissions];
@@ -334,14 +404,24 @@ router.post('/system/roles/add', ensureAuth, checkPerm('sys_roles'), (req, res) 
     let role_key = keyMap[name.trim()] || ('role_' + Math.random().toString(36).substring(2, 8));
     const badgeMap = { '最高權限': 'danger', '主管職位': 'warning', '客服職位': 'info', '一般職位': 'primary', '會員': 'secondary' };
 
-    let roles = getRolesData();
-    const newId = roles.length > 0 ? Math.max(...roles.map(r => r.id || 0)) + 1 : 1;
-    roles.push({ id: newId, role_key, name, category, tier_level: Number(tier_level), color_badge: badgeMap[category] || 'primary', description, permissions });
-    saveRolesData(roles);
-
-    db.run('INSERT INTO roles (role_key, name, category, tier_level, color_badge, description, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [role_key, name, category, tier_level, badgeMap[category] || 'primary', description, JSON.stringify(permissions)],
-        () => res.redirect('/system/roles?saved=1'));
+    try {
+        await runSystemTransaction(async () => {
+            const insert = await runSql('INSERT INTO roles (role_key, name, category, tier_level, color_badge, description, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [role_key, name, category, tier_level, badgeMap[category] || 'primary', description, JSON.stringify(permissions)]);
+            await writeAuditLog({
+                operatorId: req.user.id,
+                action: 'role_add',
+                targetType: 'role',
+                targetId: role_key,
+                before: null,
+                after: { id: insert.lastID, role_key, name, category, tier_level: Number(tier_level), permissions },
+                metadata: { source: 'system-role-route' }
+            });
+        });
+        return res.redirect('/system/roles?saved=1');
+    } catch (error) {
+        return res.redirect('/system/roles?error=' + encodeURIComponent('新增身分組失敗'));
+    }
 });
 
 module.exports = router;

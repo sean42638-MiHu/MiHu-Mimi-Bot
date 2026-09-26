@@ -2,6 +2,9 @@ const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('disc
 const db = require('../database');
 const fs = require('fs');
 const path = require('path');
+const { dbRun } = require('../utils/dbHelper');
+const { writeAuditLog } = require('../utils/auditService');
+const { withTransactionGate } = require('../utils/transactionGate');
 
 function checkDiscordAdminPermission(interaction) {
     return Boolean(interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator));
@@ -32,16 +35,35 @@ module.exports = {
 
         db.get('SELECT * FROM users WHERE id = ?', [targetUser.id], async (err, row) => {
             if (!row) {
-                db.run(`INSERT INTO users (id, username, global_name, custom_nickname, avatar, role, vip_level) VALUES (?, ?, ?, ?, ?, 'member', 0)`,
-                    [targetUser.id, targetUser.username, targetUser.globalName || targetUser.username, targetUser.globalName || targetUser.username, targetUser.avatar || ''],
-                    async (insErr) => {
-                        if (insErr) return interaction.editReply({ content: '❌ 代為註冊失敗，請重試。' });
-                        syncUsersJsonFromDb();
+                try {
+                    await withTransactionGate(async () => {
+                        await dbRun('BEGIN IMMEDIATE');
                         try {
-                            await interaction.channel.send({ content: `恭喜 <@${targetUser.id}> 成為米胡電競的會員，可前往 [${websiteUrl}](${websiteUrl}) 查看詳細資訊!!` });
-                        } catch (e) {}
-                        interaction.editReply({ content: `✅ **代為註冊成功！** 已成功為 <@${targetUser.id}> 建立會員帳號並於頻道發布通知。` });
+                            await dbRun(`INSERT INTO users (id, username, global_name, custom_nickname, avatar, role, vip_level) VALUES (?, ?, ?, ?, ?, 'member', 0)`,
+                                [targetUser.id, targetUser.username, targetUser.globalName || targetUser.username, targetUser.globalName || targetUser.username, targetUser.avatar || '']);
+                            await writeAuditLog({
+                                operatorId: interaction.user.id,
+                                action: 'discord_identity_register_for',
+                                targetType: 'user',
+                                targetId: targetUser.id,
+                                before: null,
+                                after: { username: targetUser.username, global_name: targetUser.globalName || targetUser.username, role: 'member' },
+                                metadata: { source: 'discord-register-for-command' }
+                            });
+                            await dbRun('COMMIT');
+                        } catch (error) {
+                            await dbRun('ROLLBACK').catch(() => {});
+                            throw error;
+                        }
                     });
+                    syncUsersJsonFromDb();
+                    try {
+                        await interaction.channel.send({ content: `恭喜 <@${targetUser.id}> 成為米胡電競的會員，可前往 [${websiteUrl}](${websiteUrl}) 查看詳細資訊!!` });
+                    } catch (e) {}
+                    return interaction.editReply({ content: `✅ **代為註冊成功！** 已成功為 <@${targetUser.id}> 建立會員帳號並於頻道發布通知。` });
+                } catch (error) {
+                    return interaction.editReply({ content: '❌ 代為註冊失敗，請重試。' });
+                }
             } else {
                 try {
                     await interaction.channel.send({ content: `恭喜 <@${targetUser.id}> 成為米胡電競的會員，可前往 [${websiteUrl}](${websiteUrl}) 查看詳細資訊!!` });

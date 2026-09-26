@@ -556,6 +556,34 @@
                                 </div>
                             </div>
 
+                            <div class="col-md-12">
+                                <div class="p-3 rounded-3" style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2);">
+                                    <div class="small fw-bold text-info mb-2"><i class="fa-solid fa-money-bill-transfer me-1"></i>提款與薪轉權限</div>
+                                    <div class="row g-2">
+                                        <div class="col-md-4 form-check form-switch">
+                                            <input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="payout.view" id="perm_payout_view">
+                                            <label class="form-check-label text-white small" for="perm_payout_view">查看提款申請</label>
+                                        </div>
+                                        <div class="col-md-4 form-check form-switch">
+                                            <input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="payout.view_sensitive" id="perm_payout_view_sensitive">
+                                            <label class="form-check-label text-white small" for="perm_payout_view_sensitive">查看完整薪轉資料</label>
+                                        </div>
+                                        <div class="col-md-4 form-check form-switch">
+                                            <input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="payout.export" id="perm_payout_export">
+                                            <label class="form-check-label text-white small" for="perm_payout_export">匯出待撥款 Excel</label>
+                                        </div>
+                                        <div class="col-md-4 form-check form-switch">
+                                            <input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="payout.mark_paid" id="perm_payout_mark_paid">
+                                            <label class="form-check-label text-white small" for="perm_payout_mark_paid">標記已撥款</label>
+                                        </div>
+                                        <div class="col-md-4 form-check form-switch">
+                                            <input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="payout.reject" id="perm_payout_reject">
+                                            <label class="form-check-label text-white small" for="perm_payout_reject">退回提款申請</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- 全站訂單核心操作 -->
                             <div class="col-md-12">
                                 <div class="p-3 rounded-3" style="background: rgba(236, 72, 153, 0.05); border: 1px solid rgba(236, 72, 153, 0.2);">

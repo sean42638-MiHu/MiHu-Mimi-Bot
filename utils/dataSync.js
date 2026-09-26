@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../database');
+const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./vipColor');
 
 const dataDir = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) {
@@ -17,10 +18,14 @@ const commissionFilePath = path.join(dataDir, 'commission.json');
 const payoutsFilePath = path.join(dataDir, 'payouts.json');
 const ordersFilePath = path.join(dataDir, 'orders.json'); // 🚀 獨立訂單數據 JSON 檔
 
-function syncUsersJsonFromDb() {
+function syncUsersJsonFromDb(callback = () => {}) {
     db.all('SELECT * FROM users ORDER BY created_at DESC', (err, rows) => {
-        if (!err && rows) {
-            try { fs.writeFileSync(usersFilePath, JSON.stringify(rows, null, 2), 'utf8'); } catch (e) {}
+        if (err) return callback(err);
+        try {
+            fs.writeFileSync(usersFilePath, JSON.stringify(rows || [], null, 2), 'utf8');
+            callback(null);
+        } catch (error) {
+            callback(error);
         }
     });
 }
@@ -56,7 +61,8 @@ function saveVipJsonFromDb() {
                     name: r.name,
                     spent_threshold: Number(r.spent_threshold),
                     deposit_threshold: Number(r.deposit_threshold),
-                    rewards: typeof r.rewards === 'string' ? JSON.parse(r.rewards) : (r.rewards || [])
+                    rewards: typeof r.rewards === 'string' ? JSON.parse(r.rewards) : (r.rewards || []),
+                    color: isValidVipColor(r.color) ? normalizeVipColor(r.color) : DEFAULT_VIP_COLOR
                 }));
                 fs.writeFileSync(vipFilePath, JSON.stringify(formatted, null, 2), 'utf8');
             } catch (e) {}
@@ -64,31 +70,64 @@ function saveVipJsonFromDb() {
     });
 }
 
-function getRolesData() {
-    try {
-        if (!fs.existsSync(rolesFilePath)) return [];
-        return JSON.parse(fs.readFileSync(rolesFilePath, 'utf8') || '[]');
-    } catch (e) { return []; }
-}
-
-function saveRolesData(data) {
-    try {
-        fs.writeFileSync(rolesFilePath, JSON.stringify(data, null, 2), 'utf8');
-        return true;
-    } catch (e) { return false; }
+function getRolesDataFromDb() {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT * FROM roles ORDER BY id ASC', (error, rows) => {
+            if (error) return reject(error);
+            resolve((rows || []).map(row => ({
+                ...row,
+                permissions: typeof row.permissions === 'string' ? JSON.parse(row.permissions || '[]') : (row.permissions || [])
+            })));
+        });
+    });
 }
 
 function getCommissionData() {
     try {
         if (!fs.existsSync(commissionFilePath)) {
-            const defaultRates = { "陪玩單": 0.8, "禮物單": 0.85, "有獎單": 0.9, "冠名單": 0.85, "獎金": 1.0 };
+            const defaultRates = { "陪玩單": 0.8, "禮物單": 0.85, "有獎單": 0.9, "冠名單": 0.85, "其他單": 0.8, "獎金單": 1.0 };
             fs.writeFileSync(commissionFilePath, JSON.stringify(defaultRates, null, 2), 'utf8');
             return defaultRates;
         }
         return JSON.parse(fs.readFileSync(commissionFilePath, 'utf8') || '{}');
     } catch (e) {
-        return { "陪玩單": 0.8, "禮物單": 0.85, "有獎單": 0.9, "冠名單": 0.85, "獎金": 1.0 };
+        return { "陪玩單": 0.8, "禮物單": 0.85, "有獎單": 0.9, "冠名單": 0.85, "其他單": 0.8, "獎金單": 1.0 };
     }
+}
+
+function syncCommissionJsonFromDb(callback = () => {}) {
+    db.all('SELECT category, rate FROM commission_settings ORDER BY category', (err, rows) => {
+        if (err) return callback(err);
+
+        const normalizedRates = {};
+        const canonicalRows = new Set((rows || []).map(row => row.category));
+        (rows || []).forEach(row => {
+            const categoryAliases = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
+            const category = categoryAliases[row.category] || row.category;
+            if (category !== row.category && canonicalRows.has(category)) return;
+
+            let rate = Number(row.rate);
+            if (rate > 1 && rate <= 100) rate /= 100;
+            if (Number.isFinite(rate) && rate >= 0 && rate <= 1) normalizedRates[category] = rate;
+        });
+
+        const defaultCategoryOrder = ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單'];
+        const rates = {};
+        defaultCategoryOrder.forEach(category => {
+            if (Object.prototype.hasOwnProperty.call(normalizedRates, category)) rates[category] = normalizedRates[category];
+        });
+        Object.keys(normalizedRates)
+            .filter(category => !defaultCategoryOrder.includes(category))
+            .sort((left, right) => left.localeCompare(right, 'zh-Hant'))
+            .forEach(category => { rates[category] = normalizedRates[category]; });
+
+        try {
+            fs.writeFileSync(commissionFilePath, JSON.stringify(rates, null, 2), 'utf8');
+            callback(null, rates);
+        } catch (writeError) {
+            callback(writeError);
+        }
+    });
 }
 
 function saveCommissionData(data) {
@@ -163,10 +202,10 @@ module.exports = {
     syncTalentsJsonFromDb,
     syncOrdersJsonFromDb,
     saveVipJsonFromDb,
-    getRolesData,
-    saveRolesData,
+    getRolesDataFromDb,
     getCommissionData,
     saveCommissionData,
+    syncCommissionJsonFromDb,
     syncCommandsJsonFromDb,
     syncCommandsToDb,
     syncTopupsJsonFromDb,

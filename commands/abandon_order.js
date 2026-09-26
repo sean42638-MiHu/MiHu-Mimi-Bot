@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const db = require('../database');
 const { syncOrdersJsonFromDb, syncUsersJsonFromDb } = require('../utils/dataSync');
+const { refundOrder } = require('../utils/walletService');
 
 function checkDiscordAdminPermission(interaction) {
     return Boolean(interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator));
@@ -30,36 +31,13 @@ module.exports = {
         db.get('SELECT * FROM orders WHERE order_no = ?', [orderNo], async (err, order) => {
             if (err || !order) return interaction.editReply({ content: `❌ 找不到編號為 \`${orderNo}\` 的訂單！` });
 
-            const refundAmount = Number(order.total_amount || 0);
             const bossId = order.boss_id;
             const targetChannelId = order.channel_id || interaction.channelId;
 
             // 🚀 2. 核心退款邏輯：全額退回闆闆錢包 (實充 balance)，並寫入流水帳
-            const refundPromise = new Promise((resolve, reject) => {
-                if (refundAmount > 0 && bossId) {
-                    db.run(
-                        'UPDATE users SET balance = balance + ? WHERE id = ?',
-                        [refundAmount, bossId],
-                        function (refundErr) {
-                            if (refundErr) return reject(refundErr);
-
-                            // 寫入錢包交易流水紀錄 (wallet_transactions)
-                            db.run(`
-                                INSERT INTO wallet_transactions (user_id, type, amount, description, created_at)
-                                VALUES (?, 'order_refund', ?, ?, DATETIME('now', 'localtime'))
-                            `, [bossId, refundAmount, `Discord /棄單 退款 - 訂單號: ${orderNo}`], () => {});
-
-                            resolve();
-                        }
-                    );
-                } else {
-                    resolve();
-                }
-            });
-
             try {
-                // 執行錢包退款
-                await refundPromise;
+                const refundResult = await refundOrder(order.id, interaction.user.id, 'Discord 棄單');
+                const refundAmount = refundResult.refundAmount;
 
                 // 3. 於原派單頻道發布棄單通知 (不顯示單號)
                 try {
@@ -71,23 +49,11 @@ module.exports = {
                     console.error('❌ 推送原頻道棄單訊息失敗:', chErr);
                 }
 
-                // 🚀 4. 後台 SQLite 資料庫直接物理刪除該筆訂單 (DELETE)
-                db.run('DELETE FROM orders WHERE order_no = ?', [orderNo], (delErr) => {
-                    if (delErr) {
-                        return interaction.editReply({ content: `⚠️ 錢包已成功退款 $${refundAmount} NTD，但後台資料庫刪除失敗：${delErr.message}` });
-                    }
-
-                    // 5. 觸發 orders.json 與 users.json 異動同步，保持資料庫與 JSON 完全乾淨
-                    try {
-                        syncOrdersJsonFromDb();
-                        if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
-                    } catch (syncErr) {}
-
-                    interaction.editReply({
-                        content: `✅ **訂單 \`${orderNo}\` 已成功棄單！**\n` +
-                                 `• 已全額退還闆闆：\`$${refundAmount.toLocaleString()}\` NTD (<@${bossId}>)\n` +
-                                 `• 訂單紀錄已自後台資料庫完全完全清除。`
-                    });
+                try { syncOrdersJsonFromDb(); syncUsersJsonFromDb(); } catch (syncErr) {}
+                await interaction.editReply({
+                    content: `✅ **訂單 \`${orderNo}\` 已成功棄單！**\n` +
+                             `• 已全額退還闆闆：\`$${refundAmount.toLocaleString()}\` NTD (<@${bossId}>)\n` +
+                             '• 訂單保留為取消狀態，退款已寫入 Wallet Ledger。'
                 });
 
             } catch (refundError) {

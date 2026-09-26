@@ -15,7 +15,7 @@ module.exports = {
         .setDescription('發布工作室派單訊息至指定頻道 (跳窗填寫詳細內容)')
         .addChannelOption(o => o.setName('channel').setNameLocalizations({ 'zh-TW': '發佈頻道' }).setDescription('派單頻道').addChannelTypes(ChannelType.GuildText).setRequired(true))
         .addStringOption(o => o.setName('category').setNameLocalizations({ 'zh-TW': '類別' }).setDescription('訂單類別').setRequired(true).addChoices(
-            { name: '陪玩單', value: '陪玩單' }, { name: '禮物單', value: '禮物單' }, { name: '有獎單', value: '有獎單' }, { name: '冠名單', value: '冠名單' }, { name: '獎金', value: '獎金' }
+            { name: '陪玩單', value: '陪玩單' }, { name: '禮物單', value: '禮物單' }, { name: '有獎單', value: '有獎單' }, { name: '冠名單', value: '冠名單' }, { name: '其他單', value: '其他單' }, { name: '獎金單', value: '獎金單' }
         ))
         .addStringOption(o => o.setName('tag').setNameLocalizations({ 'zh-TW': 'tag' }).setDescription('欲 Tag 的身分組').setRequired(true))
         .addUserOption(o => o.setName('boss').setNameLocalizations({ 'zh-TW': '老闆id' }).setDescription('下單老闆').setRequired(true))

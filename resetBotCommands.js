@@ -1,6 +1,7 @@
 const db = require('./database');
 const fs = require('fs');
 const path = require('path');
+db.initializeDatabase();
 
 const jsonPath = path.join(__dirname, 'data', 'commands.json');
 

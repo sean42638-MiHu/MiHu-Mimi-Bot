@@ -3,6 +3,7 @@ const db = require('../database');
 const { createMihuEmbed, BRAND_COLORS } = require('../utils/embedBuilder');
 const { calculateDiscount, getUserVipInfo } = require('../utils/discountHelper');
 const { syncOrdersJsonFromDb } = require('../utils/dataSync');
+const { updateOrder } = require('../utils/orderService');
 
 
 function checkDiscordAdminPermission(interaction) {
@@ -38,7 +39,7 @@ module.exports = {
         const inputUnit = interaction.options.getString('unit');
         const inputDiscount = interaction.options.getNumber('discount');
 
-        db.get('SELECT * FROM orders WHERE order_no = ?', [orderNo], (err, order) => {
+        db.get('SELECT * FROM orders WHERE order_no = ?', [orderNo], async (err, order) => {
             if (err || !order) return interaction.editReply({ content: `❌ 找不到編號為 \`${orderNo}\` 的訂單！` });
 
             // 1. 計算新時長與單位
@@ -54,19 +55,20 @@ module.exports = {
             // 3. 重新計算折抵與實收金額
             const { finalAmount, discountAmount, discountText } = calculateDiscount(newTotalPrice, effectiveDiscount);
 
-            // 4. 更新 SQLite 資料庫
-            const updateSql = `
-                UPDATE orders SET 
-                    duration = ?, 
-                    unit = ?, 
-                    unit_price = ?, 
-                    discount = ?, 
-                    total_amount = ? 
-                WHERE order_no = ?
-            `;
-
-            db.run(updateSql, [finalDuration, finalUnit, newTotalPrice, discountAmount, finalAmount, orderNo], async (upErr) => {
-                if (upErr) return interaction.editReply({ content: '❌ 加時更新訂單資料失敗。' });
+            try {
+                await updateOrder(orderNo, {
+                    duration: finalDuration,
+                    unit: finalUnit,
+                    unit_price: newTotalPrice,
+                    original_price: newTotalPrice,
+                    discount: effectiveDiscount,
+                    status: order.status,
+                    operatorId: interaction.user.id,
+                    source: 'discord-add-time-command'
+                });
+            } catch (updateError) {
+                return interaction.editReply({ content: `❌ 加時更新訂單資料失敗：${updateError.message}` });
+            }
 
                 // 🚀 寫入 data/orders.json 備份檔
                 syncOrdersJsonFromDb();
@@ -109,7 +111,6 @@ module.exports = {
                 let replyText = `✅ **訂單加時成功！**\n📌 **訂單編號**：\`${orderNo}\` \n⏱️ **服務時長**：${oldDuration}${order.unit || '小時'} ➔ **${finalDuration}${finalUnit}** (+${addDuration}${finalUnit})\n💰 **最新實收金額**：$${finalAmount.toLocaleString()} NTD ${discountText ? `(${discountText})` : ''}`;
 
                 interaction.editReply({ content: replyText });
-            });
         });
     }
 };

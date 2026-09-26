@@ -1,10 +1,10 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('../database');
 const { syncOrdersJsonFromDb } = require('../utils/dataSync');
-const { adjustUserWallet } = require('../utils/walletHelper');
+const { createOrder } = require('../utils/orderService');
 const { checkChannelPermissions } = require('../utils/permissionHelper');
 const { createMihuEmbed, BRAND_COLORS } = require('../utils/embedBuilder');
-const { calculateCommissionByCategory, getStudioIdForUser, getPersonalTalentShareRate, resolveServiceId } = require('../utils/commissionHelper');
+const { getStudioIdForUser } = require('../utils/commissionHelper');
 
 async function handleAssignModal(interaction) {
     if (!interaction.deferred && !interaction.replied) {
@@ -36,14 +36,12 @@ async function handleAssignModal(interaction) {
                 finalPrice = Math.max(0, totalPrice - sessionData.disc);
             }
         }
+        const discountAmount = totalPrice - finalPrice;
 
         // 2. 檢核會員與錢包餘額
         const walletRow = await new Promise((resolve) => {
             db.get('SELECT * FROM user_wallets WHERE user_id = ?', [bossId], (err, row) => {
-                if (row) return resolve(row);
-                db.get('SELECT balance, bonus_balance FROM users WHERE id = ?', [bossId], (uErr, uRow) => {
-                    resolve(uRow || null);
-                });
+                resolve(row || null);
             });
         });
 
@@ -80,30 +78,12 @@ async function handleAssignModal(interaction) {
             });
         }
 
-        // 4. 進行錢包扣款
-        await adjustUserWallet({
-            userId: bossId,
-            addAmount: -finalPrice,
-            bonusChange: 0,
-            reason: `指定陪玩訂單扣款 (${sessionData.cat || '陪玩單'})`,
-            operatorId: interaction.user.id
-        });
-
         const game = interaction.fields.getTextInputValue('dispatch_game');
         const contentTier = interaction.fields.getTextInputValue('dispatch_content');
         const extra = interaction.fields.getTextInputValue('dispatch_extra') || '無';
         const note = interaction.fields.getTextInputValue('dispatch_note') || '無';
         const category = sessionData.cat || '陪玩單';
         const studioId = await getStudioIdForUser(csUser.id);
-        const talentStudioId = await getStudioIdForUser(talentId);
-        if (studioId !== talentStudioId) {
-            return interaction.editReply({ content: '🚫 指定失敗：陪玩師與建立者不屬於同一工作室。' });
-        }
-        const serviceId = await resolveServiceId(studioId, game, category);
-        const personalRate = await getPersonalTalentShareRate(talentId);
-        const { talentShareRate, platformCommission, talentNetEarning } = await calculateCommissionByCategory(
-            category, finalPrice, totalPrice, personalRate, { studioId, serviceId }
-        );
 
         const unit = sessionData.unit || '小時';
         const unitPrice = duration > 0 ? (totalPrice / duration) : totalPrice;
@@ -115,41 +95,29 @@ async function handleAssignModal(interaction) {
         const csUser = interaction.user;
         const csName = interaction.member?.nickname || csUser.globalName || csUser.username;
 
-        // 5. 儲存工作室、服務與當下佣金快照
-        await new Promise((resolve, reject) => {
-            const insertSql = `
-                INSERT INTO orders (
-                    order_no, boss_id, talent_id, cs_id, cs_name, category, 
-                    game, content_tier, duration, unit, unit_price,
-                    total_amount, discount, extra, note, status, studio_id, service_id,
-                    commission_rate_snapshot, platform_commission, talent_earning, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, DATETIME('now', 'localtime'))
-            `;
-            db.run(insertSql, [
-                orderNo,
-                bossId,
-                talentId,
-                csUser.id,
-                csName,
-                category,
-                game,
-                contentTier,
-                duration,
-                unit,
-                unitPrice,
-                finalPrice,
-                sessionData.disc || 0,
-                extra,
-                note,
-                studioId,
-                serviceId,
-                talentShareRate,
-                platformCommission,
-                talentNetEarning
-            ], function(err) {
-                if (err) reject(err);
-                else resolve(this.lastID);
-            });
+        await createOrder({
+            orderNo,
+            bossId,
+            csId: csUser.id,
+            csName,
+            talentId,
+            category,
+            game,
+            contentTier,
+            duration,
+            unit,
+            unitPrice,
+            originalAmount: totalPrice,
+            finalAmount: finalPrice,
+            discount: discountAmount,
+            extra,
+            note,
+            studioId,
+            status: 'accepted',
+            walletDelta: -finalPrice,
+            walletReason: `指定陪玩訂單扣款 (${category})`,
+            operatorId: interaction.user.id,
+            source: 'discord-assign-modal'
         });
 
         syncOrdersJsonFromDb();

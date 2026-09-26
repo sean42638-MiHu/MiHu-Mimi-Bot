@@ -4,16 +4,36 @@ const db = require('../database');
 const { syncUsersJsonFromDb, syncTalentsJsonFromDb } = require('../utils/dataSync');
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
 const { calculateCommissionByCategory, normalizeTalentShareRate } = require('../utils/commissionHelper');
+const { getVipColorByLevel, checkAndUpdateVipLevel } = require('../utils/vipHelper');
+const { DEFAULT_VIP_COLOR } = require('../utils/vipColor');
+const { dbGet, dbRun } = require('../utils/dbHelper');
+const { writeAuditLog } = require('../utils/auditService');
+const { withTransactionGate } = require('../utils/transactionGate');
+const { getEmployeePayoutOverview } = require('../services/payoutService');
+const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
+
+const payrollProfileFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 
 // =========================================================================
 // 1. 首頁 (Dashboard)
 // =========================================================================
 router.get('/dashboard', ensureAuth, checkPerm('home'), (req, res) => {
-    db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
-        db.get('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 1', (aErr, latestAnnouncement) => {
+    db.get(`
+        SELECT u.*,
+            COALESCE(w.balance, 0) AS balance,
+            COALESCE(w.bonus_balance, 0) AS bonus_balance,
+            COALESCE(w.manual_spent, 0) AS manual_spent,
+            COALESCE(w.manual_deposited, 0) AS manual_deposited
+        FROM users u
+        LEFT JOIN user_wallets w ON w.user_id = u.id
+        WHERE u.id = ?
+    `, [req.user.id], (err, currentUser) => {
+        db.get('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 1', async (aErr, latestAnnouncement) => {
+            const vipColor = await getVipColorByLevel(currentUser && currentUser.vip_level);
             res.render('dashboard', {
                 user: currentUser || req.user,
                 announcement: latestAnnouncement || null,
+                vipColor: vipColor || DEFAULT_VIP_COLOR,
                 error: req.query.error || null
             });
         });
@@ -25,22 +45,86 @@ router.get('/dashboard', ensureAuth, checkPerm('home'), (req, res) => {
 // =========================================================================
 router.get('/profile', ensureAuth, checkPerm('profile'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
-        res.render('profile', { user: currentUser || req.user, success: req.query.saved === '1' });
+        try {
+            const user = currentUser ? decryptSensitiveFields(currentUser, payrollProfileFields) : req.user;
+            res.render('profile', { user, success: req.query.saved === '1' });
+        } catch (error) {
+            return res.status(503).send('目前無法安全載入個人薪轉資料');
+        }
     });
 });
 
-router.post('/profile', ensureAuth, checkPerm('profile'), (req, res) => {
-    const { custom_nickname, birthday, gender, age, mbti, real_name, bank_name, bank_code, bank_branch, bank_account } = req.body;
-    const query = `UPDATE users SET custom_nickname = ?, birthday = ?, gender = ?, age = ?, mbti = ?, real_name = ?, bank_name = ?, bank_code = ?, bank_branch = ?, bank_account = ? WHERE id = ?`;
-    db.run(query, [
-        custom_nickname || null, birthday || null, gender || null, age ? parseInt(age, 10) : null, mbti || null,
-        real_name || null, bank_name || null, bank_code || null, bank_branch || null, bank_account || null,
-        req.user.id
-    ], (err) => {
-        if (err) return res.redirect('/profile?error=更新失敗');
+router.post('/profile', ensureAuth, checkPerm('profile'), async (req, res) => {
+    const { email, custom_nickname, birthday, gender, age, mbti, real_name, bank_name, bank_code, bank_branch, bank_account } = req.body;
+    try {
+        const encryptedPayrollFields = encryptSensitiveFields({
+            real_name: real_name || null,
+            bank_name: bank_name || null,
+            bank_code: bank_code || null,
+            bank_branch: bank_branch || null,
+            bank_account: bank_account || null
+        }, payrollProfileFields);
+        await withTransactionGate(async () => {
+        await dbRun('BEGIN IMMEDIATE');
+        try {
+        const currentUser = await dbGet(`
+            SELECT email, email_verified, custom_nickname, birthday, gender, age, mbti,
+                real_name, bank_name, bank_code, bank_branch, bank_account
+            FROM users WHERE id = ?
+        `, [req.user.id]);
+        if (!currentUser) throw new Error('找不到會員資料');
+        const normalizedEmail = String(email || '').trim().toLowerCase() || null;
+        const previousEmail = String(currentUser.email || '').trim().toLowerCase() || null;
+        const emailChanged = normalizedEmail !== previousEmail;
+        const query = `UPDATE users SET email = ?, email_verified = CASE WHEN ? THEN 0 ELSE email_verified END, email_verified_at = CASE WHEN ? THEN NULL ELSE email_verified_at END, custom_nickname = ?, birthday = ?, gender = ?, age = ?, mbti = ?, real_name = ?, bank_name = ?, bank_code = ?, bank_branch = ?, bank_account = ? WHERE id = ?`;
+        await dbRun(query, [
+            normalizedEmail, emailChanged ? 1 : 0, emailChanged ? 1 : 0,
+            custom_nickname || null, birthday || null, gender || null, age ? parseInt(age, 10) : null, mbti || null,
+            encryptedPayrollFields.real_name, encryptedPayrollFields.bank_name,
+            encryptedPayrollFields.bank_code, encryptedPayrollFields.bank_branch, encryptedPayrollFields.bank_account,
+            req.user.id
+        ]);
+        if (emailChanged) await dbRun('DELETE FROM email_verifications WHERE user_id = ?', [req.user.id]);
+        const bankInfoPresent = Boolean(currentUser.bank_name || currentUser.bank_code || currentUser.bank_branch || currentUser.bank_account);
+        const nextBankInfoPresent = Boolean(bank_name || bank_code || bank_branch || bank_account);
+        await writeAuditLog({
+            operatorId: req.user.id,
+            studioId: req.user.studio_id ?? null,
+            action: 'sensitive_profile_update',
+            targetType: 'user',
+            targetId: req.user.id,
+            before: {
+                custom_nickname: currentUser.custom_nickname,
+                birthday: currentUser.birthday,
+                gender: currentUser.gender,
+                age: currentUser.age,
+                mbti: currentUser.mbti,
+                email_verified: Boolean(currentUser.email_verified),
+                bank_info_present: bankInfoPresent
+            },
+            after: {
+                custom_nickname: custom_nickname || null,
+                birthday: birthday || null,
+                gender: gender || null,
+                age: age ? parseInt(age, 10) : null,
+                mbti: mbti || null,
+                email_changed: emailChanged,
+                email_verified: emailChanged ? false : Boolean(currentUser.email_verified),
+                bank_info_present: nextBankInfoPresent
+            },
+            metadata: { emailChanged, bankInfoChanged: bankInfoPresent !== nextBankInfoPresent }
+        });
+        await dbRun('COMMIT');
+        } catch (error) {
+            await dbRun('ROLLBACK').catch(() => {});
+            throw error;
+        }
+        });
         syncUsersJsonFromDb();
-        res.redirect('/profile?saved=1');
-    });
+        return res.redirect('/profile?saved=1');
+    } catch (error) {
+        return res.redirect('/profile?error=' + encodeURIComponent('更新失敗'));
+    }
 });
 
 // =========================================================================
@@ -52,10 +136,10 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
     // 🚀 1. 核心整合：使用 LEFT JOIN 讀取 user_wallets，確保名稱精準對齊
     const userWalletSql = `
         SELECT u.*,
-            COALESCE(w.balance, u.balance, 0) as balance,
-            COALESCE(w.bonus_balance, u.bonus_balance, 0) as bonus_balance,
-            COALESCE(w.manual_spent, u.manual_spent, 0) as manual_spent,
-            COALESCE(w.manual_deposited, u.manual_deposited, 0) as manual_deposited
+            COALESCE(w.balance, 0) as balance,
+            COALESCE(w.bonus_balance, 0) as bonus_balance,
+            COALESCE(w.manual_spent, 0) as manual_spent,
+            COALESCE(w.manual_deposited, 0) as manual_deposited
         FROM users u
         LEFT JOIN user_wallets w ON u.id = w.user_id
         WHERE u.id = ?
@@ -90,7 +174,7 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
 
             // 更新 Users 表中的 VIP 等級
             if (calculatedVip !== Number(currentUser.vip_level || 0)) {
-                db.run('UPDATE users SET vip_level = ? WHERE id = ?', [calculatedVip, userId], () => {
+                checkAndUpdateVipLevel(userId, 0).then(() => {
                     try {
                         const { syncUsersJsonFromDb } = require('../utils/dataSync');
                         if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
@@ -99,6 +183,7 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
             }
 
             const actualVip = calculatedVip;
+            const vipColor = (tiers.find(tier => Number(tier.level) === actualVip) || {}).color || DEFAULT_VIP_COLOR;
 
             // 🌟 VIP 進度條計算
             const nextTier = tiers.find(t => Number(t.level) === actualVip + 1);
@@ -135,7 +220,11 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
                 ORDER BY o.created_at DESC
             `;
 
-            db.all(ordersSql, [userId, Number(currentUser.studio_id) || 1], (oErr, orders) => {
+            const walletStudioId = Number(currentUser.studio_id);
+            if (!Number.isInteger(walletStudioId) || walletStudioId <= 0) {
+                return res.status(403).send('找不到已授權的工作室範圍');
+            }
+            db.all(ordersSql, [userId, walletStudioId], (oErr, orders) => {
                 const txSql = `SELECT * FROM wallet_transactions WHERE user_id = ? ORDER BY created_at DESC`;
                 db.all(txSql, [userId], (txErr, transactions) => {
                     db.all('SELECT * FROM topups WHERE user_id = ? ORDER BY created_at DESC', [userId], (tErr, topups) => {
@@ -145,6 +234,7 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
                             user: { 
                                 ...currentUser, 
                                 vip_level: actualVip,
+                                vip_color: vipColor,
                                 total_balance: totalBalance,
                                 balance: currentBalance,
                                 bonus_balance: bonusBalance,
@@ -178,18 +268,18 @@ router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
 
     db.get('SELECT * FROM users WHERE id = ?', [userId], async (err, currentUser) => {
         db.get('SELECT commission_rate FROM talents WHERE user_id = ?', [userId], async (tErr, talentRow) => {
-            const studioId = Number(currentUser && currentUser.studio_id) || 1;
             const commissionRows = await new Promise((resolve) => {
-                db.all('SELECT category, talent_share_rate FROM studio_commissions WHERE studio_id = ?', [studioId], (cErr, rows) => resolve(rows || []));
+                db.all('SELECT category, rate FROM commission_settings ORDER BY category', (cErr, rows) => resolve(rows || []));
             });
-            const globalCommissions = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '獎金': 1.00 };
+            const globalCommissions = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
             commissionRows.forEach(row => {
-                const canonicalCategory = row.category === '有獎' ? '有獎單' : (row.category === '冠名' ? '冠名單' : row.category);
+                const aliases = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
+                const canonicalCategory = aliases[row.category] || row.category;
                 const hasCanonicalRow = commissionRows.some(candidate => candidate.category === canonicalCategory);
                 if (row.category !== canonicalCategory && hasCanonicalRow) return;
-                globalCommissions[canonicalCategory] = Number(row.talent_share_rate);
-                if (canonicalCategory === '有獎單') globalCommissions['有獎'] = Number(row.talent_share_rate);
-                if (canonicalCategory === '冠名單') globalCommissions['冠名'] = Number(row.talent_share_rate);
+                const rate = normalizeTalentShareRate(row.rate);
+                if (rate === null) return;
+                globalCommissions[canonicalCategory] = rate;
             });
             
             const normalizedPersonalRate = normalizeTalentShareRate(talentRow && talentRow.commission_rate);
@@ -218,6 +308,10 @@ router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
             db.all(orderSql, [userId, userId], async (oErr, orders) => {
                 const orderList = orders || [];
                 const completedOrders = orderList.filter(o => o.status === 'completed');
+                if (completedOrders.some(order => order.talent_earning == null
+                    && (!Number.isInteger(Number(order.studio_id)) || Number(order.studio_id) <= 0))) {
+                    return res.status(409).send('歷史訂單缺少工作室範圍，無法安全試算佣金');
+                }
 
                 // 🚀 模組化計算 single order 收益 (以原價算陪陪收益)
                 async function computeOrderTalentEarning(o) {
@@ -236,9 +330,11 @@ router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
                     if (snapshotRate !== null) return Math.round(originalPrice * snapshotRate);
 
                     const cat = o.category || '陪玩單';
+                    const studioId = Number(o.studio_id);
+                    if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('歷史訂單缺少工作室範圍');
                     const { talentNetEarning } = await calculateCommissionByCategory(
                         cat, finalPrice, originalPrice, personalRate,
-                        { studioId: Number(o.studio_id) || studioId, serviceId: o.service_id, serviceName: o.game }
+                        { studioId }
                     );
                     return talentNetEarning;
                 }
@@ -261,10 +357,11 @@ router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
                     monthlyIncome += await computeOrderTalentEarning(o);
                 }
 
-                db.get('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM payouts WHERE user_id = ? AND status = "completed"', [userId], (pErr, payoutStats) => {
-                    const totalWithdrawn = payoutStats ? Number(payoutStats.total_withdrawn) : 0;
-                    const availableToWithdraw = Math.max(0, totalIncome - totalWithdrawn);
-
+                try {
+                    const payoutOverview = await getEmployeePayoutOverview({
+                        userId,
+                        studioId: Number(req.user.studio_id)
+                    });
                     res.render('income', {
                         user: currentUser || req.user,
                         personalRate: personalRate,
@@ -272,12 +369,17 @@ router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
                         stats: {
                             totalIncome: totalIncome,
                             monthlyIncome: monthlyIncome,
-                            totalWithdrawn: totalWithdrawn,
-                            availableToWithdraw: availableToWithdraw
+                            totalWithdrawn: payoutOverview.paidAmount,
+                            pendingWithdrawals: payoutOverview.pendingAmount,
+                            availableToWithdraw: payoutOverview.availableAmount
                         },
+                        payoutOverview,
                         orders: orderList
                     });
-                });
+                } catch (error) {
+                    console.error('載入提款資訊失敗:', error.message);
+                    return res.status(503).send('目前無法載入可提領薪資，請稍後再試');
+                }
             });
         });
     });
@@ -287,6 +389,8 @@ router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
 // =========================================================================
 router.get('/my-orders', ensureAuth, (req, res) => {
     const currentUserId = req.user.id;
+    const studioId = Number(req.user.studio_id);
+    if (!Number.isInteger(studioId) || studioId <= 0) return res.status(403).send('找不到已授權的工作室範圍');
 
     const myOrdersSql = `
         SELECT 
@@ -313,7 +417,7 @@ router.get('/my-orders', ensureAuth, (req, res) => {
         ORDER BY o.created_at DESC
     `;
 
-    db.all(myOrdersSql, [currentUserId, Number(req.user.studio_id) || 1], (err, orders) => {
+    db.all(myOrdersSql, [currentUserId, studioId], (err, orders) => {
         if (err) {
             console.error('❌ 讀取個人訂單失敗:', err);
             return res.status(500).send('讀取個人訂單失敗');

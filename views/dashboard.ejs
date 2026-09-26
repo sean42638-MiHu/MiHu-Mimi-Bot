@@ -61,7 +61,7 @@
         <%- include('partials/dashboard_announcement', { announcement: typeof announcement !== 'undefined' ? announcement : null }) %>
 
         <div class="dashboard-grid">
-            <%- include('partials/dashboard_wallet_card', { user: typeof user !== 'undefined' && user ? user : currentUser }) %>
+            <%- include('partials/dashboard_wallet_card', { user: typeof user !== 'undefined' && user ? user : currentUser, vipColor: typeof vipColor !== 'undefined' ? vipColor : null }) %>
             <%- include('partials/dashboard_user_info', { user: typeof user !== 'undefined' && user ? user : currentUser }) %>
         </div>
     </div>

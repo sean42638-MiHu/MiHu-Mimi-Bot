@@ -1,24 +1,38 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../database');
-const { ensureAuth } = require('../../middleware/auth');
+const { ensureAuth, checkPerm } = require('../../middleware/auth');
 const { sortByRoleWeight } = require('../../utils/roleHelper');
 const { adjustUserWallet } = require('../../utils/walletHelper');
+const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../../utils/vipColor');
+const { dbGet, dbRun } = require('../../utils/dbHelper');
+const { writeAuditLog } = require('../../utils/auditService');
+const { withTransactionGate } = require('../../utils/transactionGate');
+
+function isPlatformAdmin(user) {
+    return Boolean(user && (user.id === '604610298581876746' || user.role === 'admin'));
+}
 
 // 1.1 渲染「會員管理」頁面 (完全整合 user_wallets 資料庫)
-router.get('/', ensureAuth, (req, res) => {
+router.get('/', ensureAuth, checkPerm('manage_members'), (req, res) => {
+    const allStudios = isPlatformAdmin(req.user);
+    const studioId = Number(req.user && req.user.studio_id);
+    if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
+        return res.status(403).send('找不到已授權的工作室範圍');
+    }
     const membersSql = `
         SELECT u.*,
-            COALESCE(w.balance, u.balance, 0) as balance,
-            COALESCE(w.bonus_balance, u.bonus_balance, 0) as bonus_balance,
-            COALESCE(w.manual_spent, u.manual_spent, 0) as manual_spent,
-            COALESCE(w.manual_deposited, u.manual_deposited, 0) as manual_deposited,
-            (COALESCE(w.balance, u.balance, 0) + COALESCE(w.bonus_balance, u.bonus_balance, 0)) as total_balance
+            COALESCE(w.balance, 0) as balance,
+            COALESCE(w.bonus_balance, 0) as bonus_balance,
+            COALESCE(w.manual_spent, 0) as manual_spent,
+            COALESCE(w.manual_deposited, 0) as manual_deposited,
+            (COALESCE(w.balance, 0) + COALESCE(w.bonus_balance, 0)) as total_balance
         FROM users u 
         LEFT JOIN user_wallets w ON u.id = w.user_id
+        ${allStudios ? '' : 'WHERE u.studio_id = ?'}
     `;
 
-    db.all(membersSql, [], (err, rawMembers) => {
+    db.all(membersSql, allStudios ? [] : [studioId], (err, rawMembers) => {
         if (err) {
             console.error('❌ 載入會員清單失敗:', err);
             return res.status(500).send('資料庫讀取錯誤');
@@ -26,6 +40,7 @@ router.get('/', ensureAuth, (req, res) => {
 
         db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', [], (vErr, vipTiers) => {
             const tiers = vipTiers || [];
+            const vipColorMap = new Map(tiers.map(tier => [Number(tier.level), normalizeVipColor(tier.color, DEFAULT_VIP_COLOR)]));
             
             const processedMembers = (rawMembers || []).map(m => {
                 const spent = Number(m.manual_spent || 0);
@@ -64,6 +79,7 @@ router.get('/', ensureAuth, (req, res) => {
                 return {
                     ...m,
                     vip_level: currentVip,
+                    vip_color: vipColorMap.get(currentVip) || DEFAULT_VIP_COLOR,
                     total_balance: Number(m.total_balance || 0),
                     totalBalance: Number(m.total_balance || 0), // 相容前端舊版變數
                     balance: Number(m.balance || 0),
@@ -97,38 +113,70 @@ router.get('/', ensureAuth, (req, res) => {
 });
 
 // 1.2 單一會員 Discord 資料刷新
-router.get('/sync/:id', ensureAuth, async (req, res) => {
+router.post('/sync/:id', ensureAuth, checkPerm('manage_members'), async (req, res) => {
     const targetUserId = req.params.id;
+    const platformAdmin = req.user.id === '604610298581876746' || req.user.role === 'admin';
     try {
-        const client = req.app.get('discordClient');
-        if (client && client.users) {
-            try {
-                const dcUser = await client.users.fetch(targetUserId);
-                if (dcUser) {
-                    db.run(
-                        `UPDATE users SET avatar = ?, global_name = ?, username = ? WHERE id = ?`,
-                        [dcUser.avatar || null, dcUser.globalName || dcUser.username, dcUser.username, targetUserId]
-                    );
-                }
-            } catch (e) {}
+        const target = await dbGet('SELECT id, studio_id, username, global_name, avatar FROM users WHERE id = ?', [targetUserId]);
+        if (!target) return res.status(404).send('找不到會員');
+        const actorStudioId = Number(req.user.studio_id);
+        const targetStudioId = Number(target.studio_id);
+        if (!platformAdmin && (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || actorStudioId !== targetStudioId)) {
+            return res.status(403).send('無權同步其他工作室會員');
         }
+        if (process.env.DISCORD_ENABLED !== 'true') return res.status(503).send('Discord integration is disabled');
+        const client = req.app.get('discordClient');
+        if (!client || !client.users) return res.status(503).send('Discord client is unavailable');
+        const dcUser = await client.users.fetch(targetUserId);
+        await withTransactionGate(async () => {
+            await dbRun('BEGIN IMMEDIATE');
+            try {
+                await dbRun('UPDATE users SET avatar = ?, global_name = ?, username = ? WHERE id = ?',
+                    [dcUser.avatar || null, dcUser.globalName || dcUser.username, dcUser.username, targetUserId]);
+                await writeAuditLog({
+                    operatorId: req.user.id,
+                    studioId: targetStudioId,
+                    action: 'discord_identity_sync',
+                    targetType: 'user',
+                    targetId: targetUserId,
+                    before: { username: target.username, global_name: target.global_name, avatar: target.avatar },
+                    after: { username: dcUser.username, global_name: dcUser.globalName || dcUser.username, avatar: dcUser.avatar || null },
+                    metadata: { source: 'management-members-sync' }
+                });
+                await dbRun('COMMIT');
+            } catch (error) {
+                await dbRun('ROLLBACK').catch(() => {});
+                throw error;
+            }
+        });
+        syncUsersJsonFromDb();
         res.redirect('/management/members?success=1');
     } catch (error) {
+        console.error('Discord member identity sync failed:', error && error.code ? error.code : 'sync failure');
         res.redirect('/management/members?error=' + encodeURIComponent('同步失敗'));
     }
 });
 
 // 1.3 全體會員 Discord 資料刷新
-router.get('/sync-all', ensureAuth, async (req, res) => {
+router.get('/sync-all', ensureAuth, checkPerm('manage_members'), async (req, res) => {
     res.redirect('/management/members?success=1');
 });
 
 // 1.4 手動更新會員帳務金額 API (整合資金資料庫與防呆空字串)
-router.post('/update-balance/:id', ensureAuth, async (req, res) => {
+router.post('/update-balance/:id', ensureAuth, checkPerm('member_adjust_balance'), async (req, res) => {
     const targetUserId = req.params.id;
     const { add_amount, bonus_change, bonus_balance, balance, total_spent, total_deposited, note } = req.body;
 
     try {
+        const target = await dbGet('SELECT studio_id FROM users WHERE id = ?', [targetUserId]);
+        if (!target) return res.status(404).send('找不到目標會員');
+        if (!isPlatformAdmin(req.user)) {
+            const actorStudioId = Number(req.user && req.user.studio_id);
+            const targetStudioId = Number(target.studio_id);
+            if (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || targetStudioId !== actorStudioId) {
+                return res.status(403).send('無權調整其他工作室會員錢包');
+            }
+        }
         await adjustUserWallet({
             userId: targetUserId,
             addAmount: (add_amount !== undefined && String(add_amount).trim() !== '') ? add_amount : null,
@@ -153,47 +201,65 @@ router.post('/update-balance/:id', ensureAuth, async (req, res) => {
 });
 
 // 1.5 👑 手動更新 VIP 等級與後台身分 (Role)
-router.post('/update-vip/:id', ensureAuth, (req, res) => {
+router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async (req, res) => {
     const targetUserId = req.params.id;
     const { vip_level, role } = req.body;
 
-    db.get('SELECT * FROM users WHERE id = ?', [targetUserId], (err, targetUser) => {
-        if (err || !targetUser) {
-            return res.redirect('/management/members?error=' + encodeURIComponent('找不到目標會員'));
-        }
-
-        let newVip = Number(vip_level);
-        if (isNaN(newVip)) {
-            if (vip_level && vip_level.startsWith('+')) newVip = Number(targetUser.vip_level || 0) + Number(vip_level.replace('+', ''));
-            else if (vip_level && vip_level.startsWith('-')) newVip = Number(targetUser.vip_level || 0) - Number(vip_level.replace('-', ''));
-            else newVip = Number(targetUser.vip_level || 0);
-        }
-        newVip = Math.max(0, newVip);
-        const newRole = role || targetUser.role || 'member';
-
-        db.run(
-            'UPDATE users SET vip_level = ?, role = ? WHERE id = ?',
-            [newVip, newRole, targetUserId],
-            function (updateErr) {
-                if (updateErr) {
-                    console.error('❌ 更新 VIP 與身分失敗:', updateErr);
-                    return res.redirect('/management/members?error=' + encodeURIComponent('更新身分失敗'));
+    try {
+        const result = await withTransactionGate(async () => {
+            await dbRun('BEGIN IMMEDIATE');
+            try {
+                const targetUser = await new Promise((resolve, reject) => db.get(
+                    'SELECT id, studio_id, vip_level, role FROM users WHERE id = ?', [targetUserId],
+                    (error, row) => error ? reject(error) : resolve(row || null)
+                ));
+                if (!targetUser) throw new Error('找不到目標會員');
+                if (!isPlatformAdmin(req.user)) {
+                    const actorStudioId = Number(req.user && req.user.studio_id);
+                    if (!Number.isInteger(actorStudioId) || actorStudioId <= 0
+                        || Number(targetUser.studio_id) !== actorStudioId) {
+                        throw new Error('無權調整其他工作室會員');
+                    }
                 }
-
-                if (req.user && req.user.id === targetUserId) {
-                    req.user.role = newRole;
-                    req.user.vip_level = newVip;
+                let newVip = Number(vip_level);
+                if (isNaN(newVip)) {
+                    if (vip_level && vip_level.startsWith('+')) newVip = Number(targetUser.vip_level || 0) + Number(vip_level.replace('+', ''));
+                    else if (vip_level && vip_level.startsWith('-')) newVip = Number(targetUser.vip_level || 0) - Number(vip_level.replace('-', ''));
+                    else newVip = Number(targetUser.vip_level || 0);
                 }
-
-                try {
-                    const { syncUsersJsonFromDb } = require('../../utils/dataSync');
-                    if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
-                } catch (e) {}
-
-                res.redirect('/management/members?success=1');
+                newVip = Math.max(0, newVip);
+                const newRole = role || targetUser.role || 'member';
+                await dbRun('UPDATE users SET vip_level = ?, role = ? WHERE id = ?', [newVip, newRole, targetUserId]);
+                await writeAuditLog({
+                    operatorId: req.user.id,
+                    studioId: targetUser.studio_id ?? null,
+                    action: 'member_vip_role_update',
+                    targetType: 'user',
+                    targetId: targetUserId,
+                    before: { vip_level: targetUser.vip_level, role: targetUser.role },
+                    after: { vip_level: newVip, role: newRole },
+                    metadata: { source: 'management-members-route' }
+                });
+                await dbRun('COMMIT');
+                return { newVip, newRole };
+            } catch (error) {
+                await dbRun('ROLLBACK').catch(() => {});
+                throw error;
             }
-        );
-    });
+        });
+        if (req.user && req.user.id === targetUserId) {
+            req.user.role = result.newRole;
+            req.user.vip_level = result.newVip;
+        }
+        try {
+            const { syncUsersJsonFromDb } = require('../../utils/dataSync');
+            syncUsersJsonFromDb();
+        } catch (e) {}
+        return res.redirect('/management/members?success=1');
+    } catch (error) {
+        if (error.message === '無權調整其他工作室會員') return res.status(403).send(error.message);
+        return res.redirect('/management/members?error=' + encodeURIComponent(error.message || '更新身分失敗'));
+    }
 });
 
 module.exports = router;

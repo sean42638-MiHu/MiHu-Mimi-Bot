@@ -59,6 +59,6 @@
 
     <!-- 💳 完美置中區域 -->
     <div class="vip-card-center-container">
-        <%- include('wallet_card', { user: activeUser }) %>
+        <%- include('wallet_card', { user: activeUser, vipColor: typeof vipColor !== 'undefined' ? vipColor : null }) %>
     </div>
 </div>

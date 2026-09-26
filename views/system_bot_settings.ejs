@@ -59,11 +59,16 @@
                     <p class="text-secondary small mb-0">顯示機器人目前載入的 Discord 指令；同步會重新註冊現有指令</p>
                 </div>
 
-                <form action="/system/bot-settings/sync" method="POST">
-                    <button type="submit" class="btn btn-outline-info rounded-pill px-3 py-2 small fw-semibold">
-                        <i class="fa-solid fa-rotate me-1"></i>同步至 Discord
-                    </button>
-                </form>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/system/payout-settings" class="btn btn-outline-light rounded-pill px-3 py-2 small fw-semibold">
+                        <i class="fa-solid fa-calendar-days me-1"></i>薪資提款設定
+                    </a>
+                    <form action="/system/bot-settings/sync" method="POST">
+                        <button type="submit" class="btn btn-outline-info rounded-pill px-3 py-2 small fw-semibold">
+                            <i class="fa-solid fa-rotate me-1"></i>同步至 Discord
+                        </button>
+                    </form>
+                </div>
             </div>
 
             <%

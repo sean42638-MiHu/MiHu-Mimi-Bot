@@ -58,7 +58,7 @@ module.exports = {
             // 4. 構建精簡查帳 Embed 卡片
             const balanceEmbed = new EmbedBuilder()
                 .setTitle(`🪙 會員帳務與 VIP 狀態總覽`)
-                .setColor(0x9333ea) // 尊爵紫色
+                .setColor(vipInfo.vipColor || '#A855F7')
                 .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
                 .addFields(
                     { name: '👤 會員名稱', value: `${targetUser} (\`${targetUserId}\`)`, inline: false },

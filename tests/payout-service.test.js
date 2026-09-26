@@ -1,0 +1,224 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const os = require('node:os');
+const path = require('node:path');
+const sqlite3 = require('sqlite3').verbose();
+const { test } = require('node:test');
+const { encryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
+
+function createDatabase(pathname) {
+    return new sqlite3.Database(pathname);
+}
+
+function run(db, sql, params = []) {
+    return new Promise((resolve, reject) => db.run(sql, params, function (error) {
+        if (error) return reject(error);
+        resolve({ id: this.lastID, changes: this.changes });
+    }));
+}
+
+function get(db, sql, params = []) {
+    return new Promise((resolve, reject) => db.get(sql, params, (error, row) => error ? reject(error) : resolve(row || null)));
+}
+
+function all(db, sql, params = []) {
+    return new Promise((resolve, reject) => db.all(sql, params, (error, rows) => error ? reject(error) : resolve(rows || [])));
+}
+
+async function setupFixture(databasePath) {
+    const db = createDatabase(databasePath);
+    await run(db, `CREATE TABLE users (
+        id TEXT PRIMARY KEY, studio_id INTEGER, username TEXT, global_name TEXT, custom_nickname TEXT,
+        real_name TEXT, bank_name TEXT,
+        bank_code TEXT, bank_branch TEXT, bank_account TEXT, balance REAL DEFAULT 0
+    )`);
+    await run(db, 'CREATE TABLE user_wallets (user_id TEXT PRIMARY KEY, balance REAL)');
+    await run(db, `CREATE TABLE orders (
+        id INTEGER PRIMARY KEY, boss_id TEXT, talent_id TEXT, staff_id TEXT,
+        studio_id INTEGER, status TEXT, total_amount REAL, discount REAL,
+        unit_price REAL, duration REAL, talent_earning REAL, commission_rate_snapshot REAL,
+        platform_commission REAL, category TEXT
+    )`);
+    await run(db, 'CREATE TABLE talents (user_id TEXT PRIMARY KEY, commission_rate REAL)');
+    await run(db, 'CREATE TABLE commission_settings (category TEXT PRIMARY KEY, rate REAL)');
+    await run(db, `CREATE TABLE payouts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, withdrawal_no TEXT UNIQUE, user_id TEXT NOT NULL,
+        studio_id INTEGER, withdrawal_period TEXT, amount REAL NOT NULL,
+        status TEXT NOT NULL, requested_at TEXT, paid_at TEXT, rejected_at TEXT,
+        rejected_reason TEXT, processed_by TEXT, bank_name_snapshot TEXT, bank_code_snapshot TEXT,
+        bank_branch_snapshot TEXT, account_name_snapshot TEXT, bank_account_snapshot TEXT,
+        created_at TEXT, updated_at TEXT
+    )`);
+    await run(db, `CREATE UNIQUE INDEX idx_payouts_active_period
+        ON payouts(user_id,studio_id,withdrawal_period)
+        WHERE withdrawal_period IS NOT NULL AND status IN ('pending','paid')`);
+    await run(db, `CREATE TABLE payout_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, payout_id INTEGER NOT NULL, withdrawal_no TEXT NOT NULL,
+        user_id TEXT NOT NULL, studio_id INTEGER NOT NULL, type TEXT NOT NULL, amount REAL NOT NULL,
+        available_before REAL NOT NULL, available_after REAL NOT NULL, reserved_before REAL NOT NULL,
+        reserved_after REAL NOT NULL, operator_id TEXT, reason TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(payout_id,type)
+    )`);
+    await run(db, 'CREATE TABLE system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_by TEXT, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    await run(db, `CREATE TABLE audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id TEXT, studio_id INTEGER, action TEXT,
+        target_type TEXT, target_id TEXT, before_data TEXT, after_data TEXT, metadata TEXT,
+        ip_address TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`);
+    for (const [id, username, name, branch, account, balance, studioId] of [
+        ['user-a', 'alice', 'Alice Example', 'Main', '123456789', 100, 1],
+        ['user-b', 'bob', 'Bob Example', 'Main', '987654321', 200, 1],
+        ['user-c', 'carol', 'Carol Example', 'Other', '111222333', 300, 2]
+    ]) {
+        const sensitive = encryptSensitiveFields({
+            real_name: name, bank_name: 'Bank', bank_code: '808', bank_branch: branch, bank_account: account
+        }, ['real_name','bank_name','bank_code','bank_branch','bank_account']);
+        await run(db, `INSERT INTO users (id,studio_id,username,global_name,custom_nickname,real_name,bank_name,bank_code,bank_branch,bank_account,balance)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, studioId, username, username, username,
+            sensitive.real_name, sensitive.bank_name, sensitive.bank_code, sensitive.bank_branch, sensitive.bank_account, balance]);
+    }
+    await run(db, "INSERT INTO user_wallets VALUES ('user-a',100),('user-b',200),('user-c',300)");
+    await run(db, `INSERT INTO orders (id,boss_id,talent_id,studio_id,status,total_amount,discount,unit_price,duration,talent_earning,commission_rate_snapshot,platform_commission,category)
+        VALUES (1,'customer','user-a',1,'completed',10000,0,10000,1,10000,1,0,'陪玩單'),
+               (2,'customer','user-b',1,'completed',8000,0,8000,1,8000,1,0,'陪玩單'),
+               (3,'customer','user-c',2,'completed',5000,0,5000,1,5000,1,0,'陪玩單')`);
+    for (const [key, value] of [
+        ['withdrawal_start_day','2'], ['withdrawal_end_day','6'],
+        ['withdrawal_min_amount','100'], ['business_timezone','Asia/Taipei']
+    ]) await run(db, 'INSERT INTO system_settings (setting_key,setting_value) VALUES (?,?)', [key, value]);
+    return db;
+}
+
+test('payout reserve, paid, reject and batch transitions are atomic and do not touch member wallet', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-payout-service-'));
+    const databasePath = path.join(directory, 'fixture.sqlite');
+    const priorEncryptionKey = process.env.PAYROLL_DATA_ENCRYPTION_KEY;
+    process.env.PAYROLL_DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString('base64');
+    const db = await setupFixture(databasePath);
+    process.env.NODE_ENV = 'test';
+    process.env.TEST_DATABASE_PATH = databasePath;
+    const service = require('../services/payoutService');
+    const testDate = new Date('2026-09-03T12:00:00.000Z');
+
+    try {
+        await run(db, "INSERT INTO payouts (user_id,amount,status) VALUES ('user-b',250,'completed')");
+        const legacySummary = await service.getPayoutSummary({ userId: 'user-b', studioId: 1, date: testDate });
+        assert.equal(legacySummary.paidAmount, 250);
+        assert.equal(legacySummary.availableAmount, 7750);
+        const legacyOverview = await service.getEmployeePayoutOverview({ userId: 'user-b', studioId: 1, date: testDate });
+        assert.equal(legacyOverview.payouts[0].status, 'completed');
+        assert.equal(legacyOverview.bankDetailsReady, true);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 99, date: testDate }), /不得低於/);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 10001, date: testDate }), /超過/);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 100, date: new Date('2026-09-08T12:00:00.000Z') }), /申請期間/);
+
+        const walletBefore = await all(db, 'SELECT user_id,balance FROM user_wallets ORDER BY user_id');
+        const requested = await service.requestWithdrawal({ userId: 'user-a', amount: 3000, date: testDate });
+        assert.equal(requested.status, 'pending');
+        assert.equal(requested.availableAmount, 7000);
+        assert.equal(requested.pendingAmount, 3000);
+        const reserveLedger = await get(db, 'SELECT * FROM payout_ledger WHERE payout_id = ?', [requested.id]);
+        assert.equal(reserveLedger.type, 'PAYOUT_RESERVE');
+        assert.equal(reserveLedger.amount, 3000);
+        assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id='user-a'")).balance, 100);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 100, date: testDate }), /本提款週期已申請過提款/);
+        const studioOnePayouts = await service.listPayouts({ studioId: 1 });
+        assert.ok(studioOnePayouts.every(payout => payout.studio_id === 1));
+        assert.equal(studioOnePayouts.some(payout => payout.user_id === 'user-c'), false);
+        assert.equal(Object.hasOwn(studioOnePayouts[0], 'bank_account_snapshot'), false);
+        assert.equal(Object.hasOwn(studioOnePayouts[0], 'bank_code_snapshot'), false);
+        const sensitivePayouts = await service.listPayouts({ studioId: 1, sensitive: true });
+        assert.equal(sensitivePayouts[0].bank_account, '123456789');
+
+        await service.markPayoutPaid({ payoutId: requested.id, studioId: 1, operatorId: 'manager-a' });
+        const paidPayout = await get(db, 'SELECT status,paid_at,processed_by FROM payouts WHERE id=?', [requested.id]);
+        assert.equal(paidPayout.status, 'paid');
+        assert.equal(paidPayout.processed_by, 'manager-a');
+        assert.ok(paidPayout.paid_at);
+        assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id='user-a'")).balance, 100);
+        await assert.rejects(service.markPayoutPaid({ payoutId: requested.id, studioId: 1, operatorId: 'manager-a' }), /只有 PENDING/);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 1000, date: testDate }), /本提款週期已申請過提款/);
+
+        const octoberDate = new Date('2026-10-03T12:00:00.000Z');
+        const rejected = await service.requestWithdrawal({ userId: 'user-a', amount: 1000, date: octoberDate });
+        await assert.rejects(service.rejectPayout({ payoutId: rejected.id, studioId: 1, operatorId: 'manager-a', reason: '' }), /必須填寫原因/);
+        await service.rejectPayout({ payoutId: rejected.id, studioId: 1, operatorId: 'manager-a', reason: 'Bank details need correction' });
+        assert.equal((await get(db, 'SELECT status,rejected_reason FROM payouts WHERE id=?', [rejected.id])).status, 'rejected');
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payout_ledger WHERE payout_id=? AND type='PAYOUT_RELEASE'", [rejected.id])).count, 1);
+        await assert.rejects(service.rejectPayout({ payoutId: rejected.id, studioId: 1, operatorId: 'manager-a', reason: 'duplicate' }), /只有 PENDING/);
+        const octoberRetry = await service.requestWithdrawal({ userId: 'user-a', amount: 1000, date: new Date('2026-10-05T12:00:00.000Z') });
+        assert.equal(octoberRetry.status, 'pending');
+        await service.rejectPayout({ payoutId: octoberRetry.id, studioId: 1, operatorId: 'manager-a', reason: 'second rejection A123456789 / 123-456-789' });
+        assert.equal((await get(db, 'SELECT rejected_reason FROM payouts WHERE id=?', [octoberRetry.id])).rejected_reason,
+            'second rejection [REDACTED ID] / [REDACTED NUMBER]');
+        assert.equal((await get(db, 'SELECT reason FROM payout_ledger WHERE payout_id=? AND type=?', [octoberRetry.id, 'PAYOUT_RELEASE'])).reason,
+            'second rejection [REDACTED ID] / [REDACTED NUMBER]');
+        const rejectionAudit = await get(db, "SELECT after_data,metadata FROM audit_logs WHERE action='WITHDRAWAL_REJECTED' AND target_id=?", [String(octoberRetry.id)]);
+        assert.doesNotMatch(`${rejectionAudit.after_data} ${rejectionAudit.metadata}`, /A123456789|123-456-789/);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 1000, date: new Date('2026-10-08T12:00:00.000Z') }), /申請期間/);
+        const octoberOverview = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: octoberDate });
+        assert.equal(octoberOverview.pendingAmount, 0);
+        assert.equal(octoberOverview.availableAmount, 7000);
+
+        const novemberDate = new Date('2026-11-03T12:00:00.000Z');
+        const batchOne = await service.requestWithdrawal({ userId: 'user-a', amount: 1000, date: novemberDate });
+        const batchTwo = await service.requestWithdrawal({ userId: 'user-b', amount: 1000, date: novemberDate });
+        const batchResult = await service.markPayoutsPaid({ payoutIds: [batchOne.id,batchTwo.id], studioId: 1, operatorId: 'manager-a' });
+        assert.equal(batchResult.count, 2);
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payouts WHERE id IN (?,?) AND status='paid'", [batchOne.id,batchTwo.id])).count, 2);
+        const batchSettlementRows = await all(db, 'SELECT paid_at,processed_by FROM payouts WHERE id IN (?,?) ORDER BY id', [batchOne.id,batchTwo.id]);
+        assert.equal(new Set(batchSettlementRows.map(row => row.paid_at)).size, 1);
+        assert.ok(batchSettlementRows.every(row => row.processed_by === 'manager-a'));
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM audit_logs WHERE action='WITHDRAWAL_BATCH_PAID'")).count, 1);
+        const batchAudit = await get(db, "SELECT metadata FROM audit_logs WHERE action='WITHDRAWAL_BATCH_PAID'");
+        const batchMetadata = JSON.parse(batchAudit.metadata);
+        assert.equal(batchMetadata.total_count, 2);
+        assert.equal(batchMetadata.total_amount, 2000);
+        assert.equal(batchMetadata.payout_ids.length, 2);
+        const invalidBatchOne = await service.requestWithdrawal({ userId: 'user-a', amount: 100, date: new Date('2027-01-03T12:00:00.000Z') });
+        const invalidBatchTwo = await service.requestWithdrawal({ userId: 'user-b', amount: 100, date: new Date('2027-01-03T12:00:00.000Z') });
+        await assert.rejects(service.markPayoutsPaid({ payoutIds: [invalidBatchOne.id, 'bad-id'], studioId: 1, operatorId: 'manager-a' }), /無效 ID/);
+        await assert.rejects(service.markPayoutsPaid({ payoutIds: [invalidBatchOne.id, invalidBatchOne.id], studioId: 1, operatorId: 'manager-a' }), /重複 ID/);
+        assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM payouts WHERE id IN (?,?) AND status=?', [invalidBatchOne.id,invalidBatchTwo.id,'pending'])).count, 2);
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payout_ledger WHERE payout_id IN (?,?) AND type='PAYOUT_PAID'", [invalidBatchOne.id,invalidBatchTwo.id])).count, 0);
+        assert.deepEqual(await all(db, 'SELECT user_id,balance FROM user_wallets ORDER BY user_id'), walletBefore);
+        const decemberDate = new Date('2026-12-03T12:00:00.000Z');
+        await run(db, `CREATE TRIGGER fail_payout_reserve BEFORE INSERT ON payout_ledger
+            WHEN NEW.type = 'PAYOUT_RESERVE'
+            BEGIN SELECT RAISE(ABORT, 'injected payout reserve failure'); END`);
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-c', amount: 500, date: decemberDate }));
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payouts WHERE withdrawal_period='2026-12'")).count, 0);
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payout_ledger WHERE type='PAYOUT_RESERVE'")).count, 7);
+        assert.deepEqual(await all(db, 'SELECT user_id,balance FROM user_wallets ORDER BY user_id'), walletBefore);
+        await run(db, 'DROP TRIGGER fail_payout_reserve');
+
+        const pendingPayout = await service.requestWithdrawal({ userId: 'user-c', amount: 500, date: decemberDate });
+        await assert.rejects(service.markPayoutsPaid({ payoutIds: [batchOne.id,pendingPayout.id], studioId: 1, operatorId: 'manager-a' }), /整批取消/);
+        assert.equal((await get(db, 'SELECT status FROM payouts WHERE id=?', [pendingPayout.id])).status, 'pending');
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payout_ledger WHERE payout_id=? AND type='PAYOUT_PAID'", [pendingPayout.id])).count, 0);
+
+        await run(db, `CREATE TRIGGER fail_payout_release BEFORE INSERT ON payout_ledger
+            WHEN NEW.type = 'PAYOUT_RELEASE'
+            BEGIN SELECT RAISE(ABORT, 'injected payout release failure'); END`);
+        await assert.rejects(service.rejectPayout({ payoutId: pendingPayout.id, studioId: 1, operatorId: 'manager-a', reason: 'return' }), /找不到/);
+        await assert.rejects(service.rejectPayout({ payoutId: pendingPayout.id, studioId: 2, operatorId: 'manager-a', reason: 'return' }));
+        assert.equal((await get(db, 'SELECT status FROM payouts WHERE id=?', [pendingPayout.id])).status, 'pending');
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payout_ledger WHERE payout_id=? AND type='PAYOUT_RELEASE'", [pendingPayout.id])).count, 0);
+        await run(db, 'DROP TRIGGER fail_payout_release');
+
+        await run(db, `CREATE TRIGGER fail_payout_paid_audit BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'WITHDRAWAL_PAID'
+            BEGIN SELECT RAISE(ABORT, 'injected payout audit failure'); END`);
+        await assert.rejects(service.markPayoutPaid({ payoutId: pendingPayout.id, studioId: 2, operatorId: 'manager-a' }));
+        assert.equal((await get(db, 'SELECT status FROM payouts WHERE id=?', [pendingPayout.id])).status, 'pending');
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM payout_ledger WHERE payout_id=? AND type='PAYOUT_PAID'", [pendingPayout.id])).count, 0);
+        assert.deepEqual(await all(db, 'SELECT user_id,balance FROM user_wallets ORDER BY user_id'), walletBefore);
+    } finally {
+        await new Promise(resolve => db.close(resolve));
+        if (priorEncryptionKey === undefined) delete process.env.PAYROLL_DATA_ENCRYPTION_KEY;
+        else process.env.PAYROLL_DATA_ENCRYPTION_KEY = priorEncryptionKey;
+        try { fs.rmSync(directory, { recursive: true, force: true }); }
+        catch (error) { if (error.code !== 'EPERM' && error.code !== 'EBUSY') throw error; }
+    }
+});

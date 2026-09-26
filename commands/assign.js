@@ -42,7 +42,8 @@ module.exports = {
                     { name: '禮物單', value: '禮物單' },
                     { name: '有獎單', value: '有獎單' },
                     { name: '冠名單', value: '冠名單' },
-                    { name: '活動單', value: '活動單' }
+                    { name: '其他單', value: '其他單' },
+                    { name: '獎金單', value: '獎金單' }
                 ))
         // 5. 時長
         .addNumberOption(option =>

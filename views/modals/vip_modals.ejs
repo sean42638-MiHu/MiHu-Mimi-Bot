@@ -4,7 +4,7 @@
         <div class="modal-content modal-content-glass">
             <div class="modal-header border-0 pb-0">
                 <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
-                    <span id="viewVipTitleBadge" class="vip-badge-pill">VIP 1</span>
+                    <%- include('../partials/vip_badge', { id: 'viewVipTitleBadge', level: 'VIP 1', color: '#A855F7' }) %>
                     <span class="fs-6 text-secondary fw-normal">特權獎勵詳情</span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -55,6 +55,15 @@
                         </div>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="small text-secondary fw-semibold mb-1" for="editVipColor">專屬代表色碼</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="color" id="editVipColorPicker" value="#A855F7" class="form-control form-control-color" title="選擇 VIP 顏色">
+                            <input type="text" id="editVipColor" name="color" class="form-control form-control-glass" maxlength="7" placeholder="#A855F7" pattern="^#?[0-9A-Fa-f]{6}$" required>
+                        </div>
+                        <%- include('../partials/vip_badge', { id: 'editVipColorPreview', level: 'VIP', color: '#A855F7' }) %>
+                    </div>
+
                     <div class="mb-2">
                         <label class="small text-secondary fw-semibold mb-2 d-flex justify-content-between">
                             <span>獎勵特權清單</span>
@@ -91,7 +100,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">等級名稱</label>
-                        <input type="text" name="name" class="form-control form-control-glass" placeholder="VIP 8" required>
+                        <input type="text" id="addVipName" name="name" class="form-control form-control-glass" placeholder="VIP 8" required>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
@@ -102,6 +111,14 @@
                             <label class="small text-secondary fw-semibold mb-1">預存門檻 (T)</label>
                             <input type="number" name="deposit_threshold" class="form-control form-control-glass" placeholder="100000" required>
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small text-secondary fw-semibold mb-1" for="addVipColor">專屬代表色碼</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="color" id="addVipColorPicker" value="#A855F7" class="form-control form-control-color" title="選擇 VIP 顏色">
+                            <input type="text" id="addVipColor" name="color" class="form-control form-control-glass" maxlength="7" placeholder="#A855F7" pattern="^#?[0-9A-Fa-f]{6}$" required>
+                        </div>
+                        <%- include('../partials/vip_badge', { id: 'addVipColorPreview', level: 'VIP', color: '#A855F7' }) %>
                     </div>
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">初始首項獎勵</label>

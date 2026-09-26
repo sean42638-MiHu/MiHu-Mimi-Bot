@@ -1,4 +1,17 @@
 const db = require('../database');
+const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('./vipColor');
+const { resolveVipLevel } = require('./vipResolver');
+const { dbGet, dbRun } = require('./dbHelper');
+const { writeAuditLog } = require('./auditService');
+const { withTransactionGate } = require('./transactionGate');
+
+function getVipColorByLevel(level) {
+    return new Promise(resolve => {
+        db.get('SELECT color FROM vip_tiers WHERE level = ?', [Number(level) || 0], (err, row) => {
+            resolve(normalizeVipColor(row && row.color, DEFAULT_VIP_COLOR));
+        });
+    });
+}
 
 /**
  * 👑 全後台 VIP 自動試算與連動核心 Helper (對接獨立 user_wallets 資金表)
@@ -11,7 +24,7 @@ async function checkAndUpdateVipLevel(userId, lastSingleTopup = 0) {
 
         // 1. 讀取獨立資金表 user_wallets
         const userSql = `
-            SELECT u.id, u.vip_level,
+            SELECT u.id, u.studio_id, u.vip_level,
                    w.manual_spent,
                    w.manual_deposited
             FROM users u
@@ -48,30 +61,41 @@ async function checkAndUpdateVipLevel(userId, lastSingleTopup = 0) {
                         return resolve(Number(user.vip_level || 0));
                     }
 
-                    let calculatedVip = 0; // 未達標預設為 VIP 0 (非 VIP)
-
-                    // 4. 比對雙軌門檻：
-                    //    計算方式 1：累積消費 (totalSpent) >= 門檻消費額
-                    //    計算方式 2：預存/單次充值 (lastSingleTopup 或 totalDeposited) >= 門檻實充額
-                    for (const tier of tiers) {
-                        const reqSpent = Number(tier.spent_threshold ?? tier.min_spent ?? tier.spent ?? 0);
-                        const reqDeposit = Number(tier.deposit_threshold ?? tier.min_deposit ?? tier.deposit ?? 0);
-                        const tierLevel = Number(tier.level ?? tier.vip_level ?? 0);
-
-                        const passSpent = reqSpent > 0 && totalSpent >= reqSpent;
-                        const passDeposit = reqDeposit > 0 && (totalDeposited >= reqDeposit || Number(lastSingleTopup) >= reqDeposit);
-
-                        if (passSpent || passDeposit) {
-                            calculatedVip = Math.max(calculatedVip, tierLevel);
-                        }
-                    }
+                    const calculatedVip = resolveVipLevel({
+                        tiers,
+                        totalSpent,
+                        totalDeposited: Math.max(totalDeposited, Number(lastSingleTopup) || 0),
+                        currentVip: 0
+                    });
 
                     console.log(`👑 [VIP雙軌連動日誌] 會員 [${userId}] ➔ 總累積消費: $${totalSpent} | 總累積實充: $${totalDeposited} | 本次單次充值: $${lastSingleTopup} ➔ 判定 VIP: VIP ${calculatedVip}`);
 
-                    // 5. 寫回 users 資料庫中的 vip_level
-                    db.run('UPDATE users SET vip_level = ? WHERE id = ?', [calculatedVip, userId], (uErr) => {
-                        if (uErr) console.error('❌ 更新 users 表 vip_level 失敗:', uErr);
-                        resolve(calculatedVip);
+                    if (calculatedVip === Number(user.vip_level || 0)) return resolve(calculatedVip);
+                    withTransactionGate(async () => {
+                        await dbRun('BEGIN IMMEDIATE');
+                        try {
+                            const current = await dbGet('SELECT studio_id, vip_level FROM users WHERE id = ?', [userId]);
+                            if (current && Number(current.vip_level || 0) !== calculatedVip) {
+                                await dbRun('UPDATE users SET vip_level = ? WHERE id = ?', [calculatedVip, userId]);
+                                await writeAuditLog({
+                                    operatorId: null,
+                                    studioId: current.studio_id ?? null,
+                                    action: 'vip_auto_recalculation',
+                                    targetType: 'user',
+                                    targetId: userId,
+                                    before: { vip_level: current.vip_level },
+                                    after: { vip_level: calculatedVip },
+                                    metadata: { source: 'vip-resolver' }
+                                });
+                            }
+                            await dbRun('COMMIT');
+                        } catch (updateError) {
+                            await dbRun('ROLLBACK').catch(() => {});
+                            throw updateError;
+                        }
+                    }).then(() => resolve(calculatedVip)).catch(error => {
+                        console.error('VIP recalculation failed:', error && error.code ? error.code : 'audit/database failure');
+                        resolve(Number(user.vip_level || 0));
                     });
                 });
             });
@@ -80,5 +104,6 @@ async function checkAndUpdateVipLevel(userId, lastSingleTopup = 0) {
 }
 
 module.exports = {
-    checkAndUpdateVipLevel
+    checkAndUpdateVipLevel,
+    getVipColorByLevel
 };

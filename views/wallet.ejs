@@ -71,7 +71,7 @@
 
                 <!-- 💳 1. 模組化 3D 信用卡區 (點擊觸發 Modal) -->
                 <div class="d-flex justify-content-center mt-3" style="cursor: pointer;" onclick="openWalletDetailModal()">
-                    <%- include('partials/wallet_card', { user: user }) %>
+                    <%- include('partials/wallet_card', { user: user, vipColor: typeof vipColor !== 'undefined' ? vipColor : (user && user.vip_color) }) %>
                 </div>
 
                 <% 
@@ -105,7 +105,8 @@
                     user: user, 
                     stats: stats, 
                     progressPercent: progressPercent, 
-                    vipGapText: vipGapText 
+                    vipGapText: vipGapText,
+                    vipColor: typeof vipColor !== 'undefined' ? vipColor : (user && user.vip_color)
                 }) %>
             </div>
 

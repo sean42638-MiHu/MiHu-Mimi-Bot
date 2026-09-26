@@ -10,12 +10,13 @@
     const cardHolder = currentShowcaseUser.nickname || currentShowcaseUser.global_name || currentShowcaseUser.username || 'VIP Member';
     const memberId = currentShowcaseUser.id ? `•••• ${currentShowcaseUser.id.slice(-4)}` : '•••• 6746';
     const totalBalance = Number(currentShowcaseUser.balance || 0);
+    const vipColors = Object.fromEntries((vipTiers || []).map(tier => [Number(tier.level), tier.color || '#A855F7']));
 
     const defaultGradient = 'linear-gradient(135deg, #130d24 0%, #1a1033 40%, #0c1829 80%, #06111f 100%)';
     const defaultBorder = 'rgba(168, 85, 247, 0.4)';
     const defaultBadgeBg = 'rgba(168, 85, 247, 0.2)';
     const defaultBadgeColor = '#d8b4fe';
-    const defaultCrownColor = '#f59e0b';
+    const defaultCrownColor = vipColors[3] || '#A855F7';
 %>
 
 <style>
@@ -91,13 +92,6 @@
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
     }
 
-    .vip-badge-pill {
-        background: var(--badge-bg);
-        color: var(--badge-color);
-        border: 1px solid var(--card-border);
-        transition: all 0.3s ease;
-    }
-
     .vip-crown-icon {
         color: var(--crown-color);
         transition: all 0.3s ease;
@@ -137,11 +131,7 @@
                 <div class="vip-card-sim-chip"></div>
                 <i class="fa-solid fa-wifi text-light" style="transform: rotate(90deg); font-size: 1.1rem; opacity: 0.75;"></i>
             </div>
-            <div class="px-3 py-1 rounded-pill fw-bold small d-flex align-items-center gap-2 vip-badge-pill" id="vipBadgePill"
-                 style="--badge-bg: <%= defaultBadgeBg %>; --badge-color: <%= defaultBadgeColor %>; --card-border: <%= defaultBorder %>;">
-                <i class="fa-solid fa-crown vip-crown-icon" id="vipCrownIcon" style="--crown-color: <%= defaultCrownColor %>;"></i>
-                <span id="vipBadgeText">VIP 3</span>
-            </div>
+            <%- include('vip_badge', { id: 'vipBadgePill', iconId: 'vipCrownIcon', labelId: 'vipBadgeText', level: 'VIP 3', color: vipColors[3] || defaultBadgeColor, extraClass: 'vip-badge--card' }) %>
         </div>
 
         <!-- 中排：總餘額 -->
@@ -187,6 +177,7 @@
     function switchVipCardShowcase(level) {
         const theme = jsVipThemes[level];
         if (!theme) return;
+        const vipColor = vipColors[level] || theme.crownColor;
 
         // 1. 切換按鈕高亮
         document.querySelectorAll('.vip-select-btn').forEach((btn, idx) => {
@@ -207,14 +198,12 @@
         // 3. 更新 VIP 標籤與圖示顏色
         const badgeEl = document.getElementById('vipBadgePill');
         if (badgeEl) {
-            badgeEl.style.setProperty('--badge-bg', theme.badgeBg);
-            badgeEl.style.setProperty('--badge-color', theme.badgeColor);
-            badgeEl.style.setProperty('--card-border', theme.border);
+            badgeEl.style.setProperty('--vip-color', vipColor);
         }
 
         const crownEl = document.getElementById('vipCrownIcon');
         if (crownEl) {
-            crownEl.style.setProperty('--crown-color', theme.crownColor);
+            crownEl.style.color = vipColor;
         }
 
         const textEl = document.getElementById('vipBadgeText');

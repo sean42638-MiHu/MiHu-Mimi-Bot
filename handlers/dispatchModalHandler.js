@@ -1,8 +1,8 @@
 const { EmbedBuilder } = require('discord.js');
 const db = require('../database');
 const { syncOrdersJsonFromDb } = require('../utils/dataSync');
-const { adjustUserWallet } = require('../utils/walletHelper');
-const { calculateCommissionByCategory, getStudioIdForUser, resolveServiceId } = require('../utils/commissionHelper');
+const { getStudioIdForUser } = require('../utils/commissionHelper');
+const { createOrder } = require('../utils/orderService');
 const { checkChannelPermissions } = require('../utils/permissionHelper');
 const { createMihuEmbed, BRAND_COLORS } = require('../utils/embedBuilder');
 
@@ -51,16 +51,11 @@ async function handleDispatchModal(interaction) {
 
         // 2. 依客服所屬工作室與服務項目取得當下成數
         const studioId = await getStudioIdForUser(csUserId);
-        const serviceId = await resolveServiceId(studioId, game, category);
-        const { commissionRatePercent, talentShareRate, platformCommission, talentNetEarning } = await calculateCommissionByCategory(
-            category, finalPrice, totalPrice, null, { studioId, serviceId }
-        );
 
         // 3. 驗證闆闆會員與錢包餘額
         const walletRow = await new Promise((resolve) => {
             db.get('SELECT * FROM user_wallets WHERE user_id = ?', [bossId], (err, row) => {
-                if (row) return resolve(row);
-                db.get('SELECT balance, bonus_balance FROM users WHERE id = ?', [bossId], (uErr, uRow) => resolve(uRow || null));
+                resolve(row || null);
             });
         });
 
@@ -86,15 +81,6 @@ async function handleDispatchModal(interaction) {
             }).catch(() => {});
         }
 
-        // 4. 進行錢包扣款
-        await adjustUserWallet({
-            userId: bossId,
-            addAmount: -finalPrice,
-            bonusChange: 0,
-            reason: `大廳派單扣款 (${category})`,
-            operatorId: interaction.user.id
-        });
-
         const contentTier = interaction.fields.getTextInputValue('dispatch_content');
         const extra = interaction.fields.getTextInputValue('dispatch_extra') || '無';
         const note = interaction.fields.getTextInputValue('dispatch_note') || '無';
@@ -109,27 +95,29 @@ async function handleDispatchModal(interaction) {
         const csUser = interaction.user;
         const csName = sessionData.csName || interaction.member?.nickname || csUser.globalName || csUser.username;
 
-        // 5. 寫入訂單與建立當下的佣金快照
-        await new Promise((resolve, reject) => {
-            const insertSql = `
-                INSERT INTO orders (
-                    order_no, boss_id, cs_id, cs_name, category, 
-                    game, content_tier, duration, unit, unit_price,
-                    total_amount, discount, extra, note, status, 
-                    studio_id, service_id, commission_rate_snapshot,
-                    platform_commission, talent_earning, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, DATETIME('now', 'localtime'))
-            `;
-            db.run(insertSql, [
-                orderNo, bossId, csUserId, csName, category,
-                game, contentTier, duration, unit, unitPrice,
-                finalPrice, discountAmount, extra, note,
-                studioId, serviceId, talentShareRate,
-                platformCommission, talentNetEarning
-            ], function(err) {
-                if (err) reject(err);
-                else resolve(this.lastID);
-            });
+        // OrderService owns the order, payment ledger and audit transaction.
+        await createOrder({
+            orderNo,
+            bossId,
+            csId: csUserId,
+            csName,
+            category,
+            game,
+            contentTier,
+            duration,
+            unit,
+            unitPrice,
+            originalAmount: totalPrice,
+            finalAmount: finalPrice,
+            discount: discountAmount,
+            extra,
+            note,
+            studioId,
+            status: 'pending',
+            walletDelta: -finalPrice,
+            walletReason: `大廳派單扣款 (${category})`,
+            operatorId: interaction.user.id,
+            source: 'discord-dispatch-modal'
         });
 
         syncOrdersJsonFromDb();

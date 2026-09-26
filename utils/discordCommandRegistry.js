@@ -7,6 +7,7 @@ const {
 } = require('../config/discordCommandPolicy');
 
 async function registerGuildCommands(rest, applicationId, commandCollection, env = process.env) {
+    assertMutationEnabled(env, 'DISCORD_COMMAND_REGISTRATION_ENABLED');
     if (!applicationId) throw new Error('DISCORD_CLIENT_ID is required to register commands');
 
     const missingVariables = getMissingGuildVariables(env);
@@ -67,6 +68,7 @@ async function registerGuildCommands(rest, applicationId, commandCollection, env
 }
 
 async function clearGuildCommands(rest, applicationId, env = process.env) {
+    assertMutationEnabled(env, 'DISCORD_COMMAND_CLEAR_ENABLED');
     if (!applicationId) throw new Error('DISCORD_CLIENT_ID is required to clear commands');
 
     const missingVariables = getMissingGuildVariables(env);
@@ -85,6 +87,13 @@ async function clearGuildCommands(rest, applicationId, env = process.env) {
         await rest.put(Routes.applicationGuildCommands(applicationId, guildId), { body: [] });
     }
     return guildIds.length;
+}
+
+function assertMutationEnabled(env, flag) {
+    if (env.NODE_ENV === 'test' && env.ALLOW_EXTERNAL_MUTATIONS_IN_TEST !== 'true') {
+        throw new Error('Discord REST mutations are disabled in tests');
+    }
+    if (env[flag] !== 'true') throw new Error(`Set ${flag}=true for explicit Discord REST mutation`);
 }
 
 module.exports = { clearGuildCommands, registerGuildCommands };

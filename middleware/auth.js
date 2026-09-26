@@ -23,7 +23,7 @@ function requirePerm(permNode) {
             return next();
         }
 
-        res.redirect('/dashboard?error=' + encodeURIComponent('您的身分組無權限訪問該功能模組'));
+        return res.status(403).send('您的身分組無權限訪問該功能模組');
     };
 }
 

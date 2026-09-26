@@ -40,7 +40,7 @@
                 <div class="stat-label-text text-success"><i class="fa-solid fa-wallet"></i>本月可提領薪資</div>
                 <div class="stat-val-huge text-success">$<%= Number(stats.availableToWithdraw).toLocaleString() %></div>
             </div>
-            <div class="stat-sub-note">目前尚未提領之可用薪資餘額</div>
+            <div class="stat-sub-note">可用薪資；另有 $<%= Number(stats.pendingWithdrawals).toLocaleString() %> 正在撥款中</div>
         </div>
     </div>
 </div>

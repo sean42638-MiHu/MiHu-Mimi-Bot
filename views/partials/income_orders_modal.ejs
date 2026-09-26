@@ -79,10 +79,10 @@
                                     const isCompleted = (o.status === 'completed');
 
                                     // 🚀 工作室全域分潤成數 (1 - 工作室抽成%)
-                                    const defaultNetRates = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '有獎': 0.90, '冠名單': 0.85, '冠名': 0.85, '獎金': 1.00 };
+                                    const defaultNetRates = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '有獎': 0.90, '冠名單': 0.85, '冠名': 0.85, '其他單': 0.80, '其他': 0.80, '獎金單': 1.00, '獎金': 1.00 };
                                     let catNetRate = defaultNetRates[cat] !== undefined ? defaultNetRates[cat] : 0.80;
 
-                                    const legacyCat = cat === '有獎單' ? '有獎' : (cat === '冠名單' ? '冠名' : cat);
+                                    const legacyCat = cat === '有獎單' ? '有獎' : (cat === '冠名單' ? '冠名' : (cat === '其他單' ? '其他' : (cat === '獎金單' ? '獎金' : cat)));
                                     const categoryRate = globalCommissions && (globalCommissions[cat] ?? globalCommissions[legacyCat]);
                                     if (typeof globalCommissions !== 'undefined' && globalCommissions && categoryRate !== undefined) {
                                         const rawRate = Number(categoryRate);

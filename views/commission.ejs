@@ -6,208 +6,236 @@
     <title>抽佣設定 · 米胡電競 MiHu Gaming</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg-color: #0b0914;
-            --sidebar-bg: #131021;
-            --card-bg: rgba(23, 19, 38, 0.85);
-            --card-border: rgba(168, 85, 247, 0.2);
-            --mihu-purple-light: #c084fc;
-            --text-light: #f3f4f6;
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-light);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        .commission-page,
+        .commission-page * { box-sizing: border-box; }
+        .commission-page {
+            --commission-bg: #080711;
+            --commission-panel-bg: rgba(15, 23, 42, 0.58);
+            --commission-line: rgba(255, 255, 255, 0.08);
+            --commission-muted: rgba(255, 255, 255, 0.55);
+            --commission-matrix-row-height: 68px;
+            --commission-matrix-header-height: 54px;
             display: flex;
             min-height: 100vh;
+            color: #f8fafc;
+            background: radial-gradient(circle at 12% 8%, rgba(124, 58, 237, 0.12), transparent 30%), var(--commission-bg);
+            font-family: "Rajdhani", "Segoe UI", sans-serif;
         }
-
-        .main-wrapper {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            max-height: 100vh;
-        }
-
-        .content-body { padding: 20px 36px 32px; flex-grow: 1; }
-
-        .glass-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 20px;
-            padding: 28px;
-            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
-            backdrop-filter: blur(15px);
-        }
-
-        .category-item-box {
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 14px;
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: all 0.2s ease;
-        }
-        .category-item-box:hover {
-            border-color: rgba(168, 85, 247, 0.35);
-            background: rgba(168, 85, 247, 0.05);
-        }
-
-        .category-badge {
-            font-size: 0.85rem;
-            font-weight: 700;
-            padding: 5px 14px;
-            border-radius: 20px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .badge-陪玩單 { background: rgba(168, 85, 247, 0.18); border: 1px solid rgba(168, 85, 247, 0.4); color: #d8b4fe; }
-        .badge-禮物單 { background: rgba(236, 72, 153, 0.18); border: 1px solid rgba(236, 72, 153, 0.4); color: #f472b6; }
-        .badge-有獎單 { background: rgba(56, 189, 248, 0.18); border: 1px solid rgba(56, 189, 248, 0.4); color: #7dd3fc; }
-        .badge-冠名單 { background: rgba(245, 158, 11, 0.18); border: 1px solid rgba(245, 158, 11, 0.4); color: #fde047; }
-        .badge-獎金   { background: rgba(16, 185, 129, 0.18); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; }
-
-        .form-control-glass {
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            border: 1px solid rgba(255, 255, 255, 0.18) !important;
-            color: #ffffff !important;
-            border-radius: 12px;
-            padding: 8px 14px;
-            font-size: 0.95rem;
-            font-weight: 700;
-            font-family: monospace;
-            width: 120px;
-            text-align: right;
-        }
-        .form-control-glass:focus {
-            background-color: #171326 !important;
-            border-color: #c084fc !important;
-            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.3) !important;
-            outline: none !important;
+        .commission-page .commission-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; max-height: 100vh; }
+        .commission-page .commission-content { width: 100%; padding: 20px 36px 32px; }
+        .commission-page .commission-shell { width: 100%; max-width: none; margin: 0; }
+        .commission-page .commission-page-header { width: 100%; margin-bottom: 18px; }
+        .commission-page .commission-page-heading { display: flex; flex-direction: column; align-items: flex-start; }
+        .commission-page .commission-page-title { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; color: #fff; font-size: 1.5rem; font-weight: 700; line-height: 1.25; }
+        .commission-page .commission-page-title i { color: #fde047; }
+        .commission-page .commission-page-subtitle { margin: 0; font-size: 0.875rem; line-height: 1.6; }
+        .commission-page .commission-main-grid { margin-bottom: 0; }
+        .commission-page .commission-main-column, .commission-page .commission-tip-column { margin-top: 0; }
+        .commission-page .commission-smart-callout { width: 100%; height: fit-content; padding: 18px 20px; box-sizing: border-box; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 16px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 0 18px rgba(56, 189, 248, 0.05); }
+        .commission-page .commission-smart-callout-title { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; color: #38bdf8; font-size: 15px; font-weight: 700; line-height: 1.25; }
+        .commission-page .commission-smart-callout-text { margin: 0; color: rgba(203, 213, 225, 0.76); font-size: 13.5px; font-weight: 400; line-height: 1.6; }
+        .commission-page .commission-content-block { width: 100%; max-width: 1050px; margin-left: 0; margin-right: 0; }
+        .commission-page .commission-category-manager-row { margin-top: 18px; }
+        .commission-page .commission-panel { width: 100%; background: var(--commission-panel-bg); border: 1px solid var(--commission-line); border-radius: 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); overflow: hidden; }
+        .commission-page .commission-panel + .commission-panel { margin-top: 16px; }
+        .commission-page .commission-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; }
+        .commission-page .commission-panel-title { margin: 0; font-size: 1.15rem; font-weight: 700; line-height: 1.3; letter-spacing: 0.03em; }
+        .commission-page .commission-panel-note { margin: 4px 0 0; color: var(--commission-muted); font-size: 0.875rem; line-height: 1.5; }
+        .commission-page .commission-table-wrap { width: 100%; overflow: hidden; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+        .commission-page .commission-table-scroll { width: 100%; max-height: calc(var(--commission-matrix-header-height) + (var(--commission-matrix-row-height) * 5)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(168, 85, 247, 0.55) rgba(15, 23, 42, 0.6); -webkit-overflow-scrolling: touch; }
+        .commission-page .commission-table-scroll::-webkit-scrollbar { width: 6px; }
+        .commission-page .commission-table-scroll::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 999px; }
+        .commission-page .commission-table-scroll::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.42); border-radius: 999px; box-shadow: 0 0 8px rgba(168, 85, 247, 0.14); }
+        .commission-page .commission-table-scroll::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.78); box-shadow: 0 0 10px rgba(168, 85, 247, 0.22); }
+        .commission-page .commission-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+        .commission-page .commission-table-head { background: rgba(124, 58, 237, 0.08); }
+        .commission-page .commission-table-heading { position: sticky; top: 0; z-index: 2; height: var(--commission-matrix-header-height); padding: 16px 20px; color: var(--commission-muted); background: rgba(11, 9, 20, 0.96); font-size: 0.84rem; font-weight: 700; letter-spacing: 0.03em; text-align: left; }
+        .commission-page .commission-col-category { width: 28%; text-align: left; }
+        .commission-page .commission-col-rate { width: 47%; text-align: center; }
+        .commission-page .commission-col-action { width: 25%; text-align: right; }
+        .commission-page .commission-row { border-top: 1px solid rgba(255, 255, 255, 0.06); transition: background-color 150ms ease, border-color 150ms ease; }
+        .commission-page .commission-row:hover { background: rgba(139, 92, 246, 0.06); }
+        .commission-page .commission-cell { padding: 15px 20px; vertical-align: middle; font-size: 0.92rem; }
+        .commission-page .commission-category-badge { display: inline-flex; align-items: center; width: fit-content; gap: 7px; padding: 5px 14px; border: 1px solid; border-radius: 999px; font-size: 0.9rem; font-weight: 600; line-height: 1.25; white-space: nowrap; }
+        .commission-page .commission-category-badge i { font-size: 0.85rem; }
+        .commission-page .commission-category-badge--play { color: #c4b5fd; background: rgba(139, 92, 246, 0.12); border-color: rgba(139, 92, 246, 0.42); box-shadow: 0 0 10px rgba(139, 92, 246, 0.08); }
+        .commission-page .commission-category-badge--gift { color: #fbcfe8; background: rgba(236, 72, 153, 0.12); border-color: rgba(236, 72, 153, 0.42); box-shadow: 0 0 10px rgba(236, 72, 153, 0.08); }
+        .commission-page .commission-category-badge--prize { color: #fef3c7; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.42); box-shadow: 0 0 10px rgba(245, 158, 11, 0.08); }
+        .commission-page .commission-category-badge--title { color: #dbeafe; background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.42); box-shadow: 0 0 10px rgba(59, 130, 246, 0.08); }
+        .commission-page .commission-category-badge--other { color: #e5e7eb; background: rgba(107, 114, 128, 0.14); border-color: rgba(107, 114, 128, 0.42); box-shadow: 0 0 10px rgba(107, 114, 128, 0.08); }
+        .commission-page .commission-category-badge--bonus { color: #d1fae5; background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.42); box-shadow: 0 0 10px rgba(16, 185, 129, 0.08); }
+        .commission-page .commission-category-badge--custom { color: #cffafe; background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.42); box-shadow: 0 0 10px rgba(6, 182, 212, 0.08); }
+        .commission-page .commission-rate-control { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .commission-page .commission-rate-unit { font-size: 12px; font-weight: 600; color: var(--commission-muted); }
+        .commission-page .commission-rate-display { display: inline-flex; align-items: baseline; justify-content: center; gap: 5px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 1.1rem; font-weight: 700; color: #fde047; line-height: 1; }
+        .commission-page .commission-rate-display-unit { font-size: 0.8em; font-weight: 600; color: rgba(253, 224, 71, 0.72); }
+        .commission-page .commission-manage-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 13px; border: 1px solid rgba(103, 232, 249, 0.28); border-radius: 9px; color: #a5f3fc; background: rgba(6, 182, 212, 0.08); font-size: 0.9rem; font-weight: 600; transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
+        .commission-page .commission-manage-btn:hover { color: #fff; border-color: rgba(103, 232, 249, 0.65); background: rgba(6, 182, 212, 0.18); }
+        .commission-page .commission-manage-btn i { font-size: 0.85rem; }
+        .commission-page .commission-panel-empty { margin: 0; padding: 14px; color: var(--commission-muted); font-size: 12px; }
+        .commission-page .commission-category-form { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+        .commission-page .commission-category-label { color: var(--commission-muted); font-size: 0.875rem; white-space: nowrap; }
+        .commission-page .commission-category-label--rate { margin-left: 6px; }
+        .commission-page .commission-category-input { flex: 1; min-width: 0; min-height: 40px; padding: 8px 12px; font-size: 0.9rem; line-height: 1.4; color: #fff; background: rgba(0, 0, 0, 0.24); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; }
+        .commission-page .commission-category-rate-input { width: 72px; min-height: 40px; padding: 8px 10px; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.9rem; color: #fde047; background: rgba(0, 0, 0, 0.24); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; }
+        .commission-page .commission-category-input:focus, .commission-page .commission-category-rate-input:focus { border-color: rgba(103, 232, 249, 0.5); outline: none; }
+        .commission-page .commission-category-input::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; }
+        .commission-page .commission-category-add-btn { min-height: 40px; padding: 8px 14px; border: 1px solid rgba(6, 182, 212, 0.42); border-radius: 9px; color: #cffafe; background: rgba(6, 182, 212, 0.14); font-size: 0.9rem; font-weight: 600; transition: background-color 150ms ease, border-color 150ms ease; }
+        .commission-page .commission-category-add-btn:hover { background: rgba(6, 182, 212, 0.24); border-color: rgba(103, 232, 249, 0.65); }
+        .commission-page .commission-category-scroll { --commission-category-row-height: 52px; max-height: calc(var(--commission-category-row-height) * 5); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(139, 92, 246, 0.35) rgba(255, 255, 255, 0.03); }
+        .commission-page .commission-category-scroll::-webkit-scrollbar { width: 6px; }
+        .commission-page .commission-category-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); }
+        .commission-page .commission-category-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.35); border-radius: 999px; }
+        .commission-page .commission-category-scroll::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.55); }
+        .commission-page .commission-category-item { min-height: var(--commission-category-row-height); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; border-top: 1px solid rgba(255, 255, 255, 0.06); font-size: 0.9rem; }
+        .commission-page .commission-category-item:hover { background: rgba(139, 92, 246, 0.06); }
+        .commission-page .commission-delete-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 8px; color: rgba(255, 255, 255, 0.45); background: transparent; transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease; }
+        .commission-page .commission-delete-btn:hover { color: #fca5a5; border-color: rgba(248, 113, 113, 0.42); background: rgba(239, 68, 68, 0.08); }
+        .commission-page .commission-edit-modal .modal-dialog { max-width: 420px; }
+        .commission-page .commission-modal-content { background: linear-gradient(145deg, rgba(11, 9, 20, 0.98), rgba(15, 23, 42, 0.96)); border: 1px solid rgba(139, 92, 246, 0.28); border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 24px rgba(139, 92, 246, 0.08); }
+        .commission-page .commission-modal-header { padding: 13px 16px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+        .commission-page .commission-modal-title { margin: 0; color: #f8fafc; font-size: 16px; font-weight: 600; }
+        .commission-page .commission-modal-title i { color: #67e8f9; }
+        .commission-page .commission-modal-body { padding: 16px; }
+        .commission-page .commission-modal-label { display: block; margin-bottom: 8px; color: var(--commission-muted); font-size: 12px; }
+        .commission-page .commission-modal-rate-control { display: inline-flex; align-items: center; gap: 6px; }
+        .commission-page .commission-modal-rate-input { width: 84px; height: 34px; padding: 4px 8px; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 15px; font-weight: 600; color: #fde047; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; }
+        .commission-page .commission-modal-rate-input:focus { border-color: rgba(253, 224, 71, 0.55); box-shadow: 0 0 0 2px rgba(253, 224, 71, 0.08); outline: none; }
+        .commission-page .commission-modal-rate-unit { color: rgba(253, 224, 71, 0.7); font-size: 12px; font-weight: 600; }
+        .commission-page .commission-modal-error { display: none; margin-bottom: 12px; padding: 8px 10px; border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 8px; color: #fecaca; background: rgba(239, 68, 68, 0.08); font-size: 12px; }
+        .commission-page .commission-modal-error.is-visible { display: block; }
+        .commission-page .commission-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 13px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+        .commission-page .commission-modal-footer-actions { display: flex; align-items: center; gap: 8px; }
+        .commission-page .commission-modal-delete-btn, .commission-page .commission-modal-cancel-btn, .commission-page .commission-modal-save-btn { min-height: 30px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .commission-page .commission-modal-delete-btn { border: 1px solid rgba(248, 113, 113, 0.28); color: #fca5a5; background: rgba(239, 68, 68, 0.08); }
+        .commission-page .commission-modal-delete-btn:hover { border-color: rgba(248, 113, 113, 0.6); background: rgba(239, 68, 68, 0.16); }
+        .commission-page .commission-modal-cancel-btn { border: 1px solid rgba(255, 255, 255, 0.12); color: var(--commission-muted); background: transparent; }
+        .commission-page .commission-modal-save-btn { border: 1px solid rgba(16, 185, 129, 0.4); color: #d1fae5; background: rgba(16, 185, 129, 0.16); }
+        .commission-page .commission-modal-save-btn:hover { background: rgba(16, 185, 129, 0.26); }
+        .commission-page .commission-panel-kicker { color: #c4b5fd; font-family: "Orbitron", sans-serif; font-size: 0.72rem; letter-spacing: 0.09em; text-transform: uppercase; }
+        @media (max-width: 768px) {
+            .commission-page .commission-content { padding: 16px 14px 24px; }
+            .commission-page .commission-shell { max-width: 100%; }
+            .commission-page { --commission-matrix-row-height: 54px; --commission-matrix-header-height: 44px; }
+            .commission-page .commission-page-header { margin-bottom: 16px; }
+            .commission-page .commission-col-category { width: 35%; }
+            .commission-page .commission-col-rate { width: 45%; }
+            .commission-page .commission-col-action { width: 20%; }
+            .commission-page .commission-cell, .commission-page .commission-table-heading { padding: 7px 8px; }
+            .commission-page .commission-table-heading, .commission-page .commission-cell { overflow: hidden; }
+            .commission-page .commission-category-badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+            .commission-page .commission-category-form { flex-wrap: wrap; }
+            .commission-page .commission-category-label--rate { margin-left: 0; }
+            .commission-page .commission-category-input { flex-basis: calc(100% - 76px); }
         }
     </style>
 </head>
 <body>
+<div class="commission-page">
 
 <%- include('partials/sidebar', { activePage: 'commission' }) %>
 
-<div class="main-wrapper">
+<div class="commission-main">
     <%- include('partials/navbar', { activePage: 'commission' }) %>
 
-    <div class="content-body">
-        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-            <div>
-                <div class="page-title-text" style="font-size: 1.5rem; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <i class="fa-solid fa-percent text-warning"></i>
-                    <span>米胡電競分潤設定</span>
-                </div>
-                <p class="text-secondary small mb-0">設定米胡電競各訂單類別與服務項目的陪玩實得成數</p>
-            </div>
-        </div>
-
-        <% if (typeof success !== 'undefined' && success) { %>
-            <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">
-                ✅ 工作室分潤設定已更新！
-            </div>
-        <% } %>
-        <% if (typeof error !== 'undefined' && error) { %>
-            <div class="alert alert-danger py-2 px-3 small mb-4 border-0 bg-danger bg-opacity-25 text-danger"><%= error %></div>
-        <% } %>
-
-        <div class="glass-card mb-4" style="max-width: 900px;">
-            <form action="/system/commission/update" method="POST">
-                <input type="hidden" name="studio_id" value="<%= selectedStudioId %>">
-                <div class="alert alert-info py-2 px-3 small mb-4 bg-info bg-opacity-10 border-info border-opacity-25 text-info d-flex align-items-center gap-2">
-                    <i class="fa-solid fa-circle-info fs-6"></i>
-                    <span><strong>比例單位：</strong> 填寫 0 到 1 的陪玩實拿比例，例如 <code>0.7</code> 為 70%；個別服務設定優先於陪玩個人特例，再回退至此類別預設。</span>
-                </div>
-
-                <h6 class="text-white fw-bold mb-3">工作室類別預設</h6>
-                <div class="d-flex flex-column gap-3 mb-4">
-                    <% const categories = ["陪玩單", "禮物單", "有獎單", "冠名單", "獎金"]; %>
-                    <% categories.forEach(cat => { 
-                        const currentRate = commission[cat] !== undefined ? Number(commission[cat]) : 0.8;
-                    %>
-                        <div class="category-item-box">
-                            <div class="d-flex align-items-center gap-3">
-                                <span class="category-badge badge-<%= cat %>"><%= cat %></span>
-                                <span class="small text-secondary">類別 fallback</span>
-                            </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <input type="number" step="0.01" min="0" max="1" name="rates[<%= cat %>]" value="<%= currentRate %>" class="form-control form-control-glass" required>
-                                <span class="fw-bold text-warning font-monospace" style="width: 45px;"><%= (currentRate * 100).toFixed(0) %>%</span>
-                            </div>
-                        </div>
-                    <% }) %>
-                </div>
-
-                <h6 class="text-white fw-bold mb-3">服務項目成數</h6>
-                <% if (!services || services.length === 0) { %>
-                    <p class="small text-secondary">尚無服務項目；新增服務後即可設定個別成數。</p>
-                <% } else { %>
-                    <div class="table-responsive mb-4">
-                        <table class="table table-dark table-sm align-middle mb-0">
-                            <thead><tr><th>服務項目</th><th>類別</th><th class="text-end">陪玩實拿比例</th></tr></thead>
-                            <tbody>
-                                <% services.forEach(service => { %>
-                                    <tr>
-                                        <td><%= service.name %></td>
-                                        <td><%= service.category %></td>
-                                        <td class="text-end">
-                                            <input type="number" step="0.01" min="0" max="1" name="service_rate_<%= service.id %>" value="<%= service.talent_share_rate === null ? '' : service.talent_share_rate %>" placeholder="沿用類別" class="form-control form-control-glass ms-auto">
-                                        </td>
-                                    </tr>
-                                <% }) %>
-                            </tbody>
-                        </table>
+    <div class="commission-content">
+        <div class="commission-shell">
+            <div class="commission-content-block">
+                <div class="commission-page-header">
+                    <div class="commission-page-heading">
+                        <div class="commission-page-title"><i class="fa-solid fa-coins"></i><span>抽傭與類別管理</span></div>
+                        <p class="commission-page-subtitle text-secondary">即時掌握全站訂單類別分潤成數設定，連動 Discord Bot 結算與個人特例（分潤依原價計算，不承擔折扣）</p>
                     </div>
+                </div>
+
+                <% if (typeof success !== 'undefined' && success) { %>
+                    <div class="alert alert-success py-2 px-3 small mb-3 border-0 bg-success bg-opacity-25 text-success">✅ 類別抽佣設定已更新！</div>
+                <% } %>
+                <% if (typeof error !== 'undefined' && error) { %>
+                    <div class="alert alert-danger py-2 px-3 small mb-3 border-0 bg-danger bg-opacity-25 text-danger"><%= error %></div>
                 <% } %>
 
-                <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-warning rounded-pill px-4 fw-bold text-dark" style="background: linear-gradient(135deg, #fde047, #eab308); border: none;">
-                        <i class="fa-solid fa-floppy-disk me-1.5"></i>儲存分潤設定
-                    </button>
+                <div class="row g-3 align-items-start commission-main-grid">
+                    <div class="col-lg-8 col-md-7 commission-main-column">
+                        <%- include('partials/commission_category_list', { categories }) %>
+                    </div>
+                    <div class="col-lg-4 col-md-5 commission-tip-column">
+                        <aside class="commission-smart-callout">
+                            <div class="commission-smart-callout-title"><i class="fa-solid fa-lightbulb"></i><span>智慧提示</span></div>
+                            <p class="commission-smart-callout-text">比例代表陪玩實得成數；系統依訂單類別連動計算，個人特例仍優先套用，折扣差額不會從陪玩收益扣除。</p>
+                        </aside>
+                    </div>
                 </div>
-            </form>
-        </div>
 
-        <div class="glass-card mb-4" style="max-width: 900px;">
-            <h6 class="text-white fw-bold mb-3">新增服務項目</h6>
-            <form action="/system/commission/services" method="POST" class="row g-3 align-items-end">
-                <input type="hidden" name="studio_id" value="<%= selectedStudioId %>">
-                <div class="col-md-5">
-                    <label class="form-label small text-secondary">服務名稱</label>
-                    <input type="text" name="name" maxlength="100" class="form-control form-control-glass w-100 text-start" required>
+                <div class="row">
+                    <div class="col-lg-8 col-md-7 commission-category-manager-row">
+                        <%- include('partials/commission_add_category', { categories }) %>
+                    </div>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small text-secondary">類別</label>
-                    <select name="category" class="form-select">
-                        <% ["陪玩單", "禮物單", "有獎單", "冠名單", "獎金"].forEach(cat => { %>
-                            <option value="<%= cat %>"><%= cat %></option>
-                        <% }) %>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-secondary">實拿比例</label>
-                    <input type="number" name="talent_share_rate" min="0" max="1" step="0.01" placeholder="類別預設" class="form-control form-control-glass w-100">
-                </div>
-                <div class="col-md-2 d-grid">
-                    <button type="submit" class="btn btn-outline-info"><i class="fa-solid fa-plus me-1"></i>新增</button>
-                </div>
-            </form>
-        </div>
+                <%- include('modals/commission_edit_modal') %>
+            </div>
 
+        </div>
     </div>
 </div>
 
+    </div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (() => {
+        const modalElement = document.getElementById('commissionEditModal');
+        const modalCategoryName = document.getElementById('commissionEditModalCategoryName');
+        const editCategoryName = document.getElementById('commissionEditCategoryName');
+        const deleteCategoryName = document.getElementById('commissionDeleteCategoryName');
+        const rateInput = document.getElementById('commissionEditRate');
+        const errorElement = document.getElementById('commissionModalError');
+
+        window.openEditCategoryModal = (categoryName, currentRate) => {
+            if (!modalElement || !modalCategoryName || !editCategoryName || !deleteCategoryName || !rateInput) return;
+            modalCategoryName.textContent = categoryName;
+            editCategoryName.value = categoryName;
+            deleteCategoryName.value = categoryName;
+            rateInput.value = currentRate;
+            if (errorElement) {
+                errorElement.textContent = '';
+                errorElement.classList.remove('is-visible');
+            }
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        };
+
+        document.addEventListener('click', event => {
+            const manageButton = event.target.closest('.commission-manage-btn');
+            if (!manageButton) return;
+            window.openEditCategoryModal(manageButton.dataset.categoryName, manageButton.dataset.currentRate);
+        });
+
+        ['commissionEditForm', 'commissionDeleteForm'].forEach(formId => {
+            document.getElementById(formId)?.addEventListener('submit', event => {
+                const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+                if (submitButton) submitButton.disabled = true;
+            });
+        });
+
+        modalElement?.addEventListener('hidden.bs.modal', () => {
+            if (modalCategoryName) modalCategoryName.textContent = '';
+            if (editCategoryName) editCategoryName.value = '';
+            if (deleteCategoryName) deleteCategoryName.value = '';
+            if (rateInput) rateInput.value = '';
+            if (errorElement) {
+                errorElement.textContent = '';
+                errorElement.classList.remove('is-visible');
+            }
+            document.querySelectorAll('#commissionEditForm button[type="submit"], #commissionDeleteForm button[type="submit"]').forEach(button => {
+                button.disabled = false;
+            });
+        });
+    })();
+</script>
 <%- include('partials/feature_modal') %>
 </body>
 </html>

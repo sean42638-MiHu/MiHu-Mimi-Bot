@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const db = require('../database');
 const { syncOrdersJsonFromDb } = require('../utils/dataSync');
+const { startOrder, completeOrder } = require('../utils/orderService');
 
 module.exports = async function handleButtonInteraction(interaction) {
     const customId = interaction.customId;
@@ -14,9 +15,11 @@ module.exports = async function handleButtonInteraction(interaction) {
                 return interaction.reply({ content: '🚫 您不是此訂單的接單陪陪，無法操作計時！', flags: MessageFlags.Ephemeral });
             }
 
-            const startTimeStr = new Date().toISOString();
-            db.run('UPDATE orders SET status = "in_progress", start_time = ? WHERE order_no = ?', [startTimeStr, orderNo], (upErr) => {
-                if (upErr) return interaction.reply({ content: '❌ 開始計時失敗！', flags: MessageFlags.Ephemeral });
+            try {
+                await startOrder(orderNo, interaction.user.id);
+            } catch (error) {
+                return interaction.reply({ content: '❌ 開始計時失敗！', flags: MessageFlags.Ephemeral });
+            }
                 
                 syncOrdersJsonFromDb();
 
@@ -33,7 +36,6 @@ module.exports = async function handleButtonInteraction(interaction) {
                     embeds: [updatedEmbed], 
                     components: [stopRow] 
                 });
-            });
         });
         return true;
     }
@@ -79,11 +81,12 @@ module.exports = async function handleButtonInteraction(interaction) {
 
         const orderNo = customId.replace('order_confirm_', '');
         
-        db.run('UPDATE orders SET status = "completed", end_time = DATETIME("now", "localtime") WHERE order_no = ?', [orderNo], async (upErr) => {
-            if (upErr) {
-                console.error('❌ 更新訂單狀態失敗:', upErr);
-                return interaction.followUp({ content: '❌ 更新訂單狀態失敗，請稍後再試！', flags: 64 }).catch(() => {});
-            }
+        try {
+            await completeOrder(orderNo, interaction.user.id);
+        } catch (upErr) {
+            console.error('❌ 更新訂單狀態失敗:', upErr);
+            return interaction.followUp({ content: '❌ 更新訂單狀態失敗，請稍後再試！', flags: 64 }).catch(() => {});
+        }
             
             syncOrdersJsonFromDb();
 
@@ -106,7 +109,6 @@ module.exports = async function handleButtonInteraction(interaction) {
             } catch (editErr) {
                 console.error('❌ 編輯確認完成卡片失敗:', editErr);
             }
-        });
         return true;
     }
 

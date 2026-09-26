@@ -1,6 +1,13 @@
 node_modules/
 .env
 .env.local
+.env.*
+!.env.example
+credentials/
+test-output/
+test-results/
+artifacts/test/
+*.har
 *.db
 *.sqlite
 *.sqlite3

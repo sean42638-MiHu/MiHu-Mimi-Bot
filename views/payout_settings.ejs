@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>提款設定 · 米胡電競 MiHu Gaming</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        html, body { background: #0b0914; color: #f3f4f6; min-height: 100%; margin: 0; }
+        .app-layout { display: flex; width: 100%; min-height: 100vh; }
+        .main-wrapper { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .content-body { padding: 28px 36px; }
+        @media (max-width: 767px) { .content-body { padding: 20px 16px; } }
+    </style>
+</head>
+<body>
+<div class="app-layout">
+    <%- include('partials/sidebar', { activePage: 'bot-settings' }) %>
+    <div class="main-wrapper">
+        <%- include('partials/navbar', { activePage: 'bot-settings' }) %>
+        <main class="content-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+                <h1 class="h4 mb-0"><i class="fa-solid fa-calendar-days text-info me-2"></i>薪資提款設定</h1>
+                <a class="btn btn-sm btn-outline-light" href="/management/payroll"><i class="fa-solid fa-arrow-left me-1"></i>返回薪轉管理</a>
+            </div>
+            <% if (error) { %><div class="alert alert-danger"><%= error %></div><% } %>
+            <% if (saved) { %><div class="alert alert-success">提款設定已儲存</div><% } %>
+            <form action="/system/payout-settings" method="POST" class="row g-3" style="max-width: 760px;">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="col-sm-6">
+                    <label for="startDay" class="form-label">每月開始日</label>
+                    <input id="startDay" name="start_day" type="number" class="form-control" min="1" max="31" value="<%= values.startDay %>" required>
+                </div>
+                <div class="col-sm-6">
+                    <label for="endDay" class="form-label">每月結束日</label>
+                    <input id="endDay" name="end_day" type="number" class="form-control" min="1" max="31" value="<%= values.endDay %>" required>
+                </div>
+                <div class="col-sm-6">
+                    <label for="minimumAmount" class="form-label">最低提款金額</label>
+                    <input id="minimumAmount" name="minimum_amount" type="number" class="form-control" min="1" max="100000000" step="1" value="<%= values.minimumAmount %>" required>
+                </div>
+                <div class="col-sm-6">
+                    <label for="timeZone" class="form-label">平台時區 (IANA)</label>
+                    <input id="timeZone" name="time_zone" type="text" class="form-control" value="<%= values.timeZone %>" placeholder="Asia/Taipei" required>
+                </div>
+                <div class="col-12">
+                    <p class="text-secondary small">開始日須早於或等於結束日，提款期間不得跨月。時區採 IANA 格式。</p>
+                    <button type="submit" class="btn btn-info"><i class="fa-solid fa-floppy-disk me-1"></i>儲存提款設定</button>
+                </div>
+            </form>
+        </main>
+    </div>
+</div>
+</body>
+</html>

@@ -6,20 +6,30 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "deploy-commands": "node deploy-commands.js"
+    "bot:start": "node botRunner.js",
+    "discord:register": "node scripts/registerDiscordCommands.js",
+    "discord:clear": "node clear-commands.js",
+    "deploy-commands": "node scripts/registerDiscordCommands.js",
+    "test": "node --test"
   },
   "dependencies": {
     "discord.js": "^14.27.0",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
     "nodemailer": "^10.0.10",
     "passport": "^0.7.0",
     "passport-discord": "^0.1.4",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "6.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

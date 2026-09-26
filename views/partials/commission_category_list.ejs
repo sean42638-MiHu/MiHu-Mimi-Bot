@@ -1,0 +1,61 @@
+<section class="commission-panel commission-panel--rates">
+    <header class="commission-panel-header">
+        <div>
+            <div class="commission-panel-kicker mb-1">CATEGORY MATRIX</div>
+            <h2 class="commission-panel-title">訂單類別與陪玩實得比例</h2>
+            <p class="commission-panel-note">點擊「管理」即可編輯、儲存或刪除單一類別。</p>
+        </div>
+    </header>
+
+    <% if (categories && categories.length > 0) { %>
+        <div class="commission-table-wrap">
+            <div class="commission-table-scroll">
+                <table class="commission-table">
+                <thead class="commission-table-head">
+                        <tr>
+                            <th class="commission-table-heading commission-col-category">訂單類別</th>
+                            <th class="commission-table-heading commission-col-rate">陪陪實得分潤比例 (%)</th>
+                            <th class="commission-table-heading commission-col-action">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                <% categories.forEach(item => {
+                    const badgeTone = {
+                        '陪玩單': 'play',
+                        '禮物單': 'gift',
+                        '有獎單': 'prize',
+                        '冠名單': 'title',
+                        '其他單': 'other',
+                        '獎金單': 'bonus'
+                    }[item.category] || 'custom';
+                    const badgeIcon = {
+                        '陪玩單': 'fa-gamepad',
+                        '禮物單': 'fa-gift',
+                        '有獎單': 'fa-trophy',
+                        '冠名單': 'fa-crown',
+                        '其他單': 'fa-asterisk',
+                        '獎金單': 'fa-coins'
+                    }[item.category] || 'fa-tag';
+                %>
+                    <tr class="commission-row">
+                        <td class="commission-cell commission-col-category"><span class="commission-category-badge commission-category-badge--<%= badgeTone %>"><i class="fa-solid <%= badgeIcon %>"></i><%= item.category %></span></td>
+                        <td class="commission-cell commission-col-rate">
+                            <div class="commission-rate-control">
+                                <span class="commission-rate-display"><%= (Number(item.rate) * 100).toFixed(2).replace(/\.00$/, '') %><span class="commission-rate-display-unit">%</span></span>
+                            </div>
+                        </td>
+                        <td class="commission-cell commission-col-action">
+                            <button type="button" class="commission-manage-btn" data-category-name="<%= item.category %>" data-current-rate="<%= (Number(item.rate) * 100).toFixed(2).replace(/\.00$/, '') %>" title="管理 <%= item.category %>">
+                                <i class="fa-solid fa-gear"></i><span>管理</span>
+                            </button>
+                        </td>
+                    </tr>
+                <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    <% } else { %>
+        <p class="commission-panel-empty">目前沒有類別設定。</p>
+    <% } %>
+</section>

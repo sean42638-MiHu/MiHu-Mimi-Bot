@@ -1,0 +1,38 @@
+<div class="modal fade commission-edit-modal" id="commissionEditModal" tabindex="-1" aria-labelledby="commissionEditModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-md">
+        <div class="modal-content commission-modal-content">
+            <div class="modal-header commission-modal-header">
+                <h5 class="modal-title commission-modal-title" id="commissionEditModalTitle">
+                    <i class="fa-solid fa-sliders me-2"></i>
+                    <span>編輯類別分潤 - </span><span id="commissionEditModalCategoryName"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body commission-modal-body">
+                <div class="commission-modal-error" id="commissionModalError" role="alert" aria-live="polite"></div>
+                <form id="commissionEditForm" action="/management/commission/update-single" method="POST">
+                    <input type="hidden" name="category_name" id="commissionEditCategoryName">
+                    <label class="commission-modal-label" for="commissionEditRate">陪陪實得分潤比例</label>
+                    <div class="commission-modal-rate-control">
+                        <input type="number" name="rate" id="commissionEditRate" class="commission-modal-rate-input" min="0" max="100" step="0.01" required>
+                        <span class="commission-modal-rate-unit">%</span>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer commission-modal-footer">
+                <form id="commissionDeleteForm" action="/management/commission/delete-category" method="POST" onsubmit="return confirm('確定要刪除這個類別嗎？');">
+                    <input type="hidden" name="category_name" id="commissionDeleteCategoryName">
+                    <button type="submit" class="commission-modal-delete-btn">
+                        <i class="fa-solid fa-trash me-1"></i>刪除類別
+                    </button>
+                </form>
+                <div class="commission-modal-footer-actions">
+                    <button type="button" class="commission-modal-cancel-btn" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" form="commissionEditForm" class="commission-modal-save-btn">
+                        <i class="fa-solid fa-floppy-disk me-1"></i>儲存設定
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

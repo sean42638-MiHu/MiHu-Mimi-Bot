@@ -285,7 +285,8 @@ window.openCommissionRatesModal = function(talentData, studioRates) {
         '禮物單': 0.85,
         '有獎單': 0.90,
         '冠名單': 0.85,
-        '獎金':   1.00
+        '其他單': 0.80,
+        '獎金單': 1.00
     };
 
     const rates = studioRates || defaultStudioRates;
@@ -324,7 +325,8 @@ window.openCommissionRatesModal = function(talentData, studioRates) {
         { name: '禮物單', studio: formatShareRate(rates['禮物單'], defaultStudioRates['禮物單']) },
         { name: '有獎單', studio: formatShareRate(rates['有獎單'] ?? rates['有獎'], defaultStudioRates['有獎單']) },
         { name: '冠名單', studio: formatShareRate(rates['冠名單'] ?? rates['冠名'], defaultStudioRates['冠名單']) },
-        { name: '獎金',   studio: formatShareRate(rates['獎金'], defaultStudioRates['獎金']) }
+        { name: '其他單', studio: formatShareRate(rates['其他單'] ?? rates['其他'], defaultStudioRates['其他單']) },
+        { name: '獎金單', studio: formatShareRate(rates['獎金單'] ?? rates['獎金'], defaultStudioRates['獎金單']) }
     ];
 
     const tbody = document.getElementById('commissionTableBody');

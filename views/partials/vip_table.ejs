@@ -1,6 +1,6 @@
 <!-- 📊 模組化：VIP 等級門檻與特權對照表格 -->
 <div class="glass-table-card mb-4">
-    <div class="table-responsive">
+    <div class="vip-scroll-container">
         <table class="mihu-table">
             <thead>
                 <tr>
@@ -12,15 +12,13 @@
                 </tr>
             </thead>
             <tbody>
-                <% vipTiers.forEach(vip => { 
+                <% vipTiers.forEach(vip => {
                     const rewards = JSON.parse(vip.rewards || '[]');
+                    const vipColor = vip.color || '#A855F7';
                 %>
-                    <tr onclick="openViewModal('<%= vip.level %>', '<%= vip.name %>', '<%= vip.spent_threshold %>', '<%= vip.deposit_threshold %>', this)" data-rewards='<%- JSON.stringify(rewards) %>'>
+                    <tr onclick="openViewModal('<%= vip.level %>', '<%= vip.name %>', '<%= vip.spent_threshold %>', '<%= vip.deposit_threshold %>', '<%= vipColor %>', this)" data-rewards='<%- JSON.stringify(rewards) %>'>
                         <td>
-                            <div class="vip-badge-pill">
-                                <i class="fa-solid fa-gem"></i>
-                                <span><%= vip.name %></span>
-                            </div>
+                            <%- include('vip_badge', { level: vip.name, color: vipColor }) %>
                         </td>
                         <td>
                             <span class="font-monospace text-warning fw-bold"><%= Number(vip.spent_threshold).toLocaleString() %></span> <span class="text-secondary small">T</span>
@@ -39,7 +37,7 @@
                             </div>
                         </td>
                         <td class="text-end" onclick="event.stopPropagation();">
-                            <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="openEditModal('<%= vip.level %>', '<%= vip.name %>', '<%= vip.spent_threshold %>', '<%= vip.deposit_threshold %>', this)" data-rewards='<%- JSON.stringify(rewards) %>'>
+                            <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="openEditModal('<%= vip.level %>', '<%= vip.name %>', '<%= vip.spent_threshold %>', '<%= vip.deposit_threshold %>', '<%= vipColor %>', this)" data-rewards='<%- JSON.stringify(rewards) %>'>
                                 <i class="fa-solid fa-pen-to-square me-1"></i>編輯
                             </button>
                         </td>

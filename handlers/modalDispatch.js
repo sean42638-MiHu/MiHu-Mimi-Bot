@@ -1,7 +1,8 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const db = require('../database'); // 🚀 引入資料庫以同步寫入
 const { syncOrdersJsonFromDb } = require('../utils/dataSync');
 const { adjustUserWallet } = require('../utils/walletHelper'); // 🚀 引入統一資金處理引擎
+const { createOrder } = require('../utils/orderService');
+const { getStudioIdForUser } = require('../utils/commissionHelper');
 
 // 🚀 通用 Modal 處理進入點
 async function handleModalDispatch(interaction) {
@@ -117,6 +118,7 @@ async function handleModalDispatch(interaction) {
                     finalPrice = Math.max(0, totalPrice - sessionData.disc);
                 }
             }
+            const discountAmount = totalPrice - finalPrice;
 
             // 2. 生成亂數單號
             const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -127,38 +129,26 @@ async function handleModalDispatch(interaction) {
             const csUser = interaction.user;
             const csName = interaction.member?.nickname || csUser.globalName || csUser.username;
 
-            // 3. 寫入 SQLite 資料庫
-            await new Promise((resolve, reject) => {
-                const insertSql = `
-                    INSERT INTO orders (
-                        order_no, boss_id, cs_id, cs_name, category, 
-                        game, content_tier, duration, unit, unit_price,
-                        total_amount, discount, extra, note, status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', DATETIME('now', 'localtime'))
-                `;
-                db.run(insertSql, [
-                    orderNo,
-                    sessionData.bId,
-                    csUser.id,
-                    csName,
-                    sessionData.cat || '陪玩單',
-                    game,
-                    contentTier,
-                    duration,
-                    unit,
-                    unitPrice,
-                    finalPrice,
-                    sessionData.disc || 0,
-                    extra,
-                    note
-                ], function(err) {
-                    if (err) {
-                        console.error('❌ 寫入訂單至資料庫失敗:', err);
-                        reject(err);
-                    } else {
-                        resolve(this.lastID);
-                    }
-                });
+            await createOrder({
+                orderNo,
+                bossId: sessionData.bId,
+                csId: csUser.id,
+                csName,
+                category: sessionData.cat || '陪玩單',
+                game,
+                contentTier,
+                duration,
+                unit,
+                unitPrice,
+                originalAmount: totalPrice,
+                finalAmount: finalPrice,
+                discount: discountAmount,
+                extra,
+                note,
+                studioId: await getStudioIdForUser(csUser.id),
+                status: 'pending',
+                operatorId: csUser.id,
+                source: 'legacy-modal-dispatch'
             });
 
             // 同步 JSON 資料檔

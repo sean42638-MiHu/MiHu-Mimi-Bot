@@ -1,0 +1,55 @@
+<section class="commission-panel commission-panel--categories commission-category-manager" id="categoryManager">
+    <header class="commission-panel-header">
+        <div>
+            <div class="commission-panel-kicker mb-1">CATEGORY MANAGER</div>
+            <h2 class="commission-panel-title">訂單類別管理</h2>
+            <p class="commission-panel-note">管理可使用的訂單類別；清單固定顯示約五列。</p>
+        </div>
+    </header>
+    <form action="/management/commission/add-category" method="POST" class="commission-category-form">
+        <label class="commission-category-label" for="newCommissionCategory">新增類別</label>
+        <input id="newCommissionCategory" type="text" name="category" maxlength="60" class="commission-category-input" placeholder="例如：特殊單、客製單" required>
+        <label class="commission-category-label commission-category-label--rate" for="newCommissionRate">實得比例</label>
+        <input id="newCommissionRate" type="number" name="rate" min="0" max="100" step="0.01" class="commission-category-rate-input" placeholder="80" required>
+        <button type="submit" class="commission-category-add-btn">
+                <i class="fa-solid fa-plus me-1"></i>新增類別
+        </button>
+    </form>
+
+    <% const hasCategories = categories && categories.length > 0; %>
+    <% if (hasCategories) { %>
+        <div class="commission-category-scroll" aria-label="訂單類別清單">
+            <% for (const item of categories) {
+                const badgeTone = {
+                    '陪玩單': 'play',
+                    '禮物單': 'gift',
+                    '有獎單': 'prize',
+                    '冠名單': 'title',
+                    '其他單': 'other',
+                    '獎金單': 'bonus'
+                }[item.category] || 'custom';
+                const badgeIcon = {
+                    '陪玩單': 'fa-gamepad',
+                    '禮物單': 'fa-gift',
+                    '有獎單': 'fa-trophy',
+                    '冠名單': 'fa-crown',
+                    '其他單': 'fa-asterisk',
+                    '獎金單': 'fa-coins'
+                }[item.category] || 'fa-tag';
+            %>
+                <div class="commission-category-item">
+                    <span class="commission-category-badge commission-category-badge--<%= badgeTone %>"><i class="fa-solid <%= badgeIcon %>"></i><%= item.category %></span>
+                    <form action="/management/commission/delete-category" method="POST" onsubmit="return confirm('確定刪除類別「<%= item.category %>」？');">
+                        <input type="hidden" name="category_name" value="<%= item.category %>">
+                        <button type="submit" class="commission-delete-btn" aria-label="刪除 <%= item.category %>" title="刪除類別">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                </div>
+            <% } %>
+        </div>
+    <% } %>
+    <% if (!hasCategories) { %>
+        <p class="commission-panel-empty">目前沒有可用的訂單類別。</p>
+    <% } %>
+</section>
