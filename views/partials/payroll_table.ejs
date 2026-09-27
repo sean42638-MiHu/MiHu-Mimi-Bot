@@ -87,9 +87,13 @@
     }
 </style>
 
-<div class="glass-table-card">
+<section class="glass-table-card admin-panel" aria-labelledby="payrollTableTitle">
+    <div class="admin-panel-header">
+        <h2 id="payrollTableTitle" class="admin-section-title">員工薪轉資料</h2>
+        <p class="admin-section-description">已累積薪資與薪轉帳戶資料</p>
+    </div>
     <div class="payroll-table-scroll">
-        <table class="mihu-table" id="payrollTable">
+        <table class="mihu-table admin-table" id="payrollTable">
             <thead>
                 <tr>
                     <th style="width: 18%;">員工暱稱</th>
@@ -106,7 +110,7 @@
             <tbody id="payrollTableBody">
                 <% if (!staffList || staffList.length === 0) { %>
                     <tr>
-                        <td colspan="<%= canViewSensitive ? 7 : 2 %>" class="text-center py-5 text-secondary">尚無員工薪轉資料紀錄</td>
+                        <td colspan="<%= canViewSensitive ? 7 : 2 %>"><div class="admin-empty-state"><div class="admin-empty-state__icon"><i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i></div><p class="admin-empty-state__title">目前沒有符合條件的薪資紀錄</p><p class="admin-empty-state__description">目前尚無員工薪轉資料。</p></div></td>
                     </tr>
                 <% } else { %>
                     <% staffList.forEach(s => { 
@@ -170,7 +174,7 @@
 
                             <!-- 7. 已累積薪資 -->
                             <td class="text-end">
-                                <span class="fw-bold text-success font-monospace fs-6">
+                                <span class="admin-money admin-money--neutral fw-bold font-monospace fs-6">
                                     $<%= accumulatedPayout.toLocaleString() %>
                                 </span>
                                 <span class="small text-secondary">NTD</span>
@@ -181,9 +185,11 @@
             </tbody>
         </table>
 
-        <div id="noPayrollMatchRow" class="text-center py-5 text-secondary" style="display: none;">
-            <i class="fa-solid fa-user-slash fs-3 mb-2 opacity-50"></i>
-            <p class="small mb-0">找不到符合搜尋條件的薪轉資料</p>
+        <div id="noPayrollMatchRow" class="admin-empty-state" style="display: none;">
+            <div class="admin-empty-state__icon"><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></div>
+            <p class="admin-empty-state__title">找不到符合條件的薪資紀錄</p>
+            <p class="admin-empty-state__description">請清除搜尋條件後重新查看薪轉資料。</p>
+            <button type="button" class="admin-btn admin-btn-ghost admin-empty-state__action" id="clearPayrollFilterState">清除搜尋</button>
         </div>
     </div>
-</div>
+</section>

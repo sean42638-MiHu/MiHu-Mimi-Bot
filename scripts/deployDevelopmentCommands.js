@@ -5,7 +5,7 @@ async function deployDevelopmentCommands({ rest, commands } = {}) {
     require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
     configureDevelopmentRuntime();
     requireDevelopmentGuild();
-    const { registerDevelopmentGuildCommands } = require('../utils/discordCommandRegistry');
+    const { deployDiscordCommands } = require('../utils/discordDeploymentService');
     Object.entries(getGuildConfigurationStatus()).forEach(([name, status]) => console.log(`${name}: ${status}`));
 
     const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
@@ -28,7 +28,7 @@ async function deployDevelopmentCommands({ rest, commands } = {}) {
 
     const deploymentEnv = { ...process.env, DISCORD_COMMAND_REGISTRATION_ENABLED: 'true' };
     try {
-        const result = await registerDevelopmentGuildCommands(restClient, applicationId, commandCollection, deploymentEnv);
+        const result = await deployDiscordCommands({ target: 'development', rest: restClient, applicationId, commandCollection, env: deploymentEnv });
         console.log(`Development Slash Commands deployed to GUILD_DEV_ID (${result.commandCount} commands).`);
         return result;
     } finally {

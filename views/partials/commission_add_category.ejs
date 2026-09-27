@@ -39,7 +39,12 @@
             %>
                 <div class="commission-category-item">
                     <span class="commission-category-badge commission-category-badge--<%= badgeTone %>"><i class="fa-solid <%= badgeIcon %>"></i><%= item.category %></span>
-                    <form action="/management/commission/delete-category" method="POST" onsubmit="return confirm('確定刪除類別「<%= item.category %>」？');">
+                    <form action="/management/commission/delete-category" method="POST"
+                        data-admin-confirm
+                        data-confirm-title="確認刪除類別"
+                        data-confirm-message="確定刪除類別「<%= item.category %>」？"
+                        data-confirm-confirm-text="確認刪除"
+                        data-confirm-variant="danger">
                         <input type="hidden" name="category_name" value="<%= item.category %>">
                         <button type="submit" class="commission-delete-btn" aria-label="刪除 <%= item.category %>" title="刪除類別">
                             <i class="fa-solid fa-trash-can"></i>

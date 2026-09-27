@@ -1,0 +1,30 @@
+<div class="member-transactions-table-wrap admin-data-table-wrap">
+    <table class="table member-transactions-table admin-data-table">
+        <thead>
+            <tr>
+                <th>交易編號</th><th>日期時間</th><th>會員</th><th>交易類型</th>
+                <th class="member-transaction-money-head">變動前</th><th class="member-transaction-money-head">變動金額</th><th class="member-transaction-money-head">變動後</th><th>經手人</th><th>備註</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (transactions.length) { %>
+                <% transactions.forEach(transaction => { %>
+                    <% const avatar = transaction.member_avatar || '/images/logo.png'; const amount = Number(transaction.amount || 0); const amountClass = amount > 0 ? 'positive' : (amount < 0 ? 'negative' : ''); %>
+                    <tr>
+                        <td class="member-transaction-meta" title="<%= transaction.id %>">#<span class="member-transaction-id"><%= transaction.id %></span></td>
+                        <td class="member-transaction-meta"><%= transaction.created_at || '—' %></td>
+                        <td><div class="member-transaction-member"><img class="member-transaction-avatar" src="<%= avatar %>" alt="<%= transaction.memberName %> 頭像"><div><div class="member-transaction-member-name"><%= transaction.memberName %></div><div class="member-transaction-member-id"><%= transaction.user_id || '—' %></div></div></div></td>
+                        <td><span class="member-transaction-type <%= transaction.displayType.tone %>"><i class="fa-solid <%= transaction.displayType.icon %>" aria-hidden="true"></i><%= transaction.displayType.label %></span><div class="member-transaction-meta mt-1"><%= transaction.type || 'unknown' %></div></td>
+                        <td class="member-transaction-snapshot member-transaction-money"><%= transaction.balance_before === null || transaction.balance_before === undefined ? '—' : `NT$ ${Number(transaction.balance_before).toLocaleString()}` %></td>
+                        <td class="member-transaction-amount member-transaction-money <%= amountClass %>"><%= amount > 0 ? '+' : amount < 0 ? '−' : '' %>NT$ <%= Math.abs(amount).toLocaleString() %></td>
+                        <td class="member-transaction-snapshot member-transaction-money"><%= transaction.balance_after === null || transaction.balance_after === undefined ? '—' : `NT$ ${Number(transaction.balance_after).toLocaleString()}` %></td>
+                        <td><span class="member-transaction-member-name"><%= transaction.operatorName || '系統' %></span><% if (transaction.operator_id) { %><div class="member-transaction-meta"><%= transaction.operator_id %></div><% } %></td>
+                        <td class="member-transaction-note" title="<%= transaction.description || '' %>"><%= transaction.description || '—' %></td>
+                    </tr>
+                <% }); %>
+            <% } else { %>
+                <tr><td colspan="9" class="member-transactions-empty">目前沒有符合條件的資金異動紀錄</td></tr>
+            <% } %>
+        </tbody>
+    </table>
+</div>

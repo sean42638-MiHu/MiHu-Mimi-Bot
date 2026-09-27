@@ -143,9 +143,13 @@
     }
 </style>
 
-<div class="glass-table-card">
+<section class="glass-table-card admin-panel" aria-labelledby="staffTableTitle">
+    <div class="admin-panel-header">
+        <h2 id="staffTableTitle" class="admin-section-title">員工清單</h2>
+        <p class="admin-section-description">員工身份、狀態與工作資料</p>
+    </div>
     <div class="staff-table-scroll">
-        <table class="mihu-table" id="staffTable">
+        <table class="mihu-table admin-table" id="staffTable">
             <thead>
                 <tr>
                     <th style="width: 22%;">員工姓名 / DISCORD</th>
@@ -172,6 +176,7 @@
                     const canViewPayroll = checkPermission('staff_view_payroll');
                     const canEditRoleComm = checkPermission('staff_edit_role_commission');
 
+                    if (list.length > 0) {
                     list.forEach(s => { 
                     const avUrl = s.avatar 
                         ? `https://cdn.discordapp.com/avatars/${s.id}/${s.avatar}.png` 
@@ -212,20 +217,15 @@
                         staffChannelId: s.staff_channel_id || '',
                         totalOrders: s.total_orders || 0,
                         totalRevenue: s.total_revenue || 0,
-                        realName: s.real_name || '未填寫',
                         birthday: s.birthday || '未填寫',
                         gender: s.gender || '未設定',
                         mbti: s.mbti || '未設定',
-                        bankName: s.bank_name || '未填寫',
-                        bankCode: s.bank_code || '未填寫',
-                        bankBranch: s.bank_branch || '未填寫',
-                        bankAccount: s.bank_account || '未填寫',
                         createdAt: s.created_at || '無紀錄'
-                    }).replace(/'/g, "&apos;");
+                    }).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;');
                 %>
                     <tr class="staff-row" 
                         data-staff='<%- staffDataJson %>'
-                        data-search="<%= `${displayName} ${s.username} ${s.id} ${s.real_name || ''}`.toLowerCase() %>">
+                        data-search="<%= `${displayName} ${s.username} ${s.id}`.toLowerCase() %>">
                         
                         <td>
                             <div class="staff-info-col">
@@ -239,11 +239,11 @@
 
                         <!-- 👤 所屬職位標籤 (全後台同步) -->
                         <td class="text-center">
-                            <span class="badge <%= roleObj.badgeClass %> role-badge-tag"><%= roleObj.name %></span>
+                            <span class="admin-badge admin-badge-purple <%= roleObj.badgeClass %> role-badge-tag"><%= roleObj.name %></span>
                         </td>
 
                         <td class="text-center">
-                            <span class="status-pill <%= statusObj.class %>">
+                            <span class="admin-badge <%= s.status === 'busy' ? 'admin-badge-danger' : s.status === 'leave' ? 'admin-badge-muted' : 'admin-badge-success' %> status-pill <%= statusObj.class %>">
                                 <i class="fa-solid <%= statusObj.icon %>"></i>
                                 <span><%= statusObj.name %></span>
                             </span>
@@ -290,12 +290,25 @@
                         </td>
                     </tr>
                 <% }) %>
+                <% } else { %>
+                    <tr>
+                        <td colspan="7">
+                            <div class="admin-empty-state">
+                                <div class="admin-empty-state__icon"><i class="fa-solid fa-users-slash" aria-hidden="true"></i></div>
+                                <p class="admin-empty-state__title">目前沒有員工資料</p>
+                                <p class="admin-empty-state__description">目前工作室尚無可管理的員工資料。</p>
+                            </div>
+                        </td>
+                    </tr>
+                <% } %>
             </tbody>
         </table>
 
-        <div id="noMatchRow" class="text-center py-5 text-secondary" style="display: none;">
-            <i class="fa-solid fa-user-slash fs-3 mb-2 opacity-50"></i>
-            <p class="small mb-0">找不到符合搜尋條件的員工</p>
+        <div id="noMatchRow" class="admin-empty-state" style="display: none;">
+                    <div class="admin-empty-state__icon"><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></div>
+                    <p class="admin-empty-state__title">找不到符合條件的員工</p>
+                    <p class="admin-empty-state__description">請清除搜尋條件後重新查看員工資料。</p>
+                    <button type="button" class="admin-btn admin-btn-ghost admin-empty-state__action" id="clearStaffFilterState">清除搜尋</button>
         </div>
     </div>
-</div>
+</section>

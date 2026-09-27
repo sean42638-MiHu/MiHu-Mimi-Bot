@@ -8,7 +8,7 @@ async function registerDiscordCommands() {
 
     const { REST } = require('discord.js');
     const { client } = require('../bot');
-    const { registerGuildCommands } = require('../utils/discordCommandRegistry');
+    const { deployDiscordCommands } = require('../utils/discordDeploymentService');
     const { getCommandGuilds, getCommandGuildKeys, getMissingGuildVariables } = require('../config/discordCommandPolicy');
     const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
     const applicationId = process.env.DISCORD_CLIENT_ID;
@@ -30,7 +30,7 @@ async function registerDiscordCommands() {
     }));
 
     const rest = new REST({ version: '10' }).setToken(token);
-    const result = await registerGuildCommands(rest, applicationId, client.commands);
+    const result = await deployDiscordCommands({ target: 'production', rest, applicationId, commandCollection: client.commands, env: process.env });
     if (!result.success) throw new Error('Discord command registration was incomplete');
     console.log('Discord command registration completed.');
 }

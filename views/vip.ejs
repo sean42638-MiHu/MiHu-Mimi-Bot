@@ -36,7 +36,7 @@
         }
 
         .content-body { 
-            padding: 16px 36px 32px; 
+            padding: 20px 36px 32px;
             flex-grow: 1; 
         }
         
@@ -226,23 +226,9 @@
 <div class="main-wrapper">
     <%- include('partials/navbar', { activePage: 'vip' }) %>
 
-    <div class="content-body">
+    <div class="content-body admin-page-content">
         <!-- 🚀 專屬大標題與說明（左側標題、右側按鈕置右） -->
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div>
-                <div class="page-title-text" style="font-size: 1.5rem; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <i class="fa-solid fa-crown text-warning"></i>
-                    <span>VIP設定</span>
-                </div>
-                <p class="text-secondary small mb-0">設定各階級 VIP 門檻（累計消費與預存額度）及對應特權獎勵內容</p>
-            </div>
-
-            <div>
-                <button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addVipModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;">
-                    <i class="fa-solid fa-plus me-1"></i>新增 VIP 等級
-                </button>
-            </div>
-        </div>
+        <%- include('partials/admin_page_header', { icon: 'fa-crown', title: 'VIP設定', description: '設定各階級 VIP 門檻（累計消費與預存額度）及對應特權獎勵內容', actions: '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addVipModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增 VIP 等級</button>' }) %>
 
         <% if (typeof success !== 'undefined' && success) { %>
             <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">
@@ -330,7 +316,12 @@
         list.innerHTML = '';
         rewards.forEach(r => {
             const li = document.createElement('li');
-            li.innerHTML = `<i class="fa-solid fa-gift"></i><span>${r}</span>`;
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-gift';
+                icon.setAttribute('aria-hidden', 'true');
+                const text = document.createElement('span');
+                text.textContent = String(r);
+                li.append(icon, text);
             list.appendChild(li);
         });
 
@@ -361,12 +352,24 @@
     function createRewardRow(val = '') {
         const row = document.createElement('div');
         row.className = 'reward-item-row';
-        row.innerHTML = `
-            <input type="text" name="rewards[]" class="reward-input" value="${val}" placeholder="輸入獎勵項目內容" required>
-            <button type="button" class="btn-del-reward" onclick="this.parentElement.remove()" title="刪除此獎勵">
-                <i class="fa-solid fa-trash-can"></i>
-            </button>
-        `;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'rewards[]';
+            input.className = 'reward-input admin-form-control';
+            input.value = String(val || '');
+            input.placeholder = '輸入獎勵項目';
+            input.required = true;
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn-del-reward admin-btn admin-btn-danger';
+            remove.title = '移除獎勵';
+            remove.setAttribute('aria-label', '移除獎勵');
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid fa-trash-can';
+            icon.setAttribute('aria-hidden', 'true');
+            remove.appendChild(icon);
+            remove.addEventListener('click', () => row.remove());
+            row.append(input, remove);
         return row;
     }
 
@@ -376,7 +379,17 @@
         container.appendChild(row);
         row.querySelector('input').focus();
     }
+
+    document.querySelectorAll('.vip-tier-row').forEach(row => {
+        row.addEventListener('click', event => {
+            if (event.target.closest('.vip-edit-trigger')) return;
+            openViewModal(row.dataset.vipLevel, row.dataset.vipName, row.dataset.vipSpent, row.dataset.vipDeposit, row.dataset.vipColor, row);
+        });
+        row.querySelector('.vip-edit-trigger')?.addEventListener('click', event => {
+            event.stopPropagation();
+            openEditModal(row.dataset.vipLevel, row.dataset.vipName, row.dataset.vipSpent, row.dataset.vipDeposit, row.dataset.vipColor, row);
+        });
+    });
 </script>
-<%- include('partials/feature_modal') %>
 </body>
 </html>

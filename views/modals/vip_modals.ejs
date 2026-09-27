@@ -32,10 +32,10 @@
 </div>
 
 <!-- 2. 編輯 VIP 等級彈窗 -->
-<div class="modal fade" id="editVipModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
-        <div class="modal-content modal-content-glass">
-            <form id="editVipForm" method="POST">
+<div class="modal fade admin-modal" id="editVipModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--md">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form id="editVipForm" class="admin-form" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
                         <i class="fa-solid fa-pen-to-square text-warning"></i>
@@ -43,15 +43,15 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-3">
+                <div class="modal-body admin-modal-body py-3">
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">累計消費門檻 (T)</label>
-                            <input type="number" id="editSpent" name="spent_threshold" class="form-control form-control-glass text-end" required>
+                            <input type="number" id="editSpent" name="spent_threshold" class="form-control form-control-glass admin-form-control text-end" required>
                         </div>
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">預存門檻 (T)</label>
-                            <input type="number" id="editDeposit" name="deposit_threshold" class="form-control form-control-glass text-end" required>
+                            <input type="number" id="editDeposit" name="deposit_threshold" class="form-control form-control-glass admin-form-control text-end" required>
                         </div>
                     </div>
 
@@ -59,7 +59,7 @@
                         <label class="small text-secondary fw-semibold mb-1" for="editVipColor">專屬代表色碼</label>
                         <div class="d-flex align-items-center gap-2">
                             <input type="color" id="editVipColorPicker" value="#A855F7" class="form-control form-control-color" title="選擇 VIP 顏色">
-                            <input type="text" id="editVipColor" name="color" class="form-control form-control-glass" maxlength="7" placeholder="#A855F7" pattern="^#?[0-9A-Fa-f]{6}$" required>
+                            <input type="text" id="editVipColor" name="color" class="form-control form-control-glass admin-form-control" maxlength="7" placeholder="#A855F7" pattern="^#?[0-9A-Fa-f]{6}$" required>
                         </div>
                         <%- include('../partials/vip_badge', { id: 'editVipColorPreview', level: 'VIP', color: '#A855F7' }) %>
                     </div>
@@ -75,7 +75,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="modal-footer border-0 pt-0">
+                <div class="modal-footer admin-modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4" style="background-color: #9333ea; border: none;">儲存變更</button>
                 </div>
@@ -85,22 +85,22 @@
 </div>
 
 <!-- 3. 新增全新 VIP 等級 Modal -->
-<div class="modal fade" id="addVipModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
-        <div class="modal-content modal-content-glass">
-            <form action="/system/vip/add" method="POST">
+<div class="modal fade admin-modal" id="addVipModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--sm">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form class="admin-form" action="/system/vip/add" method="POST" data-admin-submit-loading data-submit-loading-text="建立中...">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold text-white"><i class="fa-solid fa-crown me-2 text-warning"></i>新增 VIP 等級</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-3">
+                <div class="modal-body admin-modal-body py-3">
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">等級代號 (例如 8)</label>
                         <input type="number" name="level" class="form-control form-control-glass" placeholder="8" required>
                     </div>
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">等級名稱</label>
-                        <input type="text" id="addVipName" name="name" class="form-control form-control-glass" placeholder="VIP 8" required>
+                            <input type="text" id="addVipName" name="name" class="form-control form-control-glass admin-form-control" placeholder="VIP 8" required>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
@@ -116,7 +116,7 @@
                         <label class="small text-secondary fw-semibold mb-1" for="addVipColor">專屬代表色碼</label>
                         <div class="d-flex align-items-center gap-2">
                             <input type="color" id="addVipColorPicker" value="#A855F7" class="form-control form-control-color" title="選擇 VIP 顏色">
-                            <input type="text" id="addVipColor" name="color" class="form-control form-control-glass" maxlength="7" placeholder="#A855F7" pattern="^#?[0-9A-Fa-f]{6}$" required>
+                            <input type="text" id="addVipColor" name="color" class="form-control form-control-glass admin-form-control" maxlength="7" placeholder="#A855F7" pattern="^#?[0-9A-Fa-f]{6}$" required>
                         </div>
                         <%- include('../partials/vip_badge', { id: 'addVipColorPreview', level: 'VIP', color: '#A855F7' }) %>
                     </div>
@@ -125,7 +125,7 @@
                         <input type="text" name="initial_reward" class="form-control form-control-glass" placeholder="例如：專屬高階客服" required>
                     </div>
                 </div>
-                <div class="modal-footer border-0 pt-0">
+                <div class="modal-footer admin-modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4" style="background-color: #9333ea; border: none;">確認建立</button>
                 </div>

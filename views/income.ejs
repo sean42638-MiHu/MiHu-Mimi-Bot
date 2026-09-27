@@ -36,7 +36,6 @@
             flex-direction: column;
             overflow-y: auto;
             max-height: 100vh;
-            width: calc(100vw - 280px);
             min-width: 0;
         }
 
@@ -256,16 +255,8 @@
 <div class="main-wrapper">
     <%- include('partials/navbar', { activePage: 'income' }) %>
 
-    <div class="content-body">
-        <div class="page-header-content">
-            <div>
-                <div class="page-title-text">
-                    <i class="fa-solid fa-sack-dollar text-warning"></i>
-                    <span>我的收入與接單分潤</span>
-                </div>
-                <p class="text-secondary small mb-0">即時掌握個人接單歷史累積分潤、當月結算收入與可提領薪資 (分潤依原價計算，不承擔折扣)</p>
-            </div>
-        </div>
+    <div class="content-body admin-page-content">
+        <%- include('partials/admin_page_header', { icon: 'fa-sack-dollar', title: '我的收入與接單分潤', description: '即時掌握個人接單歷史累積分潤、當月結算收入與可提領薪資 (分潤依原價計算，不承擔折扣)' }) %>
 
         <!-- 🚀 1. 載入獨立模組：四大金流卡片 -->
         <%- include('partials/income_stat_cards') %>
@@ -606,6 +597,5 @@
         });
     });
 </script>
-<%- include('partials/feature_modal') %>
 </body>
 </html>

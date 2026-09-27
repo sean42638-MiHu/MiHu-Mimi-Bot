@@ -6,6 +6,7 @@
     <title>薪轉管理 · 米胡電競 MiHu Gaming</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/payroll-export.css">
     <style>
         :root {
             --bg-color: #0b0914;
@@ -31,12 +32,11 @@
             flex-direction: column;
             overflow-y: auto;
             max-height: 100vh;
-            width: calc(100vw - 280px);
             min-width: 0;
         }
 
         .content-body { 
-            padding: 24px 36px 32px; 
+            padding: 20px 36px 32px;
             flex-grow: 1; 
         }
 
@@ -91,22 +91,19 @@
 <div class="main-wrapper">
     <%- include('partials/navbar', { activePage: 'payroll' }) %>
 
-    <div class="content-body">
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="content-body admin-page-content">
+        <header class="admin-page-header">
             <div>
-                <div class="page-title-text" style="font-size: 1.5rem; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <i class="fa-solid fa-money-check-dollar text-warning"></i>
-                    <span>薪轉管理</span>
-                </div>
-                <p class="text-secondary small mb-0">工作室員工與陪陪個人隱私薪轉個資清算與累積發放薪資總額核算</p>
+                <div class="admin-page-header__main"><span class="admin-page-header__icon"><i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i></span><div class="admin-page-header__content"><h1 class="admin-page-header__title">薪轉管理</h1>
+                <p class="admin-page-header__description">工作室員工與陪陪個人隱私薪轉個資清算與累積發放薪資總額核算</p></div></div>
             </div>
 
             <div class="d-flex align-items-center gap-3">
                 <% if (canExportPayouts) { %>
-                    <a href="/management/payroll/export" class="btn-excel-export" title="匯出待撥款資料">
+                    <button type="button" class="btn-excel-export" data-bs-toggle="modal" data-bs-target="#payrollExportModal" title="匯出薪轉資料">
                         <i class="fa-solid fa-file-excel"></i>
-                        <span>匯出待撥款</span>
-                    </a>
+                        <span>匯出資料</span>
+                    </button>
                 <% } %>
 
                 <div class="search-box-wrap">
@@ -115,7 +112,7 @@
                     <button type="button" id="clearPayrollSearchBtn" class="search-clear-btn" title="清除搜尋"><i class="fa-solid fa-circle-xmark"></i></button>
                 </div>
             </div>
-        </div>
+        </header>
 
         <% if (typeof successMsg !== 'undefined' && successMsg) { %>
             <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">
@@ -180,7 +177,10 @@
     </div>
 </div>
 
+<%- include('modals/payroll_export_modal', { canExportPayouts, canExportBankAccounts }) %>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/payroll-export.js" defer></script>
 <script>
     async function payoutPost(path, payload = {}) {
         const response = await fetch(path, {
@@ -258,10 +258,10 @@
                     if (noMatchRow) noMatchRow.style.display = 'none';
                     searchInput.focus();
                 });
+                document.getElementById('clearPayrollFilterState')?.addEventListener('click', () => clearBtn.click());
             }
         }
     });
 </script>
-<%- include('partials/feature_modal') %>
 </body>
 </html>

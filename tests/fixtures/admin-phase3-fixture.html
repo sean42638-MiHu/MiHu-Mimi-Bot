@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MiHu Admin Phase 3 Fixture</title>
+    <link rel="stylesheet" href="/public/css/admin-components.css">
+    <style>
+        body { margin: 0; min-width: 0; background: #0b0914; color: #f3f4f6; font-family: system-ui, sans-serif; }
+        .fixture-shell { max-width: 1160px; margin: 0 auto; padding: 20px 36px 32px; }
+        .fixture-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+        .fixture-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+        .fixture-row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+        .fixture-row:last-child { border-bottom: 0; }
+        .fixture-hidden { display: none; }
+        .modal { display: none; }
+        .modal.show { display: block; }
+        @media (max-width: 767.98px) { .fixture-shell { padding: 20px 16px 32px; } .fixture-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<main class="fixture-shell">
+    <header class="admin-page-header">
+        <div class="admin-page-header__main"><span class="admin-page-header__icon"><i class="fa-solid fa-flask" aria-hidden="true"></i></span><div class="admin-page-header__content"><h1 class="admin-page-header__title">Phase 3 Browser Fixture</h1><p class="admin-page-header__description">Isolated Roles / Staff / Payroll component verification</p></div></div>
+    </header>
+    <div class="fixture-actions">
+        <button class="admin-btn admin-btn-primary" id="successToast">Success Toast</button>
+        <button class="admin-btn admin-btn-danger" id="errorToast">Error Toast</button>
+        <button class="admin-btn admin-btn-warning" id="confirmAction">Confirm Danger</button>
+        <button class="admin-btn admin-btn-ghost" id="loadingAction">Loading Button</button>
+    </div>
+    <div class="fixture-grid">
+        <section class="admin-panel" aria-labelledby="rolesTitle"><div class="admin-panel-header"><h2 id="rolesTitle" class="admin-section-title">Roles</h2><p class="admin-section-description">Normal / Empty / Validation</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>角色</th><th>狀態</th></tr></thead><tbody><tr><td>DEV Manager</td><td><span class="admin-badge admin-badge-purple">管理員</span></td></tr></tbody></table></div><div id="rolesEmpty" class="admin-empty-state fixture-hidden"><div class="admin-empty-state__icon"><i class="fa-solid fa-shield-halved"></i></div><p class="admin-empty-state__title">目前沒有角色</p><p class="admin-empty-state__description">建立第一個角色。</p></div><p class="admin-form-error fixture-hidden" id="rolesError">角色名稱格式不正確。</p></section>
+        <section class="admin-panel" aria-labelledby="staffTitle"><div class="admin-panel-header"><h2 id="staffTitle" class="admin-section-title">Staff</h2><p class="admin-section-description">Filtered Empty / PII-safe fixture</p></div><label for="staffFilter" class="admin-section-description">搜尋員工</label><input class="admin-control" id="staffFilter" type="search" placeholder="輸入不存在的名稱"><div class="admin-table-wrap"><table class="admin-table" id="staffTable"><tbody><tr data-name="DEV Staff"><td>DEV Staff</td><td><span class="admin-badge admin-badge-success">可用</span></td></tr></tbody></table></div><div id="staffEmpty" class="admin-empty-state fixture-hidden"><div class="admin-empty-state__icon"><i class="fa-solid fa-filter-circle-xmark"></i></div><p class="admin-empty-state__title">找不到符合條件的員工</p><p class="admin-empty-state__description">請清除搜尋條件。</p></div></section>
+        <section class="admin-panel" aria-labelledby="payrollTitle"><div class="admin-panel-header"><h2 id="payrollTitle" class="admin-section-title">Payroll</h2><p class="admin-section-description">Neutral money / Status badges</p></div><div class="fixture-row"><span>DEV Staff</span><strong class="admin-money admin-money--neutral">$0 NTD</strong></div><div class="fixture-row"><span>Pending</span><span class="admin-badge admin-badge-warning">撥款中</span></div><div class="admin-error-state fixture-hidden" id="payrollError"><div class="admin-error-state__icon"><i class="fa-solid fa-triangle-exclamation"></i></div><strong class="admin-error-state__title">資料載入失敗</strong><p class="admin-error-state__description">目前無法載入測試資料。</p></div><div class="admin-loading-state fixture-hidden" id="payrollLoading"><span class="admin-loading-state__spinner"></span><span>資料載入中...</span></div></section>
+    </div>
+</main>
+<script>
+window.bootstrap = { Modal: class { constructor(element) { this.element = element; } static getOrCreateInstance(element) { return new this(element); } show() { this.element.classList.add('show'); this.element.style.display = 'block'; this.element.dispatchEvent(new Event('shown.bs.modal')); } hide() { this.element.classList.remove('show'); this.element.style.display = 'none'; this.element.dispatchEvent(new Event('hidden.bs.modal')); } } };
+document.addEventListener('keydown', event => { if (event.key === 'Escape') document.querySelector('#adminConfirmModal')?.classList.remove('show'); });
+</script>
+<div class="modal fade admin-confirm-modal" id="adminConfirmModal" tabindex="-1" aria-labelledby="adminConfirmTitle" aria-describedby="adminConfirmMessage" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content admin-confirm-modal__content"><div class="modal-header"><div class="admin-confirm-modal__heading"><span class="admin-confirm-modal__icon" data-confirm-icon><i class="fa-solid fa-circle-question"></i></span><h2 class="modal-title" id="adminConfirmTitle" data-confirm-title>確認操作</h2></div><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button></div><div class="modal-body"><p class="admin-confirm-modal__message" id="adminConfirmMessage" data-confirm-message></p></div><div class="modal-footer"><button type="button" class="admin-btn admin-btn-ghost" data-confirm-cancel>取消</button><button type="button" class="admin-btn admin-btn-primary" data-confirm-submit>確認</button></div></div></div></div>
+<div class="admin-toast-region" id="mihuToastRegion" aria-live="polite" aria-atomic="false"></div>
+<script src="/public/js/admin-feedback.js"></script>
+<script>
+const q = id => document.getElementById(id);
+q('successToast').onclick = () => MiHuFeedback.success('Fixture data saved.', { title: '操作成功', duration: 0 });
+q('errorToast').onclick = () => MiHuFeedback.error('<img src=x onerror=alert(1)>', { title: '安全錯誤', duration: 0 });
+q('confirmAction').onclick = async () => { if (await MiHuFeedback.confirm({ title: '確認測試操作', message: '這是 isolated fixture。', variant: 'danger' })) MiHuFeedback.success('Confirmed', { duration: 0 }); };
+q('loadingAction').onclick = () => { MiHuFeedback.setButtonLoading(q('loadingAction'), { text: '處理中...' }); window.setTimeout(() => MiHuFeedback.setButtonLoading(q('loadingAction'), { loading: false }), 700); };
+q('staffFilter').oninput = event => q('staffEmpty').classList.toggle('fixture-hidden', event.target.value.trim() === '');
+</script>
+</body>
+</html>

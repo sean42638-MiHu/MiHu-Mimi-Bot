@@ -1,0 +1,12 @@
+<header class="admin-page-header">
+    <div class="admin-page-header__main">
+        <span class="admin-page-header__icon" aria-hidden="true"><i class="fa-solid <%= icon %>"></i></span>
+        <div class="admin-page-header__content">
+            <h1 class="admin-page-header__title"><%= title %></h1>
+            <p class="admin-page-header__description"><%= description %></p>
+        </div>
+    </div>
+    <% if (typeof actions !== 'undefined' && actions) { %>
+        <div class="admin-page-header__actions"><%- actions %></div>
+    <% } %>
+</header>

@@ -1,0 +1,23 @@
+.analytics-toolbar { align-items: end; padding: 14px 18px; border-bottom: 1px solid rgba(148,163,184,.12); }
+.analytics-toolbar .admin-form-group { min-width: 140px; flex: 1 1 150px; }
+.analytics-toolbar .admin-form-actions { align-items: end; }
+.analytics-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.analytics-kpi { min-width: 0; padding: 16px; }
+.analytics-kpi__label { color: #94a3b8; font-size: .76rem; }
+.analytics-kpi__value { margin-top: 8px; color: #f8fafc; font-family: Consolas, Monaco, monospace; font-size: 1.35rem; font-weight: 800; overflow-wrap: anywhere; }
+.analytics-kpi__context { margin-top: 5px; color: #64748b; font-size: .72rem; }
+.analytics-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.analytics-panel { min-width: 0; }
+.analytics-panel__body { padding: 12px 18px 18px; }
+.analytics-trend-table { width: 100%; }
+.analytics-trend-table th, .analytics-trend-table td { padding: 8px; color: #cbd5e1; font-size: .75rem; }
+.analytics-trend-table th { color: #94a3b8; font-weight: 700; }
+.analytics-number { color: #f8fafc; font-family: Consolas, Monaco, monospace; text-align: right; }
+.analytics-summary-list { display: grid; gap: 9px; margin: 0; }
+.analytics-summary-list > div { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(148,163,184,.1); }
+.analytics-summary-list > div:last-child { border-bottom: 0; }
+.analytics-summary-list dt { color: #94a3b8; font-size: .78rem; }
+.analytics-summary-list dd { margin: 0; color: #f8fafc; font-family: Consolas, Monaco, monospace; font-size: .8rem; }
+.analytics-note { margin: 0; color: #94a3b8; font-size: .76rem; line-height: 1.5; }
+@media (max-width: 991.98px) { .analytics-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767.98px) { .analytics-toolbar { align-items: stretch; flex-direction: column; } .analytics-toolbar .admin-form-group, .analytics-toolbar .admin-form-actions { width: 100%; } .analytics-toolbar .admin-form-actions .admin-btn { flex: 1 1 auto; } .analytics-kpi-grid, .analytics-panels { grid-template-columns: 1fr; } }

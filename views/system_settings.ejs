@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統設定 · 米胡電競 MiHu Gaming</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/system-settings.css">
+</head>
+<body class="mihu-admin-page text-light">
+    <div class="app-layout">
+        <%- include('partials/sidebar', { activePage: 'system_settings' }) %>
+        <div class="main-wrapper">
+            <%- include('partials/navbar', { activePage: 'system_settings' }) %>
+            <main class="content-body admin-page-content system-settings-page">
+                <%- include('partials/admin_page_header', { icon: 'fa-sliders', title: '系統設定', description: '配置全站核心運作參數、提領開放時間、系統全域設定與驗證機制' }) %>
+                <% if (typeof error !== 'undefined' && error) { %>
+                    <div class="admin-form-error-summary" role="alert"><%= error %></div>
+                <% } %>
+                <% if (typeof saved !== 'undefined' && saved) { %>
+                    <div class="system-settings-success" role="status">提款設定已更新</div>
+                <% } %>
+                <% if (settings) { %>
+                    <section class="system-settings-panel admin-panel" aria-labelledby="systemSettingsPanelTitle">
+                        <div class="d-flex align-items-start gap-3">
+                            <div class="system-settings-panel-icon" aria-hidden="true"><i class="fa-solid fa-calendar-days"></i></div>
+                            <div class="flex-grow-1">
+                                <h2 id="systemSettingsPanelTitle">薪資提款設定</h2>
+                                <p>設定每月薪資提款申請期間與最低申請金額。</p>
+                                <form class="admin-form system-settings-form" action="/system/settings" method="POST" data-admin-confirm data-confirm-title="確認更新提款設定" data-confirm-message="即將套用新的提款期間與最低申請金額。" data-confirm-confirm-text="確認更新" data-confirm-variant="warning" data-admin-submit-loading data-submit-loading-text="儲存中...">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                    <div class="admin-form-section">
+                                        <h3 class="admin-form-section-title">提款開放期間</h3>
+                                        <p class="admin-form-section-desc">依平台時區 <%= settings.timeZone %> 判定每日 00:00 至 23:59:59。</p>
+                                        <div class="system-settings-day-fields">
+                                            <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalStartDay">開始日</label><input class="admin-form-control" id="withdrawalStartDay" name="start_day" type="number" min="1" max="31" step="1" value="<%= settings.startDay %>" required aria-describedby="withdrawalStartDayError"><span id="withdrawalStartDayError" class="admin-field-error" hidden>開始日必須為 1–31 的整數。</span></div>
+                                            <span class="system-settings-day-separator" aria-hidden="true">至</span>
+                                            <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalEndDay">結束日</label><input class="admin-form-control" id="withdrawalEndDay" name="end_day" type="number" min="1" max="31" step="1" value="<%= settings.endDay %>" required aria-describedby="withdrawalEndDayError"><span id="withdrawalEndDayError" class="admin-field-error" hidden>結束日必須大於或等於開始日。</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="admin-form-section">
+                                        <h3 class="admin-form-section-title">最低申請金額</h3>
+                                        <p class="admin-form-section-desc">只接受大於等於 1 的正整數，金額以 NTD 計。</p>
+                                        <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalMinimumAmount">最低提款金額</label><div class="system-settings-money-input"><span aria-hidden="true">NT$</span><input class="admin-form-control" id="withdrawalMinimumAmount" name="minimum_amount" type="number" min="1" max="100000000" step="1" value="<%= settings.minimumAmount %>" required aria-describedby="withdrawalMinimumAmountError"></div><span id="withdrawalMinimumAmountError" class="admin-field-error" hidden>最低提款金額必須為正整數。</span></div>
+                                    </div>
+                                    <div class="admin-form-actions"><button type="submit" class="admin-btn admin-btn-primary">儲存設定</button></div>
+                                </form>
+                                <section class="system-settings-preview" aria-live="polite" aria-labelledby="withdrawalPreviewTitle"><h3 id="withdrawalPreviewTitle">目前規則</h3><p>目前提款開放期間：每月 <strong data-preview-start><%= settings.startDay %></strong> 日 00:00 至 <strong data-preview-end><%= settings.endDay %></strong> 日 23:59:59</p><p>最低提款金額：<strong>NT$<span data-preview-minimum><%= settings.minimumAmount.toLocaleString() %></span></strong></p></section>
+                            </div>
+                        </div>
+                    </section>
+                <% } %>
+                <% if (discordStatus) { %>
+                    <section class="system-settings-panel admin-panel discord-control-panel" aria-labelledby="discordControlTitle">
+                        <div class="admin-panel-header">
+                            <h2 id="discordControlTitle" class="admin-section-title">Discord Bot 與部署</h2>
+                            <p class="admin-section-description">OAuth 登入、Bot Runtime 與 Slash Command 部署彼此分離；敏感憑證只由環境設定管理。</p>
+                        </div>
+                        <div class="discord-status-grid">
+                            <div class="discord-status-item"><span>Environment</span><strong class="admin-badge <%= discordStatus.environment === 'DEVELOPMENT' ? 'admin-badge-info' : 'admin-badge-muted' %>"><%= discordStatus.environment %></strong></div>
+                            <div class="discord-status-item"><span>Bot Runtime</span><strong class="admin-badge <%= discordStatus.botOnline ? 'admin-badge-success' : 'admin-badge-muted' %>"><%= discordStatus.botOnline ? 'ONLINE' : 'OFFLINE' %></strong></div>
+                            <div class="discord-status-item"><span>Bot Token</span><strong class="admin-badge <%= discordStatus.botTokenConfigured ? 'admin-badge-success' : 'admin-badge-danger' %>"><%= discordStatus.botTokenConfigured ? 'CONFIGURED' : 'MISSING' %></strong></div>
+                            <div class="discord-status-item"><span>OAuth Client / Secret</span><strong class="admin-badge <%= discordStatus.oauthClientConfigured && discordStatus.oauthSecretConfigured ? 'admin-badge-success' : 'admin-badge-danger' %>"><%= discordStatus.oauthClientConfigured && discordStatus.oauthSecretConfigured ? 'CONFIGURED' : 'MISSING' %></strong></div>
+                            <div class="discord-status-item"><span>Command Count</span><strong class="admin-badge admin-badge-info"><%= discordStatus.commandCount %></strong></div>
+                            <div class="discord-status-item"><span>Production Gate</span><strong class="admin-badge <%= discordStatus.productionGateOpen ? 'admin-badge-warning' : 'admin-badge-danger' %>"><%= discordStatus.productionGateOpen ? 'OPEN' : 'PRODUCTION LOCKED' %></strong></div>
+                        </div>
+                        <div class="discord-guild-status" aria-label="Discord Guild 設定狀態">
+                            <% for (const [key, label] of Object.entries(discordStatus.guildLabels)) { %>
+                                <div class="discord-status-item"><span><%= label %></span><strong class="admin-badge <%= discordStatus.guildStatus[`GUILD_${key}_ID`] === 'PRESENT' ? 'admin-badge-success' : 'admin-badge-danger' %>"><%= discordStatus.guildStatus[`GUILD_${key}_ID`] === 'PRESENT' ? 'CONFIGURED' : 'MISSING' %></strong></div>
+                            <% } %>
+                        </div>
+                        <div class="discord-deployment-actions">
+                            <div class="admin-form-section">
+                                <h3 class="admin-form-section-title">Slash Command 部署</h3>
+                                <p class="admin-form-section-desc">目前註冊 <%= discordStatus.commandCount %> 個指令。部署只會在明確提交後執行。</p>
+                                <div class="admin-form-actions">
+                                    <% if (discordStatus.environment === 'DEVELOPMENT' && discordStatus.developmentGuildConfigured) { %>
+                                        <form method="POST" action="/system/settings/discord/deploy" data-admin-submit-loading data-submit-loading-text="部署中...">
+                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="target" value="development">
+                                            <button type="submit" class="admin-btn admin-btn-primary">部署至開發測試群</button>
+                                        </form>
+                                    <% } else { %><span class="admin-badge admin-badge-muted">Development Deployment 不適用</span><% } %>
+                                    <% if (discordStatus.productionGateOpen) { %>
+                                        <form method="POST" action="/system/settings/discord/deploy" data-admin-confirm data-confirm-title="確認部署正式 Discord 指令" data-confirm-message="這會更新正式 Discord Guild 的 Slash Commands。" data-confirm-confirm-text="確認正式部署" data-confirm-variant="danger" data-admin-submit-loading data-submit-loading-text="部署中...">
+                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="target" value="production">
+                                            <button type="submit" class="admin-btn admin-btn-danger">部署正式指令</button>
+                                        </form>
+                                    <% } else { %><span class="admin-badge admin-badge-danger">Production LOCKED</span><% } %>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="discord-runtime-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Bot Hot Start/Stop 未啟用；請使用獨立 Development Bot runtime。網站啟動不會自動登入 Bot 或部署指令。</div>
+                        <% if (discordStatus.lastDeployment) { %><p class="discord-last-deployment">最近一次部署：<strong><%= discordStatus.lastDeployment.target %></strong> · <%= discordStatus.lastDeployment.commandCount %> 個指令 · <%= discordStatus.lastDeployment.success ? '成功' : '失敗' %> · <%= discordStatus.lastDeployment.createdAt %></p><% } %>
+                    </section>
+                <% } %>
+                <section class="system-settings-panel admin-panel system-settings-coming-soon" aria-labelledby="systemSettingsFutureTitle">
+                    <h2 id="systemSettingsFutureTitle">其他系統模組</h2>
+                    <p>尚未開放的核心功能仍會以 Coming Soon 狀態呈現。</p>
+                    <div class="system-settings-preview-tags" aria-label="即將推出的設定模組">
+                        <button type="button" class="system-settings-preview-item" data-coming-soon data-coming-soon-feature="驗證機制"><%- include('partials/coming_soon_badge', { label: '驗證機制', icon: 'fa-shield-halved' }) %></button>
+                        <button type="button" class="system-settings-preview-item" data-coming-soon data-coming-soon-feature="系統參數"><%- include('partials/coming_soon_badge', { label: '系統參數', icon: 'fa-sliders' }) %></button>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.querySelector('.system-settings-form');
+            if (!form) return;
+            const start = form.querySelector('[name="start_day"]');
+            const end = form.querySelector('[name="end_day"]');
+            const minimum = form.querySelector('[name="minimum_amount"]');
+            const startError = document.getElementById('withdrawalStartDayError');
+            const endError = document.getElementById('withdrawalEndDayError');
+            const minimumError = document.getElementById('withdrawalMinimumAmountError');
+            const setInvalid = (input, error, invalid) => { input.setAttribute('aria-invalid', String(invalid)); error.hidden = !invalid; };
+            const updatePreview = () => {
+                document.querySelector('[data-preview-start]').textContent = start.value || '--';
+                document.querySelector('[data-preview-end]').textContent = end.value || '--';
+                document.querySelector('[data-preview-minimum]').textContent = Number(minimum.value || 0).toLocaleString();
+            };
+            [start, end, minimum].forEach(input => input.addEventListener('input', updatePreview));
+            form.addEventListener('submit', event => {
+                const startValue = Number(start.value);
+                const endValue = Number(end.value);
+                const minimumValue = Number(minimum.value);
+                const startInvalid = !Number.isInteger(startValue) || startValue < 1 || startValue > 31;
+                const endInvalid = !Number.isInteger(endValue) || endValue < startValue || endValue > 31;
+                const minimumInvalid = !Number.isSafeInteger(minimumValue) || minimumValue < 1;
+                setInvalid(start, startError, startInvalid);
+                setInvalid(end, endError, endInvalid);
+                setInvalid(minimum, minimumError, minimumInvalid);
+                if (startInvalid || endInvalid || minimumInvalid) event.preventDefault();
+            });
+        });
+    </script>
+</body>
+</html>

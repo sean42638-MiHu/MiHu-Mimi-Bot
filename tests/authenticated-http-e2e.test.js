@@ -133,6 +133,10 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     }
     await run("INSERT INTO orders (id,order_no,talent_id,category,duration,unit_price,total_amount,talent_earning,status,created_at,studio_id) VALUES (303,'EARN-A','member-a','陪玩單',1,1500,1500,1500,'completed',CURRENT_TIMESTAMP,1),(404,'EARN-B','member-b','陪玩單',1,1500,1500,1500,'completed',CURRENT_TIMESTAMP,2)");
     await run("INSERT INTO orders (id,order_no,talent_id,category,duration,unit_price,total_amount,talent_earning,status,created_at,studio_id) VALUES (505,'EARN-STAFF','staff-a','陪玩單',1,500,500,500,'completed',CURRENT_TIMESTAMP,1)");
+    await run(`INSERT INTO wallet_transactions
+        (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
+        VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
+               ('member-b', 'mystery_type', -25, 200, 175, 'wallet', 'LEDGER-B', 'Studio B fixture', 'manager-b', '2026-01-01 11:00:00')`);
     await new Promise(resolve => setup.close(resolve));
 
     const discord = require('discord.js');
@@ -200,6 +204,53 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(deniedStaff.status, 403);
 
         const managerA = await createSession('manager-a');
+        const managerPayrollPage = await createRequest(port, 'GET', '/management/payroll', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(managerPayrollPage.status, 200, managerPayrollPage.body);
+        assert.match(managerPayrollPage.body, /payrollExportModal/);
+        assert.match(managerPayrollPage.body, /export\/payouts/);
+        assert.match(managerPayrollPage.body, /export\/bank-accounts/);
+        const anonymousSystemSettings = await createRequest(port, 'GET', '/system/settings');
+        assert.equal(anonymousSystemSettings.status, 302);
+        const memberSystemSettings = await createRequest(port, 'GET', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie
+        });
+        assert.equal(memberSystemSettings.status, 403);
+        const systemSettings = await createRequest(port, 'GET', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(systemSettings.status, 200);
+        assert.match(systemSettings.body, /薪資提款設定/);
+        assert.match(systemSettings.body, /配置全站核心運作參數/);
+        assert.match(systemSettings.body, /href="\/system\/settings"[^>]*class="menu-item active"/);
+        assert.match(systemSettings.body, /action="\/system\/settings"/);
+        assert.match(systemSettings.body, /name="start_day"/);
+        assert.match(systemSettings.body, /name="minimum_amount"/);
+        assert.doesNotMatch(systemSettings.body, /DISCORD_BOT_TOKEN|DISCORD_CLIENT_SECRET|SESSION_SECRET|PAYROLL_DATA_ENCRYPTION_KEY/);
+        const missingCsrfSettings = await createRequest(port, 'POST', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'start_day=3&end_day=7&minimum_amount=500');
+        assert.equal(missingCsrfSettings.status, 403);
+        const anonymousLedger = await createRequest(port, 'GET', '/management/members/transactions');
+        assert.equal(anonymousLedger.status, 302);
+        const memberLedger = await createRequest(port, 'GET', '/management/members/transactions', { Host: `127.0.0.1:${port}`, Cookie: member.cookie });
+        assert.equal(memberLedger.status, 403);
+        const ledgerA = await createRequest(port, 'GET', '/management/members/transactions?q=member-a&type=recharge&limit=10&page=1', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(ledgerA.status, 200);
+        assert.match(ledgerA.body, /Studio A fixture/);
+        assert.match(ledgerA.body, /會員資金明細/);
+        assert.match(ledgerA.body, /collapseMembers/);
+        assert.doesNotMatch(ledgerA.body, /Studio B fixture/);
+        assert.match(ledgerA.body, /active-staff/);
+        const injectionLedger = await createRequest(port, 'GET', '/management/members/transactions?type=DROP%20TABLE%20users%3B--&q=%25%27%20OR%201%3D1%20--', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(injectionLedger.status, 200);
+        assert.match(injectionLedger.body, /會員資金明細/);
         const ordersPage = await createRequest(port, 'GET', '/management/orders', { Host: `127.0.0.1:${port}`, Cookie: managerA.cookie });
         assert.equal(ordersPage.status, 200);
         assert.match(ordersPage.body, /ORDER-A/);
@@ -210,6 +261,13 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(studioBOrders.status, 200);
         assert.match(studioBOrders.body, /ORDER-B/);
         assert.doesNotMatch(studioBOrders.body, /ORDER-A/);
+        const ledgerB = await createRequest(port, 'GET', '/management/members/transactions', {
+            Host: `127.0.0.1:${port}`, Cookie: managerB.cookie
+        });
+        assert.equal(ledgerB.status, 200);
+        assert.match(ledgerB.body, /Studio B fixture/);
+        assert.doesNotMatch(ledgerB.body, /Studio A fixture/);
+        assert.match(ledgerB.body, /其他：mystery_type/);
 
         const memberA = await createSession('member-a');
         const profilePage = await createRequest(port, 'GET', '/profile', {
@@ -263,11 +321,19 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(limitedStaffPage.status, 200, limitedStaffPage.body);
         assert.doesNotMatch(limitedStaffPage.body, /"bankAccount":"123456789"/);
         assert.doesNotMatch(limitedStaffPage.body, /"bankAccount":"7777888899990000"/);
+        const limitedPayrollPage = await createRequest(port, 'GET', '/management/payroll', {
+            Host: `127.0.0.1:${port}`, Cookie: limitedStaffManager.cookie
+        });
+        assert.equal(limitedPayrollPage.status, 200, limitedPayrollPage.body);
+        assert.match(limitedPayrollPage.body, /payrollExportModal/);
+        assert.doesNotMatch(limitedPayrollPage.body, /class="btn-excel-export"/);
         const sensitiveStaffPage = await createRequest(port, 'GET', '/management/staff', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
         });
         assert.equal(sensitiveStaffPage.status, 200, sensitiveStaffPage.body);
-        assert.match(sensitiveStaffPage.body, /"bankAccount":"7777888899990000"/);
+        assert.match(sensitiveStaffPage.body, /個人隱私資料/);
+        assert.match(sensitiveStaffPage.body, /敏感資料/);
+        assert.doesNotMatch(sensitiveStaffPage.body, /7777888899990000/);
         const foreignPayoutId = await new Promise((resolve, reject) => db.run(`
             INSERT INTO payouts (withdrawal_no,user_id,studio_id,withdrawal_period,amount,status,requested_at)
             VALUES ('WD-FOREIGN','member-b',2,'2099-01',100,'pending',CURRENT_TIMESTAMP)
@@ -278,6 +344,22 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(exportResponse.status, 200);
         assert.match(exportResponse.headers['content-type'], /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='WITHDRAWAL_EXPORTED'", (error, row) => error ? reject(error) : resolve(row.count))), 1);
+        const payoutStatusBeforeNewExport = await new Promise((resolve, reject) => db.get('SELECT status, paid_at FROM payouts WHERE id=?', [createdPayout.id], (error, row) => error ? reject(error) : resolve(row)));
+        const newPayoutExport = await createRequest(port, 'GET', '/management/payroll/export/payouts', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(newPayoutExport.status, 200);
+        const bankExport = await createRequest(port, 'GET', '/management/payroll/export/bank-accounts', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(bankExport.status, 200);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='PAYROLL_BANK_ACCOUNT_EXPORT'", (error, row) => error ? reject(error) : resolve(row.count))), 1);
+        const payoutStatusAfterNewExport = await new Promise((resolve, reject) => db.get('SELECT status, paid_at FROM payouts WHERE id=?', [createdPayout.id], (error, row) => error ? reject(error) : resolve(row)));
+        assert.deepEqual(payoutStatusAfterNewExport, payoutStatusBeforeNewExport);
+        const deniedBankExport = await createRequest(port, 'GET', '/management/payroll/export/bank-accounts', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(deniedBankExport.status, 403);
         const batchConflict = await createRequest(port, 'POST', '/management/payroll/payouts/batch-paid', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json'
@@ -315,6 +397,38 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         }, 'start_day=3&end_day=5&minimum_amount=200&time_zone=Asia%2FTaipei');
         assert.equal(validSettings.status, 302);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT setting_value FROM system_settings WHERE setting_key='withdrawal_start_day'", (error, row) => error ? reject(error) : resolve(row.setting_value))), '3');
+
+        const invalidSystemSettings = await createRequest(port, 'POST', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'start_day=0&end_day=6&minimum_amount=100&PAYROLL_DATA_ENCRYPTION_KEY=attempt');
+        assert.equal(invalidSystemSettings.status, 302);
+        assert.match(invalidSystemSettings.headers.location, /error=/);
+        const validSystemSettings = await createRequest(port, 'POST', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'start_day=3&end_day=7&minimum_amount=500&PAYROLL_DATA_ENCRYPTION_KEY=attempt');
+        assert.equal(validSystemSettings.status, 302);
+        assert.match(validSystemSettings.headers.location, /saved=1/);
+        const updatedSettings = await new Promise((resolve, reject) => db.all("SELECT setting_key,setting_value FROM system_settings WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount') ORDER BY setting_key", (error, rows) => error ? reject(error) : resolve(rows)));
+        assert.deepEqual(updatedSettings.map(row => [row.setting_key, row.setting_value]), [
+            ['withdrawal_end_day', '7'], ['withdrawal_min_amount', '500'], ['withdrawal_start_day', '3']
+        ]);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM system_settings WHERE setting_key='PAYROLL_DATA_ENCRYPTION_KEY'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
+        const auditPageA = await createRequest(port, 'GET', '/system/audit-logs?limit=10', { Host: `127.0.0.1:${port}`, Cookie: managerA.cookie });
+        assert.equal(auditPageA.status, 200, auditPageA.body);
+        assert.match(auditPageA.body, /操作紀錄/);
+        assert.match(auditPageA.body, /提款設定更新/);
+        assert.doesNotMatch(auditPageA.body, /PAYROLL_DATA_ENCRYPTION_KEY|TEST_SECRET|7777888899990000/);
+        const auditPageMember = await createRequest(port, 'GET', '/system/audit-logs', { Host: `127.0.0.1:${port}`, Cookie: member.cookie });
+        assert.equal(auditPageMember.status, 403);
+        const analyticsPageA = await createRequest(port, 'GET', '/management/analytics?range=30d', { Host: `127.0.0.1:${port}`, Cookie: managerA.cookie });
+        assert.equal(analyticsPageA.status, 200, analyticsPageA.body);
+        assert.match(analyticsPageA.body, /公司營運統計/);
+        assert.match(analyticsPageA.body, /完成訂單 total_amount/);
+        assert.doesNotMatch(analyticsPageA.body, /member-b|Studio B fixture|bank_account|wallet_transactions/);
+        const analyticsPageMember = await createRequest(port, 'GET', '/management/analytics', { Host: `127.0.0.1:${port}`, Cookie: member.cookie });
+        assert.equal(analyticsPageMember.status, 403);
 
         const memberListA = await createRequest(port, 'GET', '/management/members', { Host: `127.0.0.1:${port}`, Cookie: managerA.cookie });
         assert.equal(memberListA.status, 200);

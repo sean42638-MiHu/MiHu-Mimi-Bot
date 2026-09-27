@@ -437,12 +437,12 @@ async function listPayouts({ studioId, sensitive = false, status = null }) {
     });
 }
 
-async function exportPendingPayoutRows({ studioId, operatorId }) {
+async function exportPendingPayoutRows({ studioId, operatorId, auditAction = 'WITHDRAWAL_EXPORTED' }) {
     const rows = await listPayouts({ studioId, sensitive: true, status: PAYOUT_STATES.PENDING });
     await writeAuditLog({
         operatorId,
         studioId,
-        action: 'WITHDRAWAL_EXPORTED',
+        action: auditAction,
         targetType: 'payout_export',
         before: null,
         after: { count: rows.length },

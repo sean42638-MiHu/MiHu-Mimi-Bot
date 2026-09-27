@@ -3,7 +3,6 @@ const router = express.Router();
 const db = require('../../database');
 const { ensureAuth, checkPerm } = require('../../middleware/auth');
 const { sortByRoleWeight } = require('../../utils/roleHelper');
-const ExcelJS = require('exceljs');
 const {
     listPayouts,
     markPayoutPaid,
@@ -11,6 +10,7 @@ const {
     rejectPayout,
     exportPendingPayoutRows
 } = require('../../services/payoutService');
+const { exportPayoutRequests, exportStaffBankAccounts } = require('../../services/payrollExportService');
 const { decryptSensitiveFields } = require('../../utils/sensitiveDataCrypto');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
@@ -95,7 +95,9 @@ router.get('/', ensureAuth, requirePayrollAccess, (req, res) => {
                 console.error('載入提款管理清單失敗:', error.message);
             }
         }
-        res.render('payroll', {
+        const canExportPayouts = Boolean(can(req, res, 'payout.export') && canViewSensitive);
+        const canExportBankAccounts = Boolean(can(req, res, 'payout.export') && canViewSensitive);
+        const payrollViewModel = {
             staffList: sortedPayroll,
             payouts,
             canViewStaffPayroll,
@@ -103,53 +105,40 @@ router.get('/', ensureAuth, requirePayrollAccess, (req, res) => {
             canViewPayouts,
             canMarkPayoutPaid: can(req, res, 'payout.mark_paid'),
             canRejectPayout: can(req, res, 'payout.reject'),
-            canExportPayouts: can(req, res, 'payout.export') && canViewSensitive,
+            canExportPayouts,
+            canExportBankAccounts,
             csrfToken: res.locals.csrfToken,
             currentUser: req.user,
             userPerms: req.user ? (req.user.permissions || []) : [],
             activePage: 'payroll',
             successMsg: req.query.successMsg || null,
             errorMsg: req.query.error || null
-        });
+        };
+        res.render('payroll', payrollViewModel);
     };
     if (canViewStaffPayroll) db.all(payrollSql, [actorStudioId], renderPayroll);
     else renderPayroll(null, []);
 });
 
-router.get('/export', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), async (req, res) => {
+async function sendPayrollExport(req, res, exporter) {
     const studioId = getActorStudioId(req);
     if (!studioId) return res.status(403).send('找不到已授權的工作室範圍');
     try {
-        const rows = await exportPendingPayoutRows({ studioId, operatorId: req.user.id });
-        const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('待撥款');
-        sheet.columns = [
-            { header: '提款編號', key: 'withdrawal_no', width: 22 },
-            { header: '申請時間', key: 'requested_at', width: 22 },
-            { header: '員工', key: 'employee', width: 24 },
-            { header: '本名', key: 'real_name', width: 18 },
-            { header: '銀行', key: 'bank_name_snapshot', width: 20 },
-            { header: '機構代碼', key: 'bank_code_snapshot', width: 14 },
-            { header: '分行', key: 'bank_branch_snapshot', width: 20 },
-            { header: '戶名', key: 'account_name', width: 18 },
-            { header: '帳號', key: 'bank_account', width: 24 },
-            { header: '金額', key: 'amount', width: 16 }
-        ];
-        rows.forEach(payout => sheet.addRow({
-            ...payout,
-            employee: payout.custom_nickname || payout.global_name || payout.username
-        }));
-        sheet.getRow(1).font = { bold: true };
-        const buffer = await workbook.xlsx.writeBuffer();
-        const dateStamp = new Date().toISOString().slice(0, 10);
+        const result = await exporter({ studioId, operatorId: req.user.id });
+        if (result.empty) return res.status(204).end();
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=MiHu_Pending_Payouts_${dateStamp}.xlsx`);
-        return res.status(200).send(Buffer.from(buffer));
+        res.setHeader('Content-Disposition', `attachment; filename=${result.filename}`);
+        return res.status(200).send(result.buffer);
     } catch (error) {
-        console.error('匯出待撥款 Excel 失敗:', error.message);
-        return res.status(500).send('匯出待撥款資料失敗');
+        console.error('薪轉 Excel 匯出失敗:', error.message);
+        return res.status(503).send('目前無法安全產生薪轉匯出資料');
     }
-});
+}
+
+router.get('/export/payouts', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), (req, res) => sendPayrollExport(req, res, exportPayoutRequests));
+router.get('/export/bank-accounts', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), (req, res) => sendPayrollExport(req, res, exportStaffBankAccounts));
+// Legacy consumer compatibility: retain the old payout-only endpoint with the same read-only export semantics.
+router.get('/export', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), (req, res) => sendPayrollExport(req, res, args => exportPayoutRequests({ ...args, auditAction: 'WITHDRAWAL_EXPORTED' })));
 
 router.post('/payouts/:id/paid', ensureAuth, checkPerm('payout.mark_paid'), async (req, res) => {
     const studioId = getActorStudioId(req);

@@ -13,6 +13,107 @@ function isPlatformAdmin(user) {
     return Boolean(user && (user.id === '604610298581876746' || user.role === 'admin'));
 }
 
+const ledgerTypeLabels = Object.freeze({
+    recharge: { label: '手動充值', icon: 'fa-circle-plus', tone: 'positive' },
+    order_payment: { label: '訂單消費', icon: 'fa-receipt', tone: 'negative' },
+    order_adjustment: { label: '訂單金額調整', icon: 'fa-sliders', tone: 'neutral' },
+    admin_adjustment: { label: '帳務扣款／調整', icon: 'fa-user-pen', tone: 'negative' },
+    refund: { label: '系統退款', icon: 'fa-rotate-left', tone: 'refund' },
+    development_fixture_balance: { label: 'Development 測試餘額', icon: 'fa-flask', tone: 'neutral' }
+});
+const ledgerTypeWhitelist = Object.freeze(Object.keys(ledgerTypeLabels));
+
+function queryAll(sql, params = []) {
+    return new Promise((resolve, reject) => db.all(sql, params, (error, rows) => error ? reject(error) : resolve(rows || [])));
+}
+
+function queryOne(sql, params = []) {
+    return new Promise((resolve, reject) => db.get(sql, params, (error, row) => error ? reject(error) : resolve(row || null)));
+}
+
+function memberIdentityExpression(alias = 'member') {
+    return `COALESCE(NULLIF(${alias}.custom_nickname, ''), NULLIF(${alias}.global_name, ''), NULLIF(${alias}.username, ''), ${alias}.id, '未知會員')`;
+}
+
+function ledgerDisplayType(type) {
+    const known = ledgerTypeLabels[type];
+    return known || { label: `其他：${type || '未知'}`, icon: 'fa-circle-question', tone: 'neutral' };
+}
+
+// 1.0 唯讀會員 Wallet Ledger；此 route 必須位於任何未來 /:id dynamic route 之前。
+router.get('/transactions', ensureAuth, checkPerm('manage_members'), async (req, res) => {
+    const platformAdmin = isPlatformAdmin(req.user);
+    const studioId = Number(req.user && req.user.studio_id);
+    if (!platformAdmin && (!Number.isInteger(studioId) || studioId <= 0)) {
+        return res.status(403).send('找不到已授權的工作室範圍');
+    }
+
+    const requestedType = String(req.query.type || '').trim();
+    const type = ledgerTypeWhitelist.includes(requestedType) ? requestedType : '';
+    const search = String(req.query.q || '').trim();
+    const requestedPage = Number.parseInt(req.query.page, 10);
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = [10, 25, 50].includes(requestedLimit) ? requestedLimit : 10;
+    const offset = (page - 1) * limit;
+    const filters = [];
+    const params = [];
+    if (!platformAdmin) {
+        filters.push('member.studio_id = ?');
+        params.push(studioId);
+    }
+    if (search) {
+        filters.push(`(${memberIdentityExpression()} LIKE ? OR member.id LIKE ?)`);
+        params.push(`%${search}%`, `%${search}%`);
+    }
+    if (type) {
+        filters.push('wt.type = ?');
+        params.push(type);
+    }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const from = `
+        FROM wallet_transactions wt
+        LEFT JOIN users member ON wt.user_id = member.id
+        LEFT JOIN users operator ON wt.operator_id = operator.id
+        ${where}
+    `;
+    try {
+        const countRow = await queryOne(`SELECT COUNT(*) AS total ${from}`, params);
+        const total = Number(countRow && countRow.total || 0);
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        const currentPage = Math.min(page, totalPages);
+        const rows = await queryAll(`
+            SELECT wt.id, wt.user_id, wt.type, wt.amount, wt.balance_before, wt.balance_after,
+                wt.reference_type, wt.reference_id, wt.description, wt.operator_id, wt.created_at,
+                ${memberIdentityExpression()} AS member_name,
+                member.username AS member_username, member.global_name AS member_global_name,
+                member.avatar AS member_avatar, operator.username AS operator_username,
+                operator.global_name AS operator_global_name
+            ${from}
+            ORDER BY wt.created_at DESC, wt.id DESC
+            LIMIT ? OFFSET ?
+        `, [...params, limit, (currentPage - 1) * limit]);
+        const transactions = rows.map(row => ({
+            ...row,
+            displayType: ledgerDisplayType(row.type),
+            memberName: row.member_name || row.user_id || '未知會員',
+            operatorName: row.operator_id
+                ? (row.operator_global_name || row.operator_username || row.operator_id)
+                : '系統'
+        }));
+        return res.render('member_transactions', {
+            activePage: 'member_transactions',
+            transactions,
+            filters: { q: search, type, limit },
+            pagination: { total, page: currentPage, limit, totalPages },
+            ledgerTypeLabels
+        });
+    } catch (error) {
+        console.error('Member wallet ledger query failed:', error.message);
+        return res.status(500).send('資金明細讀取錯誤');
+    }
+});
+
 // 1.1 渲染「會員管理」頁面 (完全整合 user_wallets 資料庫)
 router.get('/', ensureAuth, checkPerm('manage_members'), (req, res) => {
     const allStudios = isPlatformAdmin(req.user);

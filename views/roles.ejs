@@ -9,69 +9,7 @@
     <style>
         :root {
             --bg-color: #0b0914;
-            --sidebar-bg: #131021;
-            --card-bg: rgba(23, 19, 38, 0.85);
-            --card-border: rgba(168, 85, 247, 0.2);
-            --mihu-purple: #9333ea;
-            --mihu-purple-light: #c084fc;
-            --mihu-yellow: #fde047;
-            --text-light: #f3f4f6;
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-light);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            min-height: 100vh;
-        }
-
-        .main-wrapper {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            max-height: 100vh;
-        }
-
-        .content-body { 
-            padding: 16px 36px 32px; 
-            flex-grow: 1; 
-        }
-
-        .glass-table-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 18px;
-            overflow: hidden;
-            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(15px);
-        }
-
-        .table-responsive { margin: 0; }
-        .mihu-table {
-            width: 100%;
-            margin-bottom: 0;
-            color: #f3f4f6;
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-        .mihu-table th {
-            background: rgba(0, 0, 0, 0.42);
-            color: #94a3b8;
-            font-weight: 700;
-            font-size: 0.84rem;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            padding: 16px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            white-space: nowrap;
-        }
-        .mihu-table td {
-            padding: 16px 20px;
-            vertical-align: middle;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                    </tbody>
             font-size: 0.92rem;
         }
         .mihu-table tbody tr.role-row {
@@ -96,40 +34,6 @@
         }
         .category-dot {
             width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .dot-最高權限 { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.8); }
-        .dot-主管職位 { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.8); }
-        .dot-客服職位 { background: #38bdf8; box-shadow: 0 0 8px rgba(56, 189, 248, 0.8); }
-        .dot-一般職位 { background: #c084fc; box-shadow: 0 0 8px rgba(192, 132, 252, 0.8); }
-        .dot-會員     { background: #94a3b8; box-shadow: 0 0 6px rgba(148, 163, 184, 0.5); }
-
-        .role-pill-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.82rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            white-space: nowrap;
-        }
-        .badge-style-danger {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.3));
-            border: 1px solid rgba(239, 68, 68, 0.5);
-            color: #fca5a5;
-        }
-        .badge-style-warning {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(180, 83, 9, 0.3));
-            border: 1px solid rgba(245, 158, 11, 0.5);
-            color: #fde047;
-        }
-        .badge-style-info {
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 116, 144, 0.3));
-            border: 1px solid rgba(56, 189, 248, 0.5);
             color: #7dd3fc;
         }
         .badge-style-primary {
@@ -236,22 +140,8 @@
 <div class="main-wrapper">
     <%- include('partials/navbar', { activePage: 'roles' }) %>
 
-    <div class="content-body">
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div>
-                <div class="page-title-text" style="font-size: 1.5rem; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <i class="fa-solid fa-shield-halved text-success"></i>
-                    <span>身分管理</span>
-                </div>
-                <p class="text-secondary small mb-0">自訂系統身分組類別、權限層級與各功能模組之訪問與操作權限</p>
-            </div>
-
-            <div>
-                <button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addRoleModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;">
-                    <i class="fa-solid fa-plus me-1"></i>新增身分組
-                </button>
-            </div>
-        </div>
+    <div class="content-body admin-page-content">
+        <%- include('partials/admin_page_header', { icon: 'fa-shield-halved', title: '身分管理', description: '自訂系統身分組類別、權限層級與各功能模組之訪問與操作權限', actions: '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addRoleModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增身分組</button>' }) %>
 
         <% if (typeof success !== 'undefined' && success) { %>
             <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">
@@ -259,9 +149,13 @@
             </div>
         <% } %>
 
-        <div class="glass-table-card">
+        <section class="glass-table-card admin-panel" aria-labelledby="rolesTableTitle">
+            <div class="admin-panel-header">
+                <h2 id="rolesTableTitle" class="admin-section-title">角色清單</h2>
+                <p class="admin-section-description">管理角色層級與功能權限</p>
+            </div>
             <div class="table-responsive">
-                <table class="mihu-table">
+                <table class="mihu-table admin-table">
                     <thead>
                         <tr>
                             <th style="width: 130px;">階級分類</th>
@@ -272,20 +166,16 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <% 
+                        <%
                             const roleList = (typeof rolesData !== 'undefined' && rolesData) ? rolesData : ((typeof roles !== 'undefined' && roles) ? roles : []);
-                            if (roleList && roleList.length > 0) { 
+                            const rolePermissions = role => {
+                                try { return typeof role.permissions === 'string' ? JSON.parse(role.permissions) : (role.permissions || []); }
+                                catch (error) { return []; }
+                            };
+                            if (roleList && roleList.length > 0) {
                         %>
-                            <% roleList.forEach(r => { 
-                                let permsArray = [];
-                                try {
-                                    permsArray = typeof r.permissions === 'string' ? JSON.parse(r.permissions) : (r.permissions || []);
-                                } catch (e) {
-                                    permsArray = [];
-                                }
-                                const permsJson = JSON.stringify(permsArray).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-                            %>
-                                <tr class="role-row" 
+                            <% roleList.forEach(r => { %>
+                                <tr class="role-row"
                                     data-id="<%= r.id %>"
                                     data-rolekey="<%= r.role_key %>"
                                     data-name="<%= r.name %>"
@@ -293,7 +183,7 @@
                                     data-color="<%= r.color_badge || 'primary' %>"
                                     data-tier="<%= r.tier_level %>"
                                     data-desc="<%= r.description || '' %>"
-                                    data-perms='<%- permsJson %>'>
+                                    data-perms='<%- JSON.stringify(rolePermissions(r)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/"/g, '&quot;') %>'>
                                     <td>
                                         <div class="category-text-wrap">
                                             <span class="category-dot dot-<%= r.category %>"></span>
@@ -301,11 +191,9 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="role-pill-badge badge-style-<%= r.color_badge || 'primary' %>"><%= r.name %></span>
+                                        <span class="admin-badge admin-badge-purple role-pill-badge badge-style-<%= r.color_badge || 'primary' %>"><%= r.name %></span>
                                     </td>
-                                    <td>
-                                        <span class="font-monospace text-warning fw-bold small">Lv.<%= r.tier_level %></span>
-                                    </td>
+                                    <td><span class="font-monospace text-warning fw-bold small">Lv.<%= r.tier_level %></span></td>
                                     <td>
                                         <span class="text-light"><%= r.description || '無特別說明' %></span>
                                     </td>
@@ -323,16 +211,20 @@
                             <% }) %>
                         <% } else { %>
                             <tr>
-                                <td colspan="5" class="text-center py-5 text-secondary">
-                                    <i class="fa-solid fa-folder-open fs-3 mb-2 opacity-50"></i>
-                                    <p class="small mb-0">目前尚無任何身分組資料</p>
+                                <td colspan="5">
+                                    <div class="admin-empty-state">
+                                        <div class="admin-empty-state__icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
+                                        <p class="admin-empty-state__title">目前沒有角色</p>
+                                        <p class="admin-empty-state__description">建立第一個角色後，便能設定角色層級與功能權限。</p>
+                                        <button type="button" class="admin-btn admin-btn-primary admin-empty-state__action" data-bs-toggle="modal" data-bs-target="#addRoleModal">新增角色</button>
+                                    </div>
                                 </td>
                             </tr>
                         <% } %>
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
     </div>
 </div>
 
@@ -367,10 +259,10 @@
 </div>
 
 <!-- 彈窗 2：編輯身分基本資料 Modal -->
-<div class="modal fade" id="editRoleInfoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 500px;">
-        <div class="modal-content modal-content-glass">
-            <form id="editRoleInfoForm" method="POST">
+<div class="modal fade admin-modal" id="editRoleInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--md">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form id="editRoleInfoForm" class="admin-form" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
                         <i class="fa-solid fa-user-pen text-warning"></i>
@@ -378,11 +270,12 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-3">
+                <div class="modal-body admin-modal-body py-3">
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">職位名稱</label>
-                            <input type="text" id="editInfoName" name="name" class="form-control form-control-glass" required>
+                            <input type="text" id="editInfoName" name="name" class="form-control form-control-glass admin-form-control" aria-describedby="editInfoNameError" required>
+                            <span id="editInfoNameError" class="admin-field-error" hidden>請輸入職位名稱。</span>
                         </div>
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">所屬階級</label>
@@ -398,15 +291,15 @@
 
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">權限權重等級 (1~100)</label>
-                        <input type="number" id="editInfoTier" name="tier_level" class="form-control form-control-glass" required>
+                        <input type="number" id="editInfoTier" name="tier_level" class="form-control form-control-glass admin-form-control" required>
                     </div>
 
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">職責說明</label>
-                        <input type="text" id="editInfoDesc" name="description" class="form-control form-control-glass" required>
+                        <input type="text" id="editInfoDesc" name="description" class="form-control form-control-glass admin-form-control" required>
                     </div>
                 </div>
-                <div class="modal-footer border-0 pt-0">
+                <div class="modal-footer admin-modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4" style="background-color: #9333ea; border: none;">儲存資料</button>
                 </div>
@@ -416,10 +309,10 @@
 </div>
 
 <!-- 彈窗 3：編輯身分組權限 Modal (刪除英文括號乾淨版) -->
-<div class="modal fade" id="editRolePermsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 880px;">
-        <div class="modal-content modal-content-glass" style="background: rgba(20, 16, 35, 0.97); border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 20px; color: #fff; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(168, 85, 247, 0.25);">
-            <form action="/system/roles/update-permissions" method="POST">
+<div class="modal fade admin-modal" id="editRolePermsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl admin-modal-dialog admin-modal-dialog--lg">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form class="admin-form" action="/system/roles/update-permissions" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
                 <div class="modal-header border-0 pb-0 pt-4 px-4">
                     <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
                         <i class="fa-solid fa-user-shield text-warning"></i>
@@ -428,7 +321,7 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 
-                <div class="modal-body p-4" style="max-height: 75vh; overflow-y: auto;">
+                <div class="modal-body admin-modal-body p-4">
                     <input type="hidden" id="targetRoleKey" name="role">
 
                     <!-- 分區一：側邊欄選單與頁面能見度 -->
@@ -598,7 +491,7 @@
                     </div>
                 </div>
 
-                <div class="modal-footer border-0 pt-0 pb-4 px-4">
+                <div class="modal-footer admin-modal-footer border-0 pt-0 pb-4 px-4">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-warning rounded-pill px-4 fw-bold text-dark">儲存權限設定</button>
                 </div>
@@ -608,10 +501,10 @@
 </div>
 
 <!-- 彈窗 4：新增身分職位 Modal -->
-<div class="modal fade" id="addRoleModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content modal-content-glass">
-            <form action="/system/roles/add" method="POST">
+<div class="modal fade admin-modal" id="addRoleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg admin-modal-dialog admin-modal-dialog--md">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form class="admin-form" action="/system/roles/add" method="POST" data-admin-submit-loading data-submit-loading-text="建立中...">
                 <div class="modal-header border-0">
                     <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
                         <i class="fa-solid fa-shield-halved text-success"></i>
@@ -619,7 +512,7 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-2">
+                <div class="modal-body admin-modal-body py-2">
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="small text-secondary fw-semibold mb-1">職位名稱 (中文)</label>
@@ -646,7 +539,7 @@
                         <input type="text" name="description" class="form-control form-control-glass" placeholder="例如：負責客訴爭議與售後仲裁">
                     </div>
                 </div>
-                <div class="modal-footer border-0">
+                <div class="modal-footer admin-modal-footer border-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-success rounded-pill px-4 fw-semibold">確認建立</button>
                 </div>
@@ -741,6 +634,5 @@
         });
     });
 </script>
-<%- include('partials/feature_modal') %>
 </body>
 </html>

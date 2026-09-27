@@ -1,0 +1,20 @@
+<div class="modal fade admin-confirm-modal" id="adminConfirmModal" tabindex="-1" aria-labelledby="adminConfirmTitle" aria-describedby="adminConfirmMessage" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content admin-confirm-modal__content">
+            <div class="modal-header">
+                <div class="admin-confirm-modal__heading">
+                    <span class="admin-confirm-modal__icon" data-confirm-icon aria-hidden="true"><i class="fa-solid fa-circle-question"></i></span>
+                    <h2 class="modal-title" id="adminConfirmTitle" data-confirm-title>確認操作</h2>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <p class="admin-confirm-modal__message" id="adminConfirmMessage" data-confirm-message></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="admin-btn admin-btn-ghost" data-confirm-cancel>取消</button>
+                <button type="button" class="admin-btn admin-btn-primary" data-confirm-submit>確認</button>
+            </div>
+        </div>
+    </div>
+</div>

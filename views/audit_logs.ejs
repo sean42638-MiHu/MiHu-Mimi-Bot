@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>操作紀錄 · 米胡電競 MiHu Gaming</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/audit-logs.css">
+</head>
+<body class="mihu-admin-page text-light">
+<div class="app-layout">
+    <%- include('partials/sidebar', { activePage: 'audit_logs' }) %>
+    <div class="main-wrapper">
+        <%- include('partials/navbar', { activePage: 'audit_logs' }) %>
+        <main class="content-body admin-page-content audit-logs-page">
+            <%- include('partials/admin_page_header', { icon: 'fa-clock-rotate-left', title: '操作紀錄', description: '查看系統管理操作、設定異動與重要管理事件' }) %>
+            <% if (error) { %>
+                <div class="admin-error-state" role="alert"><div class="admin-error-state__icon"><i class="fa-solid fa-triangle-exclamation"></i></div><strong class="admin-error-state__title">操作紀錄載入失敗</strong><p class="admin-error-state__description"><%= error %></p></div>
+            <% } %>
+            <section class="admin-panel audit-logs-panel" aria-labelledby="auditLogsTitle">
+                <div class="admin-panel-header"><h2 id="auditLogsTitle" class="admin-section-title">系統操作紀錄</h2><p class="admin-section-description">唯讀稽核資料；金融 Ledger 與操作紀錄分開保存。</p></div>
+                <form class="admin-toolbar audit-logs-toolbar" method="GET" action="/system/audit-logs">
+                    <div class="admin-form-group audit-logs-search"><label class="admin-form-label" for="auditQuery">搜尋操作紀錄</label><input class="admin-form-control" id="auditQuery" name="q" type="search" value="<%= filters.q %>" placeholder="事件、操作者或目標類型"></div>
+                    <div class="admin-form-group"><label class="admin-form-label" for="auditEvent">事件</label><select class="admin-form-select" id="auditEvent" name="event"><option value="">全部事件</option><% events.forEach(event => { %><option value="<%= event %>" <%= filters.event === event ? 'selected' : '' %>><%= event %></option><% }) %></select></div>
+                    <div class="admin-form-group"><label class="admin-form-label" for="auditFrom">開始日期</label><input class="admin-form-control" id="auditFrom" name="from" type="date" value="<%= filters.from %>"></div>
+                    <div class="admin-form-group"><label class="admin-form-label" for="auditTo">結束日期</label><input class="admin-form-control" id="auditTo" name="to" type="date" value="<%= filters.to %>"></div>
+                    <div class="admin-form-actions audit-logs-actions"><button class="admin-btn admin-btn-primary" type="submit"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i>套用篩選</button><a class="admin-btn admin-btn-ghost" href="/system/audit-logs">清除</a></div>
+                </form>
+                <div class="admin-table-wrap audit-logs-table-wrap">
+                    <% if (!rows.length) { %>
+                        <div class="admin-empty-state"><div class="admin-empty-state__icon"><i class="fa-solid fa-clock-rotate-left"></i></div><p class="admin-empty-state__title"><%= filters.q || filters.event || filters.from || filters.to ? '找不到符合條件的操作紀錄' : '尚無操作紀錄' %></p><p class="admin-empty-state__description"><%= filters.q || filters.event || filters.from || filters.to ? '請清除篩選條件後重新查看。' : '目前沒有可供查看的稽核事件。' %></p></div>
+                    <% } else { %>
+                        <table class="admin-table audit-logs-table"><thead><tr><th scope="col">時間</th><th scope="col">事件</th><th scope="col">操作者</th><th scope="col">目標 / 模組</th><th scope="col">結果</th><th scope="col">詳細資料</th></tr></thead><tbody>
+                            <% rows.forEach(row => { %><tr><td class="audit-logs-time"><%= row.createdAt %></td><td><span class="admin-badge admin-badge-info"><%= row.label %></span><div class="audit-logs-code"><%= row.action %></div></td><td><%= row.actor %></td><td><%= row.targetType %></td><td><% if (row.result) { %><span class="admin-badge <%= row.result === '成功' ? 'admin-badge-success' : 'admin-badge-danger' %>"><%= row.result %></span><% } else { %><span class="admin-badge admin-badge-muted">—</span><% } %></td><td><button type="button" class="admin-btn admin-btn-ghost audit-detail-trigger" data-bs-toggle="modal" data-bs-target="#auditDetailModal<%= row.id %>" aria-label="查看 <%= row.label %> 詳細資料">查看</button></td></tr><% }) %>
++                        </tbody></table>
+                    <% } %>
+                </div>
+                <% if (pagination.totalPages > 1) { %><nav class="admin-pagination audit-logs-pagination" aria-label="操作紀錄分頁"><span>共 <%= pagination.total %> 筆</span><% for (let page = 1; page <= pagination.totalPages; page++) { %><a class="admin-btn admin-btn-ghost <%= page === pagination.page ? 'is-current' : '' %>" href="?q=<%= encodeURIComponent(filters.q) %>&event=<%= encodeURIComponent(filters.event) %>&from=<%= filters.from %>&to=<%= filters.to %>&limit=<%= pagination.limit %>&page=<%= page %>" <%= page === pagination.page ? 'aria-current="page"' : '' %>><%= page %></a><% } %></nav><% } %>
+            </section>
+            <% rows.forEach(row => { %><div class="modal fade admin-modal audit-detail-modal" id="auditDetailModal<%= row.id %>" tabindex="-1" aria-labelledby="auditDetailTitle<%= row.id %>" aria-hidden="true"><div class="modal-dialog admin-modal-dialog admin-modal-dialog--md modal-dialog-centered"><div class="modal-content admin-modal-content"><div class="admin-modal-header"><div><h2 class="admin-modal-title" id="auditDetailTitle<%= row.id %>"><%= row.label %></h2><p class="admin-modal-subtitle"><%= row.action %></p></div><button type="button" class="admin-modal-close" data-bs-dismiss="modal" aria-label="關閉"><i class="fa-solid fa-xmark"></i></button></div><div class="admin-modal-body"><dl class="audit-detail-list"><div><dt>時間</dt><dd><%= row.createdAt %></dd></div><div><dt>操作者</dt><dd><%= row.actor %></dd></div><div><dt>目標 / 模組</dt><dd><%= row.targetType %></dd></div><% row.details.forEach(detail => { %><div><dt>詳細資料</dt><dd><%= detail %></dd></div><% }) %></dl></div><div class="admin-modal-footer"><button type="button" class="admin-btn admin-btn-ghost" data-bs-dismiss="modal">關閉</button></div></div></div></div><% }) %>
+        </main>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

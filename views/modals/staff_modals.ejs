@@ -72,7 +72,7 @@
                 <% if (canViewPayroll) { %>
                     <div class="p-3 rounded-3" style="background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.25);">
                         <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-danger border-opacity-25">
-                            <span class="text-danger small fw-bold"><i class="fa-solid fa-lock me-1"></i>個人隱私資料</span>
+                            <span class="text-danger small fw-bold admin-sensitive-field"><i class="fa-solid fa-lock me-1"></i>個人隱私資料<span class="admin-sensitive-indicator">敏感資料</span></span>
                             <span class="badge bg-danger bg-opacity-25 text-danger" style="font-size: 0.68rem;">機密</span>
                         </div>
                         <div class="row g-2 small">
@@ -113,10 +113,10 @@
 </div>
 
 <!-- 彈窗 2：編輯員工職位、狀態與抽佣彈窗 -->
-<div class="modal fade" id="staffEditModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
-        <div class="modal-content modal-content-glass">
-            <form id="staffEditForm" method="POST">
+<div class="modal fade admin-modal" id="staffEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--md">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form id="staffEditForm" class="admin-form" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
                         <i class="fa-solid fa-user-gear text-success"></i>
@@ -124,7 +124,7 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-3">
+                <div class="modal-body admin-modal-body py-3">
                     <div class="text-secondary small mb-3">
                         目標員工：<span class="text-white fw-bold" id="editTargetName"></span>
                     </div>
@@ -132,7 +132,7 @@
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">指派身分職位</label>
-                            <select id="editRole" name="role" class="form-select form-control-glass" style="background-color: #171326; color: #fff;">
+                            <select id="editRole" name="role" class="form-select form-control-glass admin-form-select" style="background-color: #171326; color: #fff;">
                                 <option value="admin">店長 (最高權限)</option>
                                 <option value="cfo">財務長</option>
                                 <option value="aftersales">售後管理</option>
@@ -144,7 +144,7 @@
                         </div>
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">在職服務狀態</label>
-                            <select id="editStatus" name="status" class="form-select form-control-glass" style="background-color: #171326; color: #fff;">
+                            <select id="editStatus" name="status" class="form-select form-control-glass admin-form-select" style="background-color: #171326; color: #fff;">
                                 <option value="idle">空閒中</option>
                                 <option value="busy">接單中</option>
                                 <option value="leave">請假中</option>
@@ -156,7 +156,7 @@
                         <label class="small text-secondary fw-semibold mb-1 d-flex justify-content-between align-items-center">
                             <span>個人獨立分潤成數 (例如 0.8 代表 80%)</span>
                         </label>
-                        <input type="number" step="0.01" min="0" max="1" id="editRate" name="commission_rate" class="form-control form-control-glass font-monospace text-end" placeholder="依工作室預設">
+                        <input type="number" step="0.01" min="0" max="1" id="editRate" name="commission_rate" class="form-control form-control-glass admin-form-control font-monospace text-end" placeholder="依工作室預設">
                         <div class="text-light text-end mt-1" style="font-size: 0.78rem; color: #cbd5e1 !important;">* 若空白則自動採用「抽佣設定」之全域類別預設</div>
                     </div>
 
@@ -165,7 +165,7 @@
                         <input type="text" id="editChannel" name="staff_channel_id" class="form-control form-control-glass font-monospace" placeholder="例如：123456789012345678">
                     </div>
                 </div>
-                <div class="modal-footer border-0 pt-0">
+                <div class="modal-footer admin-modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-success rounded-pill px-4 fw-semibold">儲存設定</button>
                 </div>

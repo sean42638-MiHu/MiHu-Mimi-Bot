@@ -9,6 +9,7 @@ const payrollRouter = require('./management/payroll');
 const ordersRouter = require('./management/orders');
 const commissionRouter = require('./management/commission'); // 👈 新增獨立抽傭模組
 const reconciliationRouter = require('./management/reconciliation');
+const analyticsRouter = require('./management/analytics');
 
 // 🚀 正確掛載管理子路由（指定專屬路徑前綴）
 router.use('/members', membersRouter);
@@ -17,5 +18,6 @@ router.use('/payroll', payrollRouter);
 router.use('/orders', ordersRouter);
 router.use('/commission', commissionRouter); // 👈 正確掛載 /management/commission
 router.use('/reconciliation', reconciliationRouter);
+router.use('/analytics', analyticsRouter);
 
 module.exports = router;

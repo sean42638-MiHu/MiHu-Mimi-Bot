@@ -1,0 +1,29 @@
+<div class="modal fade payroll-export-modal" id="payrollExportModal" tabindex="-1" aria-hidden="true" aria-labelledby="payrollExportModalTitle" aria-describedby="payrollExportModalDescription">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content payroll-export-content">
+            <div class="modal-header payroll-export-header">
+                <div><h2 class="modal-title" id="payrollExportModalTitle"><i class="fa-solid fa-file-export text-info me-2" aria-hidden="true"></i>匯出薪轉資料</h2><p class="mb-0">請選擇需要匯出的資料類型</p></div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body" id="payrollExportModalDescription">
+                <div class="payroll-export-options">
+                    <% if (canExportPayouts) { %>
+                        <button type="button" class="payroll-export-option" data-export-url="/management/payroll/export/payouts" data-empty-message="目前沒有待匯出的薪轉提領申請。">
+                            <span class="payroll-export-option-icon payout"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i></span>
+                            <span><strong>薪轉提領申請資料</strong><small>匯出目前員工提出的薪資提款申請，供財務進行銀行批次薪轉與撥款核對。</small></span>
+                            <span class="payroll-export-option-action">選擇匯出 <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+                        </button>
+                    <% } %>
+                    <% if (canExportBankAccounts) { %>
+                        <button type="button" class="payroll-export-option" data-export-url="/management/payroll/export/bank-accounts" data-empty-message="目前沒有可匯出的員工薪轉帳戶資料。">
+                            <span class="payroll-export-option-icon bank"><i class="fa-solid fa-building-columns" aria-hidden="true"></i></span>
+                            <span><strong>員工薪轉帳戶資料</strong><small>匯出目前員工已設定的薪轉銀行帳戶，供財務建立或核對薪轉帳戶資料。</small></span>
+                            <span class="payroll-export-option-action">選擇匯出 <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+                        </button>
+                    <% } %>
+                </div>
+                <p class="payroll-export-feedback" data-export-feedback role="status" aria-live="polite"></p>
+            </div>
+        </div>
+    </div>
+</div>

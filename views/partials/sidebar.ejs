@@ -22,8 +22,10 @@
 <link rel="stylesheet" href="/css/vip-badge.css">
 <link rel="stylesheet" href="/css/wallet_card.css">
 <link rel="stylesheet" href="/css/admin-layout.css">
+<link rel="stylesheet" href="/css/admin-components.css">
 <script src="/js/csrf.js" defer></script>
 <script src="/js/adminSidebar.js" defer></script>
+<script src="/js/admin-feedback.js" defer></script>
 <style>
     .mihu-sidebar {
         width: 280px !important;
@@ -101,6 +103,20 @@
         border: 1px solid rgba(168, 85, 247, 0.25) !important;
     }
     .menu-item.active i { color: #c084fc !important; }
+    .menu-item.locked,
+    .menu-item.locked.active,
+    .submenu-item.locked,
+    .submenu-item.locked.active-staff {
+        color: #64748b !important;
+        background: transparent !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        cursor: not-allowed;
+        opacity: .62;
+    }
+    .menu-item.locked i, .submenu-item.locked i { color: #64748b !important; }
+    .menu-item.locked:hover, .submenu-item.locked:hover { color: #94a3b8 !important; background: rgba(100, 116, 139, .05) !important; }
+    .menu-item.locked, .submenu-item.locked { appearance: none; text-align: left; }
 
     .sidebar-collapse-wrap { display: flex; flex-direction: column; width: 100%; }
     .collapse-arrow { transition: transform 0.25s ease; }
@@ -189,7 +205,7 @@
         <% if (hasManageSection) { %>
             <div class="menu-label">管理</div>
 
-            <% if (hasPerm('manage')) { %>
+            <% if (hasPerm('manage') || hasPerm('manage_orders')) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseOperation" class="menu-item d-flex justify-content-between align-items-center" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="collapseOperation">
                         <div class="d-flex align-items-center gap-2">
@@ -200,7 +216,7 @@
                     </a>
                     <div class="collapse" id="collapseOperation">
                         <div class="sidebar-submenu-items">
-                            <a href="javascript:void(0)" class="submenu-item under-construction" data-feature="公司營運統計">
+                            <a href="/management/analytics" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'analytics' ? 'active-staff' : '' %>">
                                 <i class="fa-solid fa-chart-line"></i>
                                 <span>公司營運統計</span>
                             </a>
@@ -210,10 +226,27 @@
             <% } %>
 
             <% if (hasPerm('manage_members')) { %>
-                <a href="/management/members" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'members' ? 'active' : '' %>">
-                    <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
-                    <span class="fw-semibold">會員管理</span>
-                </a>
+                <div class="sidebar-collapse-wrap">
+                    <a href="#collapseMembers" class="menu-item d-flex justify-content-between align-items-center <%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'true' : 'false' %>" aria-controls="collapseMembers">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
+                            <span class="text-white fw-semibold">會員管理</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
+                    </a>
+                    <div class="collapse <%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'show' : '' %>" id="collapseMembers">
+                        <div class="sidebar-submenu-items">
+                            <a href="/management/members" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'members' ? 'active-staff' : '' %>">
+                                <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
+                                <span>會員名單</span>
+                            </a>
+                            <a href="/management/members/transactions" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'member_transactions' ? 'active-staff' : '' %>">
+                                <i class="fa-solid fa-wallet" style="color: #22d3ee;"></i>
+                                <span>會員資金明細</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             <% } %>
 
             <% if (hasPerm('manage_staff') || hasPerm('staff_view_payroll') || hasPerm('payout.view')) { %>
@@ -285,14 +318,14 @@
             <% } %>
 
             <% if (hasPerm('sys_settings')) { %>
-                <a href="javascript:void(0)" class="menu-item under-construction" data-feature="系統設定">
-                    <i class="fa-solid fa-sliders"></i>
-                    <span>系統設定</span>
+                <a href="/system/settings" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'system_settings' ? 'active' : '' %>">
+                    <i class="fa-solid fa-sliders" style="color: #a78bfa;"></i>
+                    <span class="fw-semibold">系統設定</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('sys_logs')) { %>
-                <a href="javascript:void(0)" class="menu-item under-construction" data-feature="操作紀錄">
+            <% if (hasPerm('sys_settings')) { %>
+                <a href="/system/audit-logs" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'audit_logs' ? 'active' : '' %>">
                     <i class="fa-solid fa-clock-rotate-left"></i>
                     <span>操作紀錄</span>
                 </a>
@@ -300,3 +333,7 @@
         <% } %>
     </div>
 </aside>
+<%- include('../modals/coming_soon_modal') %>
+<%- include('../modals/admin_confirm_modal') %>
+<%- include('admin_toast_container', { flashData: typeof flashData !== 'undefined' ? flashData : {} }) %>
+<script src="/js/coming-soon.js" defer></script>

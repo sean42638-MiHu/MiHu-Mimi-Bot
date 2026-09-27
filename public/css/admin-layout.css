@@ -3,6 +3,32 @@
     display: none;
 }
 
+/* Shared desktop contract: the sidebar owns its 280px flex track. */
+.app-layout {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 100vh;
+}
+
+.mihu-sidebar {
+    flex: 0 0 280px;
+}
+
+.main-wrapper {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.mihu-navbar,
+.content-body {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
 .admin-sidebar-backdrop {
     display: none;
     position: fixed;
@@ -56,6 +82,7 @@
     }
 
     .app-layout {
+        display: flex !important;
         width: 100% !important;
         max-width: 100% !important;
         min-width: 0 !important;

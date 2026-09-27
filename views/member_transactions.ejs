@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會員資金明細 · 米胡電競 MiHu Gaming</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/member-transactions.css">
+</head>
+<body class="mihu-admin-page text-light">
+    <div class="app-layout">
+        <%- include('partials/sidebar', { activePage: 'member_transactions' }) %>
+        <div class="main-wrapper">
+            <%- include('partials/navbar', { activePage: 'member_transactions' }) %>
+            <main class="content-body admin-page-content member-transactions-page">
+                <%- include('partials/admin_page_header', { icon: 'fa-wallet', title: '會員資金明細', description: '查看會員充值、消費、退款與帳務異動紀錄', actions: '<span class="badge rounded-pill text-bg-dark border border-info-subtle"><i class="fa-solid fa-lock me-1" aria-hidden="true"></i>READ ONLY</span>' }) %>
+                <section class="member-transactions-panel admin-panel admin-data-panel" aria-label="會員資金異動紀錄">
+                    <div class="member-transactions-panel-heading admin-panel-header"><div><h2>資金流水</h2><span>Wallet transaction history</span></div><strong><%= pagination.total.toLocaleString() %> 筆</strong></div>
+                    <form class="member-transactions-toolbar admin-toolbar admin-data-toolbar" method="GET" action="/management/members/transactions">
+                        <div class="member-transactions-search"><label for="ledgerSearch">會員暱稱 / Discord ID</label><div class="member-transactions-input-wrap"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="ledgerSearch" class="form-control member-transactions-control admin-control" type="search" name="q" value="<%= filters.q %>" placeholder="搜尋會員暱稱或 Discord ID"></div></div>
+                        <div><label for="ledgerType">交易類型</label><select id="ledgerType" class="form-select member-transactions-control admin-control" name="type"><option value="">全部類型</option><% Object.entries(ledgerTypeLabels).forEach(([key, item]) => { %><option value="<%= key %>" <%= filters.type === key ? 'selected' : '' %>><%= item.label %></option><% }); %></select></div>
+                        <div><label for="ledgerLimit">每頁筆數</label><select id="ledgerLimit" class="form-select member-transactions-control admin-control" name="limit"><% [10, 25, 50].forEach(value => { %><option value="<%= value %>" <%= filters.limit === value ? 'selected' : '' %>><%= value %> 筆</option><% }); %></select></div>
+                        <button class="member-transactions-submit admin-btn admin-btn-primary" type="submit"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i>套用篩選</button>
+                    </form>
+                    <%- include('partials/member_transactions_table', { transactions }) %>
+                    <div class="member-transactions-pagination admin-pagination admin-data-pagination">
+                        <span>顯示第 <strong><%= pagination.total ? ((pagination.page - 1) * pagination.limit) + 1 : 0 %>–<%= Math.min(pagination.page * pagination.limit, pagination.total) %></strong> 筆，共 <strong><%= pagination.total %></strong> 筆</span>
+                        <nav aria-label="資金明細分頁"><div class="member-transactions-pagination-links"><% if (pagination.page > 1) { %><a class="member-transactions-page-link" aria-label="上一頁" href="?q=<%= encodeURIComponent(filters.q) %>&type=<%= encodeURIComponent(filters.type) %>&limit=<%= pagination.limit %>&page=<%= pagination.page - 1 %>">‹</a><% } else { %><span class="member-transactions-page-link is-disabled" aria-disabled="true">‹</span><% } %><% for (let pageNumber = 1; pageNumber <= pagination.totalPages; pageNumber++) { if (pagination.totalPages <= 7 || pageNumber === 1 || pageNumber === pagination.totalPages || Math.abs(pageNumber - pagination.page) <= 1) { %><a class="member-transactions-page-link <%= pageNumber === pagination.page ? 'is-current' : '' %>" <%= pageNumber === pagination.page ? 'aria-current="page"' : '' %> href="?q=<%= encodeURIComponent(filters.q) %>&type=<%= encodeURIComponent(filters.type) %>&limit=<%= pagination.limit %>&page=<%= pageNumber %>"><%= pageNumber %></a><% } else if (pageNumber === 2 || pageNumber === pagination.totalPages - 1) { %><span class="member-transactions-page-ellipsis">…</span><% } } %><% if (pagination.page < pagination.totalPages) { %><a class="member-transactions-page-link" aria-label="下一頁" href="?q=<%= encodeURIComponent(filters.q) %>&type=<%= encodeURIComponent(filters.type) %>&limit=<%= pagination.limit %>&page=<%= pagination.page + 1 %>">›</a><% } else { %><span class="member-transactions-page-link is-disabled" aria-disabled="true">›</span><% } %></div></nav>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

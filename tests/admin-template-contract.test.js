@@ -1,0 +1,39 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { test } = require('node:test');
+
+const root = path.join(__dirname, '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const migratedPages = ['income.ejs', 'members.ejs', 'member_transactions.ejs', 'payroll.ejs', 'roles.ejs', 'staff.ejs', 'system_settings.ejs', 'vip.ejs'];
+const canonicalHeaderPages = ['income.ejs', 'member_transactions.ejs', 'roles.ejs', 'staff.ejs', 'system_settings.ejs', 'vip.ejs'];
+
+test('migrated admin pages keep the canonical content and header contracts', () => {
+    for (const file of migratedPages) {
+        const source = read(`views/${file}`);
+        assert.match(source, /admin-page-content/, file);
+    }
+    for (const file of canonicalHeaderPages) {
+        const source = read(`views/${file}`);
+        assert.equal((source.match(/partials\/admin_page_header/g) || []).length, 1, file);
+    }
+});
+
+test('shared feedback and Coming Soon markup remain single-owner partials', () => {
+    const sidebar = read('views/partials/sidebar.ejs');
+    assert.equal((sidebar.match(/coming_soon_modal/g) || []).length, 1);
+    assert.equal((sidebar.match(/admin_confirm_modal/g) || []).length, 1);
+    assert.equal((sidebar.match(/admin_toast_container/g) || []).length, 1);
+});
+
+test('Staff sensitive data is not emitted through data attributes or DOM search metadata', () => {
+    const source = read('views/partials/staff_table.ejs');
+    for (const pattern of [/data-[^>]*(?:bank|account|identity|national|sensitive)/i, /data-search="[^"]*real_name/i, /bankAccount\s*:/i]) {
+        assert.doesNotMatch(source, pattern);
+    }
+});
+
+test('special pages remain explicit rather than being silently treated as generic Admin pages', () => {
+    assert.match(read('views/commission.ejs'), /commission-page|commission-content/);
+    assert.match(read('views/dashboard.ejs'), /dashboard-grid/);
+});

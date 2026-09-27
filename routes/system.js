@@ -13,6 +13,9 @@ const { writeAuditLog } = require('../utils/auditService');
 const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('../utils/vipColor');
 const { resolveVipTheme, resolveVipVisual } = require('../utils/vipResolver');
 const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExecutionRole } = require('../config/discordCommandPolicy');
+const { getGuildConfigurationStatus } = require('../utils/developmentRuntime');
+const { deployDiscordCommands } = require('../utils/discordDeploymentService');
+const { listAuditLogs } = require('../services/auditLogService');
 
 const commissionCategories = ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單'];
 const legacyCategoryAliases = { '有獎': '有獎單', '冠名': '冠名單', '其他': '其他單', '獎金': '獎金單' };
@@ -69,6 +72,241 @@ async function runSystemTransaction(task) {
         }
     });
 }
+
+const withdrawalSettingKeys = ['withdrawal_start_day', 'withdrawal_end_day', 'withdrawal_min_amount', 'business_timezone'];
+
+async function readWithdrawalSettings() {
+    const rows = await queryAll(`
+        SELECT setting_key, setting_value FROM system_settings
+        WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount','business_timezone')
+    `);
+    const values = Object.fromEntries(rows.map(row => [row.setting_key, row.setting_value]));
+    const settings = {
+        startDay: Number(values.withdrawal_start_day),
+        endDay: Number(values.withdrawal_end_day),
+        minimumAmount: Number(values.withdrawal_min_amount),
+        timeZone: String(values.business_timezone || '').trim()
+    };
+    if (!Number.isInteger(settings.startDay) || settings.startDay < 1 || settings.startDay > 31
+        || !Number.isInteger(settings.endDay) || settings.endDay < settings.startDay || settings.endDay > 31
+        || !Number.isSafeInteger(settings.minimumAmount) || settings.minimumAmount < 1
+        || !settings.timeZone) {
+        throw new Error('提款設定無效，請聯絡管理員');
+    }
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone: settings.timeZone }).format(new Date());
+    } catch {
+        throw new Error('營運時區設定無效');
+    }
+    return settings;
+}
+
+function parseWithdrawalSettings(body, current) {
+    const startDay = Number(body.start_day);
+    const endDay = Number(body.end_day);
+    const minimumAmount = Number(body.minimum_amount);
+    const timeZone = Object.hasOwn(body, 'time_zone') ? String(body.time_zone || '').trim() : current.timeZone;
+    if (!Number.isInteger(startDay) || startDay < 1 || startDay > 31
+        || !Number.isInteger(endDay) || endDay < startDay || endDay > 31
+        || !Number.isSafeInteger(minimumAmount) || minimumAmount < 1 || minimumAmount > 100000000) {
+        throw new Error('提款日期或最低金額設定無效');
+    }
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+    } catch {
+        throw new Error('請輸入有效的 IANA 時區');
+    }
+    return {
+        withdrawal_start_day: String(startDay),
+        withdrawal_end_day: String(endDay),
+        withdrawal_min_amount: String(minimumAmount),
+        business_timezone: timeZone
+    };
+}
+
+async function updateWithdrawalSettings(req) {
+    const current = await readWithdrawalSettings();
+    const next = parseWithdrawalSettings(req.body, current);
+    const beforeRows = await queryAll(`
+        SELECT setting_key, setting_value FROM system_settings
+        WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount','business_timezone')
+    `);
+    const before = Object.fromEntries(beforeRows.map(row => [row.setting_key, row.setting_value]));
+    await runSystemTransaction(async () => {
+        for (const key of withdrawalSettingKeys) {
+            await runSql(`
+                INSERT INTO system_settings (setting_key, setting_value, updated_by, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value,
+                    updated_by = excluded.updated_by, updated_at = CURRENT_TIMESTAMP
+            `, [key, next[key], req.user.id]);
+        }
+        await writeAuditLog({
+            operatorId: req.user.id,
+            studioId: req.user.studio_id ?? null,
+            action: 'PAYOUT_SETTINGS_UPDATED',
+            targetType: 'system_settings',
+            targetId: 'withdrawal',
+            before,
+            after: next
+        });
+    });
+    return { before, after: next };
+}
+
+async function renderSystemSettings(req, res, feedback = {}) {
+    try {
+        const settings = await readWithdrawalSettings();
+        const discordStatus = getDiscordControlStatus();
+        discordStatus.lastDeployment = await getLatestDiscordDeployment();
+        return res.render('system_settings', {
+            activePage: 'system_settings',
+            settings,
+            discordStatus,
+            flashData: buildSystemSettingsFlash(feedback),
+            ...feedback
+        });
+    } catch (error) {
+        console.error('載入系統設定失敗:', error.message);
+        return res.status(503).render('system_settings', {
+            activePage: 'system_settings',
+            settings: null,
+            discordStatus: getDiscordControlStatus(),
+            error: '系統設定目前無法載入，請稍後再試。',
+            flashData: buildSystemSettingsFlash({ ...feedback, error: '系統設定目前無法載入，請稍後再試。' }),
+            ...feedback
+        });
+    }
+}
+
+async function getLatestDiscordDeployment() {
+    const rows = await queryAll(`
+        SELECT action, operator_id, after_data, metadata, created_at
+        FROM audit_logs
+        WHERE action = 'DISCORD_COMMAND_DEPLOYMENT'
+        ORDER BY id DESC LIMIT 1
+    `);
+    if (!rows[0]) return null;
+    let after = {};
+    let metadata = {};
+    try { after = JSON.parse(rows[0].after_data || '{}'); } catch {}
+    try { metadata = JSON.parse(rows[0].metadata || '{}'); } catch {}
+    return {
+        target: after.target || metadata.environment || 'unknown',
+        commandCount: Number(after.commandCount || metadata.commandCount || 0),
+        success: after.success === true,
+        createdAt: rows[0].created_at
+    };
+}
+
+function getDiscordControlStatus(env = process.env) {
+    const isDevelopment = String(env.APP_ENV || '').trim().toLowerCase() === 'development';
+    const botTokenConfigured = Boolean(String(env.DISCORD_BOT_TOKEN || env.DISCORD_TOKEN || '').trim());
+    const oauthClientConfigured = Boolean(String(env.DISCORD_CLIENT_ID || '').trim());
+    const oauthSecretConfigured = Boolean(String(env.DISCORD_CLIENT_SECRET || '').trim());
+    const guildStatus = getGuildConfigurationStatus(env);
+    const commandCount = client.commands ? client.commands.size : 0;
+    return {
+        environment: isDevelopment ? 'DEVELOPMENT' : (String(env.NODE_ENV || '').trim().toLowerCase() === 'production' ? 'PRODUCTION' : 'NORMAL'),
+        botOnline: Boolean(typeof client.isReady === 'function' && client.isReady()),
+        botEnabled: env.DISCORD_ENABLED === 'true',
+        botTokenConfigured,
+        oauthClientConfigured,
+        oauthSecretConfigured,
+        guildStatus,
+        guildLabels: GUILD_LABELS,
+        commandCount,
+        developmentGuildConfigured: guildStatus.GUILD_DEV_ID === 'PRESENT',
+        productionGateOpen: !isDevelopment && env.DISCORD_COMMAND_REGISTRATION_ENABLED === 'true',
+        productionPlatform: String(env.DEPLOYMENT_PLATFORM || '').trim() || '尚未設定',
+        lastDeployment: null
+    };
+}
+
+function buildSystemSettingsFlash(feedback = {}) {
+    if (feedback.discordDeploy === 'success') return { success: 'Discord 指令部署已完成。' };
+    if (feedback.discordDeploy === 'error') return { error: 'Discord 指令部署失敗，請查看伺服器紀錄。' };
+    if (feedback.saved) return { success: '提款設定已更新。' };
+    return feedback.error ? { error: feedback.error } : {};
+}
+
+router.get('/system/settings', ensureAuth, checkPerm('sys_settings'), (req, res) => renderSystemSettings(req, res, {
+    saved: req.query.saved === '1',
+    error: req.query.error || null,
+    discordDeploy: req.query.discordDeploy || null
+}));
+
+router.get('/system/audit-logs', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+    try {
+        const result = await listAuditLogs({
+            studioId: req.user.studio_id,
+            query: req.query,
+            page: Number(req.query.page),
+            limit: Number(req.query.limit)
+        });
+        return res.render('audit_logs', { activePage: 'audit_logs', error: null, ...result });
+    } catch (error) {
+        console.error('載入操作紀錄失敗:', error.message);
+        return res.status(503).render('audit_logs', {
+            activePage: 'audit_logs',
+            rows: [],
+            events: [],
+            pagination: { page: 1, limit: 25, total: 0, totalPages: 1 },
+            filters: { q: '', event: '', from: '', to: '' },
+            error: '操作紀錄目前無法載入，請稍後再試。'
+        });
+    }
+});
+
+router.post('/system/settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+    try {
+        await updateWithdrawalSettings(req);
+        return res.redirect('/system/settings?saved=1');
+    } catch (error) {
+        console.error('提款設定更新失敗:', error.message);
+        return res.redirect('/system/settings?error=' + encodeURIComponent(error.message === '提款日期或最低金額設定無效' ? error.message : '系統設定儲存失敗，請稍後再試。'));
+    }
+});
+
+router.post('/system/settings/discord/deploy', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+    const target = String(req.body.target || '').trim();
+    const isDevelopment = String(process.env.APP_ENV || '').trim().toLowerCase() === 'development';
+    if (!['development', 'production'].includes(target)
+        || (target === 'development' && (!isDevelopment || !String(process.env.GUILD_DEV_ID || '').trim()))
+        || (target === 'production' && (!getDiscordControlStatus().productionGateOpen || isDevelopment))) {
+        return res.redirect('/system/settings?discordDeploy=error');
+    }
+
+    const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
+    const applicationId = process.env.DISCORD_CLIENT_ID;
+    if (!token || !applicationId) return res.redirect('/system/settings?discordDeploy=error');
+
+    try {
+        const { REST } = require('discord.js');
+        const rest = new REST({ version: '10' }).setToken(token);
+        const result = await deployDiscordCommands({
+            target,
+            rest,
+            applicationId,
+            commandCollection: client.commands,
+            env: { ...process.env, DISCORD_COMMAND_REGISTRATION_ENABLED: 'true' }
+        });
+        if (!result.success) return res.redirect('/system/settings?discordDeploy=error');
+        await writeAuditLog({
+            operatorId: req.user.id,
+            studioId: req.user.studio_id ?? null,
+            action: 'DISCORD_COMMAND_DEPLOYMENT',
+            targetType: 'discord_commands',
+            targetId: target === 'development' ? 'GUILD_DEV_ID' : 'production-guilds',
+            after: { target, commandCount: result.commandCount, success: true },
+            metadata: { environment: target === 'development' ? 'development' : 'production', commandCount: result.commandCount }
+        });
+        return res.redirect('/system/settings?discordDeploy=success');
+    } catch (error) {
+        console.error('Discord command deployment failed:', error.code || error.message);
+        return res.redirect('/system/settings?discordDeploy=error');
+    }
+});
 
 // 🤖 機器人指令設定 (載入資料庫，若無資料則自動提供 9 大核心指令預設值)
 router.get('/system/bot-settings', ensureAuth, checkPerm('sys_settings'), (req, res) => {
@@ -146,19 +384,10 @@ router.post('/system/bot-settings/sync', ensureAuth, checkPerm('sys_settings'), 
 
 router.get('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
     try {
-        const settings = await queryAll(`
-            SELECT setting_key, setting_value FROM system_settings
-            WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount','business_timezone')
-        `);
-        const values = Object.fromEntries(settings.map(row => [row.setting_key, row.setting_value]));
+        const values = await readWithdrawalSettings();
         res.render('payout_settings', {
             user: req.user,
-            values: {
-                startDay: Number(values.withdrawal_start_day || 2),
-                endDay: Number(values.withdrawal_end_day || 6),
-                minimumAmount: Number(values.withdrawal_min_amount || 100),
-                timeZone: values.business_timezone || 'Asia/Taipei'
-            },
+            values,
             error: req.query.error || null,
             saved: req.query.saved === '1'
         });
@@ -168,51 +397,8 @@ router.get('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), asy
 });
 
 router.post('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
-    const startDay = Number(req.body.start_day);
-    const endDay = Number(req.body.end_day);
-    const minimumAmount = Number(req.body.minimum_amount);
-    const timeZone = String(req.body.time_zone || '').trim();
-    if (!Number.isInteger(startDay) || startDay < 1 || startDay > 31
-        || !Number.isInteger(endDay) || endDay < startDay || endDay > 31
-        || !Number.isFinite(minimumAmount) || minimumAmount <= 0 || minimumAmount > 100000000) {
-        return res.redirect('/system/payout-settings?error=' + encodeURIComponent('提款日期或最低金額設定無效'));
-    }
     try {
-        new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
-    } catch (error) {
-        return res.redirect('/system/payout-settings?error=' + encodeURIComponent('請輸入有效的 IANA 時區'));
-    }
-    const next = {
-        withdrawal_start_day: String(startDay),
-        withdrawal_end_day: String(endDay),
-        withdrawal_min_amount: String(minimumAmount),
-        business_timezone: timeZone
-    };
-    try {
-        const beforeRows = await queryAll(`
-            SELECT setting_key, setting_value FROM system_settings
-            WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount','business_timezone')
-        `);
-        const before = Object.fromEntries(beforeRows.map(row => [row.setting_key, row.setting_value]));
-        await runSystemTransaction(async () => {
-            for (const [key, value] of Object.entries(next)) {
-                await runSql(`
-                    INSERT INTO system_settings (setting_key, setting_value, updated_by, updated_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value,
-                        updated_by = excluded.updated_by, updated_at = CURRENT_TIMESTAMP
-                `, [key, value, req.user.id]);
-            }
-            await writeAuditLog({
-                operatorId: req.user.id,
-                studioId: req.user.studio_id ?? null,
-                action: 'PAYOUT_SETTINGS_UPDATED',
-                targetType: 'system_settings',
-                targetId: 'withdrawal',
-                before,
-                after: next
-            });
-        });
+        await updateWithdrawalSettings(req);
         return res.redirect('/system/payout-settings?saved=1');
     } catch (error) {
         return res.redirect('/system/payout-settings?error=' + encodeURIComponent('儲存提款設定失敗'));

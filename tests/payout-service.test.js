@@ -102,6 +102,12 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
     const testDate = new Date('2026-09-03T12:00:00.000Z');
 
     try {
+        await run(db, "UPDATE system_settings SET setting_value='31' WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day')");
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-02-28T12:00:00.000Z') })).windowOpen, false);
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-04-30T12:00:00.000Z') })).windowOpen, false);
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-03-31T12:00:00.000Z') })).windowOpen, true);
+        await run(db, "UPDATE system_settings SET setting_value='2' WHERE setting_key='withdrawal_start_day'");
+        await run(db, "UPDATE system_settings SET setting_value='6' WHERE setting_key='withdrawal_end_day'");
         await run(db, "INSERT INTO payouts (user_id,amount,status) VALUES ('user-b',250,'completed')");
         const legacySummary = await service.getPayoutSummary({ userId: 'user-b', studioId: 1, date: testDate });
         assert.equal(legacySummary.paidAmount, 250);
@@ -221,4 +227,11 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         try { fs.rmSync(directory, { recursive: true, force: true }); }
         catch (error) { if (error.code !== 'EPERM' && error.code !== 'EBUSY') throw error; }
     }
+});
+
+test('withdrawal window documents day-of-month and timezone policy', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'payoutService.js'), 'utf8');
+    assert.match(source, /getLocalDateParts\(date, settings\.timeZone\)/);
+    assert.match(source, /Number\(dateParts\.day\) >= settings\.startDay/);
+    assert.match(source, /Number\(dateParts\.day\) <= settings\.endDay/);
 });

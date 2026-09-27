@@ -74,12 +74,12 @@ test('explicit DEV deployment CLI invokes a mocked DEV-only registration and no 
             if (parent && parent.filename === process.env.MOCK_DEPLOYMENT_ENTRY && request === '../bot') {
                 return { client: { commands: new Map([['create_order', { data: { name: 'create_order' } }]]), destroy() {} } };
             }
-            if (parent && parent.filename === process.env.MOCK_DEPLOYMENT_ENTRY && request === '../utils/discordCommandRegistry') {
-                return { registerDevelopmentGuildCommands: async (rest, appId, commands, env) => {
+            if (parent && parent.filename === process.env.MOCK_DEPLOYMENT_ENTRY && request === '../utils/discordDeploymentService') {
+                return { deployDiscordCommands: async ({ commandCollection, env }) => {
                     process.stdout.write('MOCK_TARGET:' + env.GUILD_DEV_ID + '\\n');
-                    process.stdout.write('MOCK_COMMAND_COUNT:' + commands.size + '\\n');
+                    process.stdout.write('MOCK_COMMAND_COUNT:' + commandCollection.size + '\\n');
                     process.stdout.write('MOCK_REGISTRATION_CALLS:1\\n');
-                    return { commandCount: commands.size };
+                    return { commandCount: commandCollection.size };
                 } };
             }
             return originalLoad.call(this, request, parent, isMain);
