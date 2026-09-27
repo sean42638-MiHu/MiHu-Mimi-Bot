@@ -2,7 +2,6 @@ const db = require('./database');
 
 // 🚀 寫入/更新 VIP 1 ~ 7 預設資料模組
 function seedVipTiers(callback) {
-    db.initializeDatabase();
     const defaultVipTiers = [
         [1, 'VIP 1', 3000, 2500, JSON.stringify(['禮物代金券 50T', '解鎖 VIP TAG', '獲得 VIP 1 特殊顏色'])],
         [2, 'VIP 2', 7777, 6666, JSON.stringify(['代金券 50T x2', '泡芙禮物券 x1', '置頂留言牆 3天', '自定義陪玩後綴 3天', '獲得 VIP 2 特殊顏色'])],

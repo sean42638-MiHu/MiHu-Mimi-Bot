@@ -45,7 +45,7 @@ test('Development order lifecycle uses one isolated DB for order, wallet, ledger
     const get = (sql, params = []) => new Promise((resolve, reject) => db.get(sql, params, (error, row) => error ? reject(error) : resolve(row)));
 
     try {
-        db.initializeDatabase();
+        db.initializeDatabase({ explicitMigration: true });
         await db.startupReady;
         assert.equal(path.resolve(db.databasePath), path.resolve(databasePath));
         assert.equal(db.databaseScope, 'DEVELOPMENT');

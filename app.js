@@ -1,5 +1,10 @@
 require('dotenv').config();
 
+const { assertWebProductionConfig, isProductionRuntime } = require('./utils/productionRuntimeConfig');
+assertWebProductionConfig(process.env);
+const productionRuntime = isProductionRuntime(process.env);
+const trustProxyHops = productionRuntime ? Number(process.env.TRUST_PROXY_HOPS) : 0;
+
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -8,7 +13,7 @@ const { getRolesDataFromDb } = require('./utils/dataSync');
 const { getRoleInfo } = require('./utils/roleHelper');
 const passport = require('./config/passport');
 const { sameOriginGuard } = require('./middleware/csrf');
-const { resolvePermissions, hasResolvedPermission } = require('./utils/permissionResolver');
+const { isPlatformSuperuserId, resolvePermissions, hasResolvedPermission } = require('./utils/permissionResolver');
 
 const authRouter = require('./routes/auth');
 const authEmailRouter = require('./routes/api/authEmail');
@@ -18,11 +23,13 @@ const systemRouter = require('./routes/system');
 const managementRouter = require('./routes/management');
 
 const app = express();
+if (productionRuntime) app.set('trust proxy', trustProxyHops);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/healthz', (req, res) => res.status(200).type('text/plain').send('ok'));
 
 app.use(session({
     secret: process.env.SESSION_SECRET || 'mihu_gaming_secret_2026',
@@ -32,7 +39,7 @@ app.use(session({
         maxAge: 7 * 24 * 60 * 60 * 1000,
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
+        secure: productionRuntime
     }
 }));
 
@@ -48,26 +55,17 @@ app.use((req, res, next) => {
             const currentUser = freshUser || req.user;
             getRolesDataFromDb().then(rolesData => {
                 const role = rolesData.find(item => item.role_key === currentUser.role);
-                const isSuperAdmin = currentUser.id === '604610298581876746' || currentUser.role === 'admin';
-                const basePermissions = isSuperAdmin
-                    ? [
-                        'home', 'home_banner', 'home_wallet_card', 'home_info',
-                        'personal', 'profile', 'profile_discord', 'profile_nickname', 'my_wallet', 'my_income', 'my_orders',
-                        'manage', 'manage_members', 'member_adjust_balance', 'member_adjust_vip', 'manage_staff', 'manage_orders',
-                        'system', 'sys_commission', 'sys_vip', 'sys_roles', 'sys_settings', 'sys_logs',
-                        'payout.view', 'payout.view_sensitive', 'payout.export', 'payout.mark_paid', 'payout.reject'
-                    ]
-                    : (role && Array.isArray(role.permissions)
-                        ? role.permissions
-                        : ['home', 'home_wallet_card', 'home_info', 'personal', 'profile', 'my_wallet', 'my_orders']);
-
-                const permissions = resolvePermissions(basePermissions, isSuperAdmin);
+                const storedPermissions = role && Array.isArray(role.permissions)
+                    ? role.permissions
+                    : ['home', 'home_wallet_card', 'home_info', 'personal', 'profile', 'my_wallet', 'my_orders'];
+                const permissions = resolvePermissions(storedPermissions, isPlatformSuperuserId(currentUser.id));
+                const isSuperuser = permissions.includes('*');
                 db.get('SELECT id FROM studios WHERE id = ? AND owner_user_id = ?', [Number(currentUser.studio_id), currentUser.id], (studioError, ownedStudio) => {
                     res.locals.userPerms = permissions;
                     res.locals.currentUser = currentUser;
                     res.locals.user = currentUser;
                     res.locals.hasPerm = node => hasResolvedPermission(permissions, node);
-                    res.locals.canManageStudioCommission = isSuperAdmin || permissions.includes('sys_commission') || Boolean(ownedStudio);
+                    res.locals.canManageStudioCommission = isSuperuser || permissions.includes('commission.manage') || Boolean(ownedStudio);
                     next();
                 });
             }).catch(next);

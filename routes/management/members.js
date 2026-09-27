@@ -8,9 +8,11 @@ const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../../utils/vipColor')
 const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
 const { withTransactionGate } = require('../../utils/transactionGate');
+const { authorizeRoleAssignment, isRoleDelegationError } = require('../../services/roleDelegationService');
 
-function isPlatformAdmin(user) {
-    return Boolean(user && (user.id === '604610298581876746' || user.role === 'admin'));
+function isPlatformSuperuser(req, res) {
+    const permissions = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
+    return permissions.includes('*');
 }
 
 const ledgerTypeLabels = Object.freeze({
@@ -42,7 +44,7 @@ function ledgerDisplayType(type) {
 
 // 1.0 唯讀會員 Wallet Ledger；此 route 必須位於任何未來 /:id dynamic route 之前。
 router.get('/transactions', ensureAuth, checkPerm('manage_members'), async (req, res) => {
-    const platformAdmin = isPlatformAdmin(req.user);
+    const platformAdmin = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!platformAdmin && (!Number.isInteger(studioId) || studioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
@@ -116,7 +118,7 @@ router.get('/transactions', ensureAuth, checkPerm('manage_members'), async (req,
 
 // 1.1 渲染「會員管理」頁面 (完全整合 user_wallets 資料庫)
 router.get('/', ensureAuth, checkPerm('manage_members'), (req, res) => {
-    const allStudios = isPlatformAdmin(req.user);
+    const allStudios = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
@@ -214,9 +216,9 @@ router.get('/', ensureAuth, checkPerm('manage_members'), (req, res) => {
 });
 
 // 1.2 單一會員 Discord 資料刷新
-router.post('/sync/:id', ensureAuth, checkPerm('manage_members'), async (req, res) => {
+router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, res) => {
     const targetUserId = req.params.id;
-    const platformAdmin = req.user.id === '604610298581876746' || req.user.role === 'admin';
+    const platformAdmin = Array.isArray(res.locals.userPerms) && res.locals.userPerms.includes('*');
     try {
         const target = await dbGet('SELECT id, studio_id, username, global_name, avatar FROM users WHERE id = ?', [targetUserId]);
         if (!target) return res.status(404).send('找不到會員');
@@ -271,7 +273,7 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('member_adjust_balance'
     try {
         const target = await dbGet('SELECT studio_id FROM users WHERE id = ?', [targetUserId]);
         if (!target) return res.status(404).send('找不到目標會員');
-        if (!isPlatformAdmin(req.user)) {
+        if (!isPlatformSuperuser(req, res)) {
             const actorStudioId = Number(req.user && req.user.studio_id);
             const targetStudioId = Number(target.studio_id);
             if (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || targetStudioId !== actorStudioId) {
@@ -315,7 +317,7 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
                     (error, row) => error ? reject(error) : resolve(row || null)
                 ));
                 if (!targetUser) throw new Error('找不到目標會員');
-                if (!isPlatformAdmin(req.user)) {
+                if (!isPlatformSuperuser(req, res)) {
                     const actorStudioId = Number(req.user && req.user.studio_id);
                     if (!Number.isInteger(actorStudioId) || actorStudioId <= 0
                         || Number(targetUser.studio_id) !== actorStudioId) {
@@ -329,7 +331,10 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
                     else newVip = Number(targetUser.vip_level || 0);
                 }
                 newVip = Math.max(0, newVip);
-                const newRole = role || targetUser.role || 'member';
+                const newRole = role === undefined || role === '' ? (targetUser.role || 'member') : String(role).trim();
+                if (newRole !== targetUser.role) {
+                    await authorizeRoleAssignment(req.user.id, newRole, 'member_adjust_vip', db);
+                }
                 await dbRun('UPDATE users SET vip_level = ?, role = ? WHERE id = ?', [newVip, newRole, targetUserId]);
                 await writeAuditLog({
                     operatorId: req.user.id,
@@ -341,6 +346,18 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
                     after: { vip_level: newVip, role: newRole },
                     metadata: { source: 'management-members-route' }
                 });
+                if (newRole !== targetUser.role) {
+                    await writeAuditLog({
+                        operatorId: req.user.id,
+                        studioId: targetUser.studio_id ?? null,
+                        action: 'ROLE_ASSIGNED',
+                        targetType: 'user',
+                        targetId: targetUserId,
+                        before: { role: targetUser.role },
+                        after: { role: newRole },
+                        metadata: { source: 'management-members-route' }
+                    });
+                }
                 await dbRun('COMMIT');
                 return { newVip, newRole };
             } catch (error) {
@@ -358,6 +375,7 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
         } catch (e) {}
         return res.redirect('/management/members?success=1');
     } catch (error) {
+        if (isRoleDelegationError(error)) return res.status(403).send(error.message);
         if (error.message === '無權調整其他工作室會員') return res.status(403).send(error.message);
         return res.redirect('/management/members?error=' + encodeURIComponent(error.message || '更新身分失敗'));
     }

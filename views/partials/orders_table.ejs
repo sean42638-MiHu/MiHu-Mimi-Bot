@@ -93,7 +93,7 @@
         <table class="mihu-table" id="ordersTable">
             <thead>
                 <tr>
-                    <% if (typeof isOwnerAdmin !== 'undefined' && isOwnerAdmin) { %>
+                    <% if (typeof canBatchDeleteOrders !== 'undefined' && canBatchDeleteOrders) { %>
                         <!-- 🚀 僅限店長/最高管理員顯示勾選方塊欄 -->
                         <th style="width: 40px; text-align: center;">
                             <input type="checkbox" id="checkAllOrders" class="order-checkbox-custom" title="全選/取消全選">
@@ -113,7 +113,7 @@
             <tbody id="ordersTableBody">
                 <% if (!orders || orders.length === 0) { %>
                     <tr>
-                        <td colspan="<%= (typeof isOwnerAdmin !== 'undefined' && isOwnerAdmin) ? 10 : 9 %>" class="text-center py-5 text-secondary">
+                        <td colspan="<%= (typeof canBatchDeleteOrders !== 'undefined' && canBatchDeleteOrders) ? 10 : 9 %>" class="text-center py-5 text-secondary">
                             目前尚無相關訂單紀錄
                         </td>
                     </tr>
@@ -154,9 +154,8 @@
                         const discount = Number(o.discount || 0);
                         const originalPrice = totalAmount + discount;
 
-                        const myAdminId = "604610298581876746";
-                        const canEdit = (typeof currentUser !== 'undefined' && currentUser && (currentUser.id === myAdminId || currentUser.role === 'admin')) || 
-                                        (typeof userPerms !== 'undefined' && (userPerms.includes('manage_orders') || userPerms.includes('orders_edit_and_reassign')));
+                        const canEdit = (typeof hasPerm === 'function' && hasPerm('orders.manage')) ||
+                                        (typeof userPerms !== 'undefined' && (userPerms.includes('orders.manage') || userPerms.includes('orders_edit_and_reassign')));
 
                         const orderObj = {
                             id: o.id,
@@ -199,7 +198,7 @@
                                 <%- JSON.stringify(orderObj) %>
                             </script>
 
-                            <% if (typeof isOwnerAdmin !== 'undefined' && isOwnerAdmin) { %>
+                            <% if (typeof canBatchDeleteOrders !== 'undefined' && canBatchDeleteOrders) { %>
                                 <!-- 🚀 僅限店長顯示 Checkbox，並使用 stopPropagation 避免點擊勾選框時誤觸展開編輯 Modal -->
                                 <td style="text-align: center;" onclick="event.stopPropagation();">
                                     <input type="checkbox" class="order-checkbox order-checkbox-custom" value="<%= o.id %>">

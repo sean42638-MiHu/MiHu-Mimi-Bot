@@ -141,7 +141,7 @@
     <%- include('partials/navbar', { activePage: 'roles' }) %>
 
     <div class="content-body admin-page-content">
-        <%- include('partials/admin_page_header', { icon: 'fa-shield-halved', title: '身分管理', description: '自訂系統身分組類別、權限層級與各功能模組之訪問與操作權限', actions: '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addRoleModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增身分組</button>' }) %>
+        <%- include('partials/admin_page_header', { icon: 'fa-shield-halved', title: '身分管理', description: '自訂系統身分組類別、權限層級與各功能模組之訪問與操作權限', actions: hasPerm('roles.manage') ? '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addRoleModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增身分組</button>' : '' }) %>
 
         <% if (typeof success !== 'undefined' && success) { %>
             <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">
@@ -198,6 +198,7 @@
                                         <span class="text-light"><%= r.description || '無特別說明' %></span>
                                     </td>
                                     <td class="text-end" onclick="event.stopPropagation();">
+                                        <% if (hasPerm('roles.manage') && r.canManageRole) { %>
                                         <div class="action-btns-group">
                                             <button type="button" class="btn btn-sm btn-outline-light rounded-pill action-btn-clean btn-edit-info">
                                                 <i class="fa-solid fa-user-pen me-1"></i>編輯資料
@@ -206,6 +207,9 @@
                                                 <i class="fa-solid fa-lock-open me-1"></i>編輯權限
                                             </button>
                                         </div>
+                                        <% } else if (hasPerm('roles.manage')) { %>
+                                            <span class="admin-badge admin-badge-muted"><%= r.roleProtectionMessage %></span>
+                                        <% } %>
                                     </td>
                                 </tr>
                             <% }) %>
@@ -216,7 +220,7 @@
                                         <div class="admin-empty-state__icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
                                         <p class="admin-empty-state__title">目前沒有角色</p>
                                         <p class="admin-empty-state__description">建立第一個角色後，便能設定角色層級與功能權限。</p>
-                                        <button type="button" class="admin-btn admin-btn-primary admin-empty-state__action" data-bs-toggle="modal" data-bs-target="#addRoleModal">新增角色</button>
+                                        <% if (hasPerm('roles.manage')) { %><button type="button" class="admin-btn admin-btn-primary admin-empty-state__action" data-bs-toggle="modal" data-bs-target="#addRoleModal">新增角色</button><% } %>
                                     </div>
                                 </td>
                             </tr>
@@ -259,6 +263,7 @@
 </div>
 
 <!-- 彈窗 2：編輯身分基本資料 Modal -->
+<% if (hasPerm('roles.manage')) { %>
 <div class="modal fade admin-modal" id="editRoleInfoModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--md">
         <div class="modal-content modal-content-glass admin-modal-content">
@@ -493,9 +498,12 @@
 
                 <div class="admin-form-section mt-3">
                     <h6 class="admin-form-section-title">Granular Permissions</h6>
+                    <% if (canGrantWildcard) { %>
+                        <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="*" id="permission_wildcard"><span class="admin-permission-name">最高權限萬用授權</span><span class="admin-badge admin-badge-danger">最高權限</span><span class="admin-permission-desc">授予此項目會授予所有已知權限</span></label>
+                    <% } %>
                     <div class="admin-permission-grid">
                         <% Object.values(permissionMetadata || {}).forEach(permission => { %>
-                            <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="<%= permission.key %>" id="permission_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>"><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : permission.mode === 'manage' ? 'admin-badge-purple' : 'admin-badge-info' %>"><%= permission.risk === 'high' ? '高權限' : permission.mode === 'manage' ? '管理' : '唯讀' %></span><span class="admin-permission-desc"><%= permission.description %></span></label>
+                            <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="<%= permission.key %>" id="permission_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled title="你沒有權限授予此項目"' %>><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : permission.mode === 'manage' ? 'admin-badge-purple' : 'admin-badge-info' %>"><%= permission.risk === 'high' ? '高權限' : permission.mode === 'manage' ? '管理' : '唯讀' %></span><span class="admin-permission-desc"><%= permission.description %></span><% if (!(delegatablePermissions || []).includes(permission.key)) { %><i class="fa-solid fa-lock text-secondary" title="你沒有權限授予此項目" aria-label="你沒有權限授予此項目"></i><% } %></label>
                         <% }) %>
                     </div>
                 </div>
@@ -546,6 +554,17 @@
                         <label class="small text-secondary fw-semibold mb-1">職責說明</label>
                         <input type="text" name="description" class="form-control form-control-glass" placeholder="例如：負責客訴爭議與售後仲裁">
                     </div>
+                    <div class="admin-form-section mt-3">
+                        <h6 class="admin-form-section-title">可委派權限</h6>
+                        <% if (canGrantWildcard) { %>
+                            <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="*" id="new_permission_wildcard"><span class="admin-permission-name">最高權限萬用授權</span><span class="admin-badge admin-badge-danger">最高權限</span><span class="admin-permission-desc">授予此項目會授予所有已知權限</span></label>
+                        <% } %>
+                        <div class="admin-permission-grid">
+                            <% Object.values(permissionMetadata || {}).forEach(permission => { %>
+                                <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="<%= permission.key %>" id="new_permission_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled title="你沒有權限授予此項目"' %>><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : permission.mode === 'manage' ? 'admin-badge-purple' : 'admin-badge-info' %>"><%= permission.risk === 'high' ? '高權限' : permission.mode === 'manage' ? '管理' : '唯讀' %></span><span class="admin-permission-desc"><%= permission.description %></span><% if (!(delegatablePermissions || []).includes(permission.key)) { %><i class="fa-solid fa-lock text-secondary" title="你沒有權限授予此項目" aria-label="你沒有權限授予此項目"></i><% } %></label>
+                            <% }) %>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer admin-modal-footer border-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
@@ -555,10 +574,28 @@
         </div>
     </div>
 </div>
+<% } %>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let viewRoleModal, editRoleInfoModal;
+    const delegatablePermissionKeys = new Set(<%- JSON.stringify(delegatablePermissions || []) %>);
+    const canGrantWildcard = <%- JSON.stringify(Boolean(canGrantWildcard)) %>;
+
+    document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
+        if (checkbox.value === '*' && canGrantWildcard) return;
+        if (delegatablePermissionKeys.has(checkbox.value)) return;
+        checkbox.disabled = true;
+        checkbox.title = '你沒有權限授予此項目';
+        const label = checkbox.closest('label') || document.querySelector(`label[for="${checkbox.id}"]`);
+        if (label && !label.querySelector('.permission-lock-indicator')) {
+            const lock = document.createElement('i');
+            lock.className = 'fa-solid fa-lock text-secondary permission-lock-indicator';
+            lock.title = checkbox.title;
+            lock.setAttribute('aria-label', checkbox.title);
+            label.append(lock);
+        }
+    });
 
     function openEditRolePermsModal(roleKey, roleName, currentPermsArray) {
         document.getElementById('targetRoleKey').value = roleKey;
@@ -580,7 +617,8 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         viewRoleModal = new bootstrap.Modal(document.getElementById('viewRoleModal'));
-        editRoleInfoModal = new bootstrap.Modal(document.getElementById('editRoleInfoModal'));
+        const editRoleInfoModalElement = document.getElementById('editRoleInfoModal');
+        editRoleInfoModal = editRoleInfoModalElement ? new bootstrap.Modal(editRoleInfoModalElement) : null;
 
         document.querySelectorAll('.role-row').forEach(row => {
             const id = row.getAttribute('data-id');

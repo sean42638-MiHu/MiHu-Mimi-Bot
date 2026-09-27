@@ -5,8 +5,8 @@ const { syncOrdersJsonFromDb } = require('../utils/dataSync');
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
 const { getOrder, updateOrder, cancelOrder } = require('../utils/orderService');
 
-function isPlatformAdmin(user) {
-    return user && (user.id === '604610298581876746' || user.role === 'admin');
+function isPlatformSuperuser(res) {
+    return Array.isArray(res.locals.userPerms) && res.locals.userPerms.includes('*');
 }
 
 /**
@@ -53,8 +53,8 @@ router.get('/my', ensureAuth, (req, res) => {
  * 🛠️ 2. 訂單管理全站總覽 (GET /management/orders 或 /orders)
  * 權限定義：管理者/客服視角，抓取全站所有訂單
  */
-router.get('/orders', ensureAuth, checkPerm('manage_orders'), (req, res) => {
-    const allStudios = isPlatformAdmin(req.user);
+router.get('/orders', ensureAuth, checkPerm('orders.manage'), (req, res) => {
+    const allStudios = isPlatformSuperuser(res);
     const studioId = Number(req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
@@ -96,11 +96,11 @@ router.get('/orders', ensureAuth, checkPerm('manage_orders'), (req, res) => {
 /**
  * ✏️ 3. POST: 處理訂單編輯、折扣計算與刪除 (管理員權限)
  */
-router.post('/orders/update/:id', ensureAuth, checkPerm('manage_orders'), async (req, res) => {
+router.post('/orders/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, res) => {
     try {
         const existingOrder = await getOrder(req.params.id);
         if (!existingOrder) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
-        if (!isPlatformAdmin(req.user) && Number(existingOrder.studio_id) !== Number(req.user.studio_id)) {
+        if (!isPlatformSuperuser(res) && Number(existingOrder.studio_id) !== Number(req.user.studio_id)) {
             return res.status(403).send('無權修改其他工作室訂單');
         }
         if (req.body.is_delete === '1') {

@@ -238,7 +238,13 @@
         function showStaffEdit(data) {
             document.getElementById('staffEditForm').action = `/management/staff/update/${data.id}`;
             document.getElementById('editTargetName').textContent = data.displayName;
-            document.getElementById('editRole').value = data.role;
+            const roleSelect = document.getElementById('editRole');
+            if (Array.from(roleSelect.options).some(option => option.value === data.role)) {
+                roleSelect.value = data.role;
+            } else {
+                roleSelect.options[0].textContent = `${data.roleName}（目前職位，無法指派）`;
+                roleSelect.value = '';
+            }
             document.getElementById('editStatus').value = data.status;
             
             document.getElementById('editRate').value = (data.commissionRate !== null && data.commissionRate !== undefined) ? data.commissionRate : '';

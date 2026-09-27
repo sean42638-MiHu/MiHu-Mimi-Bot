@@ -24,7 +24,7 @@ The approved payout contract is implemented and covered by service, two-process,
 
 Still blocked: production secret provisioning/rotation and review of prior plaintext caches/backups, supply-chain remediation for the critical tar advisory, external service staging/credential rotation, and historical payout rows. Latest read-only scan: 1 user has a bank-account value and 0 account values are encrypted; production migration was not run. The operator PAID confirmation is the accepted platform evidence; no per-row bank reference/proof is required. Existing `completed` rows count as paid to prevent re-withdrawal but remain `LEGACY_PAYOUT_UNVERIFIED`; no historical Ledger was inferred or created.
 
-`initializeDatabase()` startup sequence now passes isolated fresh, existing, rerun, invalid-commission rollback, payout migration, encryption migration, and missing/wrong-key fail-closed tests. Production initialization/migration was not run. Commission v1/v3 and legacy talent table rebuilds share a serialized transaction gate, removing the previously reproduced `cannot commit - no transaction is active` loop.
+The explicit `db:migrate` command now passes isolated fresh, existing, rerun, invalid-commission rollback, payout migration, encryption migration, and missing/wrong-key fail-closed tests. Web/Bot startup performs read-only schema readiness only. Production initialization/migration was not run. Commission v1/v3 and legacy talent table rebuilds share a serialized transaction gate, removing the previously reproduced `cannot commit - no transaction is active` loop.
 
 ## Order Writer Matrix
 

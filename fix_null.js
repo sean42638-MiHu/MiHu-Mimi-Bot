@@ -1,5 +1,4 @@
 const db = require('./database');
-db.initializeDatabase();
 
 db.serialize(() => {
     // 1. 清理 talents 表格中 XiaMi 或存為 0.7 的資料

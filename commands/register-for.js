@@ -6,6 +6,7 @@ const { getRuntimeDataDirectory } = require('../utils/runtimePaths');
 const { dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
+const { getPublicBaseUrl } = require('../utils/productionRuntimeConfig');
 
 function checkDiscordAdminPermission(interaction) {
     return Boolean(interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator));
@@ -32,7 +33,7 @@ module.exports = {
             return interaction.editReply({ content: '🚫 只有 Discord 客服與管理者身分能使用此指令。' });
         }
         const targetUser = interaction.options.getUser('target');
-        const websiteUrl = process.env.WEBSITE_URL || 'http://localhost:3000';
+        const websiteUrl = getPublicBaseUrl();
 
         db.get('SELECT * FROM users WHERE id = ?', [targetUser.id], async (err, row) => {
             if (!row) {

@@ -3,6 +3,9 @@
   "version": "2.0.0",
   "description": "米胡電競陪玩店 後台管理系統",
   "main": "index.js",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
@@ -14,6 +17,11 @@
     "deploy:commands:dev": "node scripts/deployDevelopmentCommands.js",
     "dev:seed-users": "node scripts/seedDevelopmentUsers.js",
     "dev:reset-data": "node scripts/resetDevelopmentData.js",
+    "db:readiness": "node scripts/productionReadiness.js",
+    "db:preflight": "node scripts/productionPreflight.js",
+    "db:backup": "node scripts/backupDatabase.js",
+    "db:migrate": "node scripts/migrateDatabase.js",
+    "db:restore": "node scripts/restoreDatabase.js",
     "test": "node --test"
   },
   "dependencies": {

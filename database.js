@@ -6,6 +6,8 @@ const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./uti
 const { ensurePayoutSchema } = require('./utils/payoutSchema');
 const { withTransactionGate } = require('./utils/transactionGate');
 const { getDatabasePath, getRuntimeDataDirectory } = require('./utils/runtimePaths');
+const { PLATFORM_SUPERUSER_ID } = require('./utils/permissionResolver');
+const { assertDatabaseReady } = require('./utils/databaseReadiness');
 const {
     isEncryptedSensitiveValue,
     encryptSensitiveValue,
@@ -19,6 +21,16 @@ if (process.env.NODE_ENV === 'test' && !testDbPath) {
 }
 const dbPath = getDatabasePath(process.env);
 const dataDirectory = getRuntimeDataDirectory(process.env);
+const sqliteBusyTimeoutMs = Number(process.env.SQLITE_BUSY_TIMEOUT_MS || 5000);
+if (!Number.isInteger(sqliteBusyTimeoutMs) || sqliteBusyTimeoutMs < 0 || sqliteBusyTimeoutMs > 30000) {
+    throw new Error('SQLITE_BUSY_TIMEOUT_MS must be an integer from 0 to 30000');
+}
+if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'
+    || String(process.env.APP_ENV || '').trim().toLowerCase() === 'production') {
+    if (!fs.existsSync(dbPath) || !fs.statSync(dbPath).isFile()) {
+        throw new Error('Production DATABASE_PATH must identify an existing database file; refusing to create it');
+    }
+}
 if (process.env.NODE_ENV === 'test' && dbPath === path.resolve(productionDbPath)) {
     throw new Error('Test database must not point to the production database');
 }
@@ -32,6 +44,7 @@ if (process.env.NODE_ENV === 'test') {
 const db = new sqlite3.Database(dbPath);
 db.databasePath = dbPath;
 db.databaseScope = process.env.APP_ENV === 'development' ? 'DEVELOPMENT' : 'NORMAL';
+db.configure('busyTimeout', sqliteBusyTimeoutMs);
 let initialized = false;
 let startupReady = Promise.resolve();
 
@@ -323,12 +336,15 @@ function initializeCommissionSettings(callback = () => {}) {
     });
 }
 
-function initializeDatabase() {
+function initializeDatabase({ explicitMigration = false } = {}) {
+    if (!explicitMigration) throw new Error('Database migrations require the explicit db:migrate command');
     if (initialized) return db;
     initialized = true;
     const payoutStartup = createDeferred();
     const commissionStartup = createDeferred();
-    startupReady = Promise.all([payoutStartup.promise, commissionStartup.promise]).then(() => undefined);
+    startupReady = Promise.all([payoutStartup.promise, commissionStartup.promise])
+        .then(() => assertDatabaseReady(db))
+        .then(() => undefined);
     startupReady.catch(() => {});
     db.startupReady = startupReady;
     db.serialize(() => {
@@ -346,7 +362,7 @@ function initializeDatabase() {
         }
         const defaultStudioOwnerId = process.env.APP_ENV === 'development'
             ? (process.env.DEV_MANAGER_DISCORD_ID || 'dev-system-owner')
-            : '604610298581876746';
+            : PLATFORM_SUPERUSER_ID;
         db.run('INSERT OR IGNORE INTO studios (id, name, owner_user_id) VALUES (1, ?, ?)', ['預設工作室', defaultStudioOwnerId]);
     });
 
@@ -991,4 +1007,5 @@ function initializeDatabase() {
 }
 
 db.initializeDatabase = initializeDatabase;
+db.assertDatabaseReady = () => assertDatabaseReady(db);
 module.exports = db;

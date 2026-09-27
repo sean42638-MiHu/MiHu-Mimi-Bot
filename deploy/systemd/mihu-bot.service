@@ -1,0 +1,36 @@
+[Unit]
+Description=MiHu Management Discord Bot Runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mihu
+Group=mihu
+WorkingDirectory=/opt/mihu/app
+EnvironmentFile=/etc/mihu/mihu.env
+EnvironmentFile=/etc/mihu/mihu-bot.env
+Environment=NODE_ENV=production
+Environment=APP_ENV=production
+Environment=DISCORD_ENABLED=true
+ExecStart=/usr/bin/node mihu-bot-mimi/botRunner.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/opt/mihu/app
+ReadWritePaths=/var/lib/mihu /var/backups/mihu
+
+[Install]
+WantedBy=multi-user.target

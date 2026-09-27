@@ -1,5 +1,4 @@
 const db = require('./database');
-db.initializeDatabase();
 
 console.log('🔄 開始清除全站帳務與儲值流水紀錄...');
 

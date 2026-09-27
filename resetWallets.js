@@ -1,6 +1,5 @@
 const db = require('./database');
 const { syncUsersJsonFromDb } = require('./utils/dataSync');
-db.initializeDatabase();
 
 console.log('🔄 開始執行會員資金與 VIP 全量歸零...');
 

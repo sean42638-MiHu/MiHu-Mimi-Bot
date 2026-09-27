@@ -4,6 +4,7 @@ const { getVipColorByLevel } = require('../utils/vipHelper');
 const { dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
+const { getPublicBaseUrl } = require('../utils/productionRuntimeConfig');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -30,7 +31,7 @@ module.exports = {
                 const embed = new EmbedBuilder()
                     .setColor(vipColor)
                     .setTitle('您已經是米胡電競的會員囉！')
-                    .setDescription(`歡迎回來，**${userRecord.custom_nickname || userRecord.global_name || userRecord.username}**！\n\n您可隨時登入後臺檢視個人錢包與檔案：\n👉 [米胡電競管理後臺](${process.env.WEBSITE_URL || 'http://localhost:3000'})`)
+                    .setDescription(`歡迎回來，**${userRecord.custom_nickname || userRecord.global_name || userRecord.username}**！\n\n您可隨時登入後臺檢視個人錢包與檔案：\n👉 [米胡電競管理後臺](${getPublicBaseUrl()})`)
                     .addFields(
                         { name: '當前 VIP 等級', value: vipDisplay, inline: true },
                         { name: '總可用金額', value: `$${totalBalance.toLocaleString()} NTD`, inline: true }

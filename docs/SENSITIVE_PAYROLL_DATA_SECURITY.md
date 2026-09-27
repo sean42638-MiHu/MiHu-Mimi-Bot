@@ -1,6 +1,6 @@
 # Sensitive Payroll Data Security
 
-Status: **AES-256-GCM AT-REST ENCRYPTION IMPLEMENTED / PRODUCTION ROLLOUT BLOCKED**. The current production database/cache remains plaintext until a secret-provider key is staged and the startup migration runs. The migration is tested only on temporary databases. No production row was read or modified for this audit.
+Status: **AES-256-GCM AT-REST ENCRYPTION IMPLEMENTED / PRODUCTION ROLLOUT BLOCKED**. The Production database/cache requires a secret-provider key and the explicit `npm run db:migrate` command. Migration is tested only on temporary databases. No Production row was read or modified for this audit.
 
 ## Sensitive Payroll Data Map
 
@@ -15,7 +15,7 @@ Status: **AES-256-GCM AT-REST ENCRYPTION IMPLEMENTED / PRODUCTION ROLLOUT BLOCKE
 
 ### Other Copies And Controls
 
-- `data/users.json` is a runtime cache that can contain all `users` columns. It is ignored by Git and is not tracked; startup migration rewrites it with the encrypted DB values and the application fails startup if that rewrite fails.
+- `data/users.json` is a runtime cache that can contain all `users` columns. It is ignored by Git and is not tracked; the explicit migration rewrites it with encrypted DB values. A failure exits non-zero and Web/Bot startup remains blocked by readiness checks.
 - The manager XLSX endpoint creates the workbook per authenticated request, requires `payout.export` and `payout.view_sensitive`, is Studio-scoped, and writes an export audit. It does not publish files under `public/`.
 - Ordinary payout lists redact raw snapshot fields. Staff list SQL now selects bank fields only for `payout.view_sensitive`; UI `data-staff` payload follows the same gate.
 - `writeAuditLog` redacts sensitive-key paths; payout audit payloads contain IDs, amounts, status, actor/time, and no bank/name values. Rejection reasons redact ID-like and long numeric sequences.
@@ -26,7 +26,7 @@ Status: **AES-256-GCM AT-REST ENCRYPTION IMPLEMENTED / PRODUCTION ROLLOUT BLOCKE
 
 Bank account and account-holder snapshots are encrypted at rest in the existing TEXT columns with AES-256-GCM using an environment/secret-provider key; no key is hard-coded, stored in SQLite, or committed. Because the inspected bank fields have no equality-lookup use, no deterministic fingerprint is needed.
 
-`PAYROLL_DATA_ENCRYPTION_KEY` must be a valid 32-byte key (base64 or 64-character hex) from an environment/secret provider. Startup fails closed when it is absent/invalid; wrong-key ciphertext also blocks startup. Decrypting a plaintext row outside migration throws. Existing values migrate transactionally; the ignored JSON cache is rewritten before startup readiness resolves. If migration or cache replacement fails, web and bot runtimes do not start.
+`PAYROLL_DATA_ENCRYPTION_KEY` must be a valid 32-byte key (base64 or 64-character hex) from an environment/secret provider. Explicit migration fails closed when it is absent/invalid; wrong-key ciphertext also blocks migration. Decrypting a plaintext row outside migration throws. Existing values migrate transactionally; the ignored JSON cache is rewritten by the migration command. Web/Bot startup only checks readiness and never performs migration.
 
 ## Remaining Risks / Operational Requirements
 

@@ -143,7 +143,7 @@ setTimeout(() => {
     db.close(() => process.exit(1));
 }, 6000).unref();
 
-db.initializeDatabase();
+db.initializeDatabase({ explicitMigration: true });
 db.startupReady.then(check, error => {
     if (process.env.TEST_EXPECT_COMMISSION_ROLLBACK === 'true') return check();
     process.stderr.write(`startup migration rejected: ${error.message}\n`);

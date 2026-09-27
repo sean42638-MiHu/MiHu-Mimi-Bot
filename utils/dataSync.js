@@ -1,11 +1,13 @@
 const fs = require('fs');
 const path = require('path');
+const { isProductionRuntime } = require('./productionRuntimeConfig');
 const db = require('../database');
 const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./vipColor');
 const { getRuntimeDataDirectory } = require('./runtimePaths');
 
 const dataDir = getRuntimeDataDirectory();
 if (!fs.existsSync(dataDir)) {
+    if (isProductionRuntime()) throw new Error('Production data directory is missing; refusing to create application data storage at runtime');
     fs.mkdirSync(dataDir, { recursive: true });
 }
 

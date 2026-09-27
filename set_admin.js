@@ -1,6 +1,5 @@
 // set_admin.js
 const db = require('./database');
-db.initializeDatabase();
 
 // 自動將資料庫裡的所有使用者升級為最高權限 admin
 db.run("UPDATE users SET role = 'admin', vip_level = 1", (err) => {

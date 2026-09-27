@@ -26,7 +26,7 @@ test('development fixture seed creates only isolated zero/seed-balance users and
     const get = (sql, params = []) => new Promise((resolve, reject) => db.get(sql, params, (error, row) => error ? reject(error) : resolve(row)));
 
     try {
-        db.initializeDatabase();
+        db.initializeDatabase({ explicitMigration: true });
         await db.startupReady;
         const seeded = await seedDevelopmentUsers(db);
         assert.deepEqual(seeded, { fixtureCount: 3, startingBalance: 2500 });

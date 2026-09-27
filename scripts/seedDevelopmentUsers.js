@@ -11,8 +11,7 @@ async function seedDevelopmentDatabase() {
     const db = require('../database');
 
     try {
-        db.initializeDatabase();
-        await db.startupReady;
+        await db.assertDatabaseReady();
         const result = await seedDevelopmentUsers(db);
         console.log(`Development fixtures seeded: ${result.fixtureCount} users; test balance ${result.startingBalance}.`);
         return result;

@@ -24,7 +24,7 @@ test('Development Bot denies non-DEV Guild interactions before handlers and audi
     let client;
     let originalCommand;
     try {
-        db.initializeDatabase();
+        db.initializeDatabase({ explicitMigration: true });
         await db.startupReady;
         const bot = require('../bot');
         client = bot.client;

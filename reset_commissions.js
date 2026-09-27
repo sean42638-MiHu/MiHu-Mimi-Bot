@@ -1,7 +1,6 @@
 const db = require('./database');
 const { calculateCommissionByCategory, resolveServiceId } = require('./utils/commissionHelper');
 const { syncTalentsJsonFromDb, syncOrdersJsonFromDb } = require('./utils/dataSync');
-db.initializeDatabase();
 
 async function resetAllCommissions() {
     console.log('🔄 開始執行全站員工分潤紀錄重置...');

@@ -133,13 +133,10 @@
                         <div class="col-6">
                             <label class="small text-secondary fw-semibold mb-1">指派身分職位</label>
                             <select id="editRole" name="role" class="form-select form-control-glass admin-form-select" style="background-color: #171326; color: #fff;">
-                                <option value="admin">店長 (最高權限)</option>
-                                <option value="cfo">財務長</option>
-                                <option value="aftersales">售後管理</option>
-                                <option value="manager">客服主管</option>
-                                <option value="cs">客服</option>
-                                <option value="staff">陪陪</option>
-                                <option value="member">一般會員</option>
+                                <option value="">保留目前職位</option>
+                                <% (assignableRoles || []).forEach(role => { %>
+                                    <option value="<%= role.role_key %>"><%= role.name || role.role_key %></option>
+                                <% }) %>
                             </select>
                         </div>
                         <div class="col-6">

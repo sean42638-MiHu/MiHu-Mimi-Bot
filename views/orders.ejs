@@ -115,8 +115,7 @@
 
 <% 
     const activeCurrUser = typeof currentUser !== 'undefined' && currentUser ? currentUser : ((typeof user !== 'undefined' && user) ? user : {});
-    const currRole = String(activeCurrUser.role || '').toLowerCase();
-    const isOwnerAdmin = ['admin', 'owner'].includes(currRole);
+    const canBatchDeleteOrders = typeof hasPerm === 'function' && hasPerm('orders.manage');
 %>
 
 <div class="app-layout">
@@ -152,7 +151,7 @@
                     <button type="button" class="filter-tab-btn" data-filter="rejected">已駁回</button>
                 </div>
 
-                <% if (isOwnerAdmin) { %>
+                <% if (canBatchDeleteOrders) { %>
                     <!-- 🚀 店長專用表單：點擊時以原生 Form 提交，不使用抓取 json -->
                     <form id="batchDeleteForm" action="/management/orders/batch-delete" method="POST" style="margin: 0;">
                         <div id="batchInputsContainer"></div>
@@ -181,7 +180,7 @@
                 orders: typeof orders !== 'undefined' ? orders : [], 
                 currentUser: activeCurrUser, 
                 userPerms: typeof userPerms !== 'undefined' ? userPerms : [],
-                isOwnerAdmin: isOwnerAdmin 
+                canBatchDeleteOrders
             }) %>
         </div>
     </div>

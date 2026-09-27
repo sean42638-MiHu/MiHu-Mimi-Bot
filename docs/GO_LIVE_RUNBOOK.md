@@ -21,15 +21,17 @@ Status: **NO-GO / PREPARATION ONLY**. This checklist is operational guidance; it
 - [ ] Stop all old web, bot, worker, and maintenance-script instances using the production DB.
 - [ ] Confirm no payout mutation or other financial transaction is active.
 - [ ] Apply infrastructure-level traffic/write restriction. The application has no built-in maintenance switch.
-- [ ] Preserve the pre-migration backup under approved access and retention controls.
+- [ ] Preserve the timestamped pre-migration backup and verified manifest under approved external storage/retention controls.
 
 ## C. Migration
 
 - [ ] Run the read-only PII status scan and save counts only: `node scripts/payrollEncryptionStatus.js`.
 - [ ] Review total/plaintext/encrypted/null/invalid counts; never dump values.
-- [ ] Start the approved application version with the secret-provider key injected.
-- [ ] Confirm `db.startupReady` completes: commission, payout schema, PII encryption migration, and encrypted cache sync.
-- [ ] Confirm app does not listen/start bot if key is absent, invalid, or ciphertext cannot be decrypted.
+- [ ] Set the verified Production identity/storage confirmations and explicit absolute persistent `DATABASE_PATH` in the Hosting secret/config source; never put secrets in `.env` committed to the repository.
+- [ ] Run `npm run db:readiness`; PASS is configuration/schema readiness only, not deployment or RBAC verification.
+- [ ] Stop writers, create a verified pre-migration backup with `npm run db:backup`, then run `npm run db:migrate` with its explicit confirmation and manifest.
+- [ ] Confirm migration failures exit non-zero; Web/Bot startup must only validate schema and must not migrate.
+- [ ] Run `npm run db:preflight` only after externally verifying the Production instance and setting `PRODUCTION_PREFLIGHT_CONFIRM=YES`.
 - [ ] Run `node scripts/payrollEncryptionStatus.js --require-encrypted`; require zero plaintext and invalid ciphertext values.
 - [ ] Verify schema/index/defaults; no production payout/test row may be inserted.
 

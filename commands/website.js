@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { getPublicBaseUrl } = require('../utils/productionRuntimeConfig');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -7,8 +8,7 @@ module.exports = {
         .setDescription('🌐 獲取米胡電競後台管理系統控制台連結'),
 
     async execute(interaction) {
-        // 後台管理系統網址 (可由 .env 讀取或預設)
-        const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.mihugaming.com';
+        const dashboardUrl = getPublicBaseUrl();
 
         // 構建與截圖 100% 一致的 Embed 卡片
         const websiteEmbed = new EmbedBuilder()

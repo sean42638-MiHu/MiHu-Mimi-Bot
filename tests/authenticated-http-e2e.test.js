@@ -67,7 +67,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         real_name TEXT, bank_name TEXT, bank_code TEXT, bank_branch TEXT, bank_account TEXT,
         birthday TEXT, gender TEXT, mbti TEXT
     )`);
-    await run('CREATE TABLE roles (id INTEGER PRIMARY KEY, role_key TEXT, name TEXT, permissions TEXT)');
+    await run('CREATE TABLE roles (id INTEGER PRIMARY KEY, role_key TEXT, name TEXT, permissions TEXT, category TEXT, tier_level INTEGER, color_badge TEXT, description TEXT, updated_at TEXT)');
     await run('CREATE TABLE studios (id INTEGER PRIMARY KEY, name TEXT, owner_user_id TEXT)');
     await run('CREATE TABLE announcements (id INTEGER PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)');
     await run('CREATE TABLE user_wallets (user_id TEXT PRIMARY KEY, balance REAL, bonus_balance REAL, manual_spent REAL, manual_deposited REAL, updated_at TEXT)');
@@ -111,10 +111,29 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run(`INSERT INTO users (id,username,role,studio_id) VALUES
         ('member-a','member','member',1),('member-b','member-b','member',2),('staff-a','staff','staff',1),
         ('manager-a','manager-a','manager',1),('manager-b','manager-b','manager',2),('admin-a','admin','admin',1),
-        ('manager-limited','manager-limited','limited_staff_manager',1)`);
-    await run("INSERT INTO roles VALUES (1,'member','Member','[\"my_income\",\"profile\"]'),(2,'staff','Staff','[\"payout.view\"]'),(3,'manager','Manager','[\"manage_orders\",\"manage_members\",\"member_adjust_balance\",\"member_adjust_vip\",\"staff_view_payroll\",\"manage_staff\",\"sys_settings\",\"payout.view\",\"payout.view_sensitive\",\"payout.export\",\"payout.mark_paid\",\"payout.reject\"]'),(4,'limited_staff_manager','Limited Staff Manager','[\"manage_staff\",\"payout.view\"]')");
+        ('604610298581876746','platform-user','admin',1),
+        ('manager-limited','manager-limited','limited_staff_manager',1),('settings-viewer','settings-viewer','settings_viewer',1),
+        ('roles-viewer','roles-viewer','roles_viewer',1),('legacy-roles','legacy-roles','legacy_roles',1),
+        ('security-self','security-self','security_self',1),('security-cross','security-cross','security_cross',1),
+        ('security-allow','security-allow','security_allow',1),('legacy-security','legacy-security','legacy_security',1),
+        ('assignment-manager','assignment-manager','assignment_manager',1),('assignment-target','assignment-target','staff',1),
+        ('star-actor','star-actor','star_actor',1)`);
+    await run(`INSERT INTO roles (id,role_key,name,permissions) VALUES
+        (1,'member','Member','["my_income","profile"]'),(2,'staff','Staff','["payout.view"]'),
+        (3,'manager','Manager','["manage_orders","manage_members","member_adjust_balance","member_adjust_vip","staff_view_payroll","manage_staff","sys_settings","sys_roles","payout.view","payout.view_sensitive","payout.export","payout.mark_paid","payout.reject"]'),
+        (4,'limited_staff_manager','Limited Staff Manager','["manage_staff","payout.view"]'),
+        (5,'settings_viewer','Settings Viewer','["system_settings.view"]'),(6,'roles_viewer','Roles Viewer','["roles.view"]'),
+        (7,'legacy_roles','Legacy Roles','["sys_roles"]'),(8,'security_self','Self Editor','["roles.manage"]'),
+        (9,'security_cross','Cross Editor','["roles.manage","staff.manage"]'),
+        (10,'security_allow','Allowed Editor','["roles.manage","members.view","staff.view"]'),
+        (11,'legacy_security','Legacy Security','["sys_roles"]'),
+        (12,'assignment_manager','Assignment Manager','["staff.manage","member_adjust_vip","members.view","staff.view"]'),
+        (13,'star_actor','Star Actor','["*"]'),(17,'admin','店長','[]'),
+        (14,'protected_deployer','Protected Deployer','["roles.manage","discord_commands.deploy_production"]'),
+        (15,'settings_target','Settings Target','["system_settings.manage"]'),
+        (16,'delegatable_target','Delegatable Target','["members.view","staff.view"]')`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','manager-b')");
-    await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP)");
+    await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP)");
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,headcount,discount,total_amount,status,created_at,studio_id)
         VALUES (101,'ORDER-A','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,1),
                (202,'ORDER-B','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,2)`);
@@ -228,6 +247,201 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(systemSettings.body, /name="start_day"/);
         assert.match(systemSettings.body, /name="minimum_amount"/);
         assert.doesNotMatch(systemSettings.body, /DISCORD_BOT_TOKEN|DISCORD_CLIENT_SECRET|SESSION_SECRET|PAYROLL_DATA_ENCRYPTION_KEY/);
+        const settingsViewer = await createSession('settings-viewer');
+        const settingsViewerPage = await createRequest(port, 'GET', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Cookie: settingsViewer.cookie
+        });
+        assert.equal(settingsViewerPage.status, 200, settingsViewerPage.body);
+        assert.match(settingsViewerPage.body, /href="\/system\/settings"/);
+        assert.doesNotMatch(settingsViewerPage.body, /href="\/system\/roles"/);
+        assert.doesNotMatch(settingsViewerPage.body, /儲存設定/);
+        const settingsViewerPost = await createRequest(port, 'POST', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: settingsViewer.cookie,
+            'X-CSRF-Token': settingsViewer.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'start_day=3&end_day=7&minimum_amount=500');
+        assert.equal(settingsViewerPost.status, 403);
+        const rolesViewer = await createSession('roles-viewer');
+        const rolesViewerPage = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: rolesViewer.cookie
+        });
+        assert.equal(rolesViewerPage.status, 200, rolesViewerPage.body);
+        assert.match(rolesViewerPage.body, /href="\/system\/roles"/);
+        assert.doesNotMatch(rolesViewerPage.body, /href="\/system\/settings"/);
+        assert.doesNotMatch(rolesViewerPage.body, /新增身分組|編輯資料|編輯權限/);
+        const rolesViewerPost = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: rolesViewer.cookie,
+            'X-CSRF-Token': rolesViewer.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'name=Denied&category=一般職位&tier_level=80&description=Denied');
+        assert.equal(rolesViewerPost.status, 403);
+        const legacyRoles = await createSession('legacy-roles');
+        const legacyRolesPage = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: legacyRoles.cookie
+        });
+        assert.equal(legacyRolesPage.status, 200, legacyRolesPage.body);
+
+        const securitySelf = await createSession('security-self');
+        const selfRolePage = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: securitySelf.cookie
+        });
+        assert.equal(selfRolePage.status, 200, selfRolePage.body);
+        assert.match(selfRolePage.body, /目前使用中的身分無法由自己修改權限/);
+        assert.ok(selfRolePage.body.includes('permission_system_settings_manage'), `permission grid present: ${selfRolePage.body.includes('Granular Permissions')}`);
+        assert.ok(selfRolePage.body.includes('你沒有權限授予此項目'));
+        assert.doesNotMatch(selfRolePage.body, /id="permission_wildcard"|id="new_permission_wildcard"/);
+        const selfEscalation = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securitySelf.cookie,
+            'X-CSRF-Token': securitySelf.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([['role', 'security_self'], ['permissions', 'roles.manage'], ['permissions', 'system_settings.manage']]).toString());
+        assert.equal(selfEscalation.status, 403);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='security_self'", (error, row) => error ? reject(error) : resolve(row.permissions))), '["roles.manage"]');
+
+        const securityCross = await createSession('security-cross');
+        const crossRoleEscalation = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([
+            ['name', 'Cross Escalation'], ['category', '主管職位'], ['tier_level', '80'], ['description', 'fixture'],
+            ['permissions', 'roles.manage'], ['permissions', 'staff.manage'], ['permissions', 'system_settings.manage'],
+            ['permissions', 'discord_commands.deploy_production'], ['permissions', 'payout.view_sensitive'], ['permissions', '*']
+        ]).toString());
+        assert.equal(crossRoleEscalation.status, 403);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM roles WHERE name='Cross Escalation'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
+        const craftedSensitiveGrant = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([
+            ['name', 'Crafted Sensitive Grant'], ['category', '主管職位'], ['tier_level', '80'], ['description', 'fixture'],
+            ['permissions', 'system_settings.manage'], ['permissions', 'discord_commands.deploy_production'], ['permissions', 'payout.view_sensitive']
+        ]).toString());
+        assert.equal(craftedSensitiveGrant.status, 403);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM roles WHERE name='Crafted Sensitive Grant'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
+
+        const legacySecurity = await createSession('legacy-security');
+        const legacyGrantAttempt = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: legacySecurity.cookie,
+            'X-CSRF-Token': legacySecurity.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([
+            ['name', 'Legacy Escalation'], ['category', '主管職位'], ['tier_level', '80'], ['description', 'fixture'],
+            ['permissions', 'system_settings.manage']
+        ]).toString());
+        assert.equal(legacyGrantAttempt.status, 403);
+
+        const securityAllow = await createSession('security-allow');
+        const allowedRoleCreate = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityAllow.cookie,
+            'X-CSRF-Token': securityAllow.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([
+            ['name', 'Allowed Delegation'], ['category', '一般職位'], ['tier_level', '60'], ['description', 'fixture'],
+            ['permissions', 'members.view'], ['permissions', 'staff.view']
+        ]).toString());
+        assert.equal(allowedRoleCreate.status, 302);
+        const createdDelegatedRole = await new Promise((resolve, reject) => db.get("SELECT role_key, permissions FROM roles WHERE name='Allowed Delegation'", (error, row) => error ? reject(error) : resolve(row)));
+        assert.deepEqual(JSON.parse(createdDelegatedRole.permissions), ['members.view', 'staff.view']);
+        const createdRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, before_data, after_data, metadata FROM audit_logs WHERE action='ROLE_CREATED' AND target_id=?", [createdDelegatedRole.role_key], (error, row) => error ? reject(error) : resolve(row)));
+        assert.equal(createdRoleAudit.action, 'ROLE_CREATED');
+        assert.equal(createdRoleAudit.before_data, null);
+        assert.equal(createdRoleAudit.after_data, null);
+        assert.deepEqual(JSON.parse(createdRoleAudit.metadata).permissionDiff.added, ['members.view', 'staff.view']);
+
+        const starActor = await createSession('star-actor');
+        const superuserRolePage = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: starActor.cookie
+        });
+        assert.equal(superuserRolePage.status, 200, superuserRolePage.body);
+        assert.match(superuserRolePage.body, /id="permission_wildcard"/);
+        assert.match(superuserRolePage.body, /id="new_permission_wildcard"/);
+        const superuserCreate = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([
+            ['name', 'Superuser Delegation'], ['category', '最高權限'], ['tier_level', '100'], ['description', 'fixture'],
+            ['permissions', 'payout.view_sensitive'], ['permissions', 'discord_commands.deploy_production']
+        ]).toString());
+        assert.equal(superuserCreate.status, 302);
+        const superuserProtectedRoleEdit = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'system_settings.manage']]).toString());
+        assert.equal(superuserProtectedRoleEdit.status, 302);
+        const superuserRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, metadata FROM audit_logs WHERE action='ROLE_UPDATED' AND target_id='protected_deployer'", (error, row) => error ? reject(error) : resolve(row)));
+        assert.equal(superuserRoleAudit.action, 'ROLE_UPDATED');
+        assert.deepEqual(JSON.parse(superuserRoleAudit.metadata).permissionDiff, {
+            added: ['system_settings.manage', 'system_settings.view'],
+            removed: ['discord_commands.deploy_production', 'roles.manage']
+        });
+        const superuserUnknownGrant = await createRequest(port, 'POST', '/system/roles/add', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([
+            ['name', 'Unknown Superuser Grant'], ['category', '一般職位'], ['tier_level', '40'], ['description', 'fixture'],
+            ['permissions', 'unknown.permission']
+        ]).toString());
+        assert.equal(superuserUnknownGrant.status, 403);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM roles WHERE name='Unknown Superuser Grant'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
+
+        const protectedRoleBefore = await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions)));
+        const protectedRoleEdit = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'roles.manage'], ['permissions', 'staff.manage']]).toString());
+        assert.equal(protectedRoleEdit.status, 403);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions))), protectedRoleBefore);
+        const protectedRoleAliasEdit = await createRequest(port, 'POST', '/system/roles/update-perms/14', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([['perms[]', 'roles.manage'], ['perms[]', 'staff.manage']]).toString());
+        assert.equal(protectedRoleAliasEdit.status, 403);
+        const protectedRoleInfoEdit = await createRequest(port, 'POST', '/system/roles/update-info/14', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'name=Changed&category=一般職位&tier_level=10&description=changed');
+        assert.equal(protectedRoleInfoEdit.status, 403);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT name, permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions))), protectedRoleBefore);
+        const protectedRoleDelete = await createRequest(port, 'DELETE', '/system/roles/delete/protected_deployer', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            'X-CSRF-Token': securityCross.csrfToken
+        });
+        assert.equal(protectedRoleDelete.status, 404);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions))), protectedRoleBefore);
+
+        const assignmentManager = await createSession('assignment-manager');
+        const assignmentStaffPage = await createRequest(port, 'GET', '/management/staff', {
+            Host: `127.0.0.1:${port}`, Cookie: assignmentManager.cookie
+        });
+        assert.equal(assignmentStaffPage.status, 200, assignmentStaffPage.body);
+        assert.match(assignmentStaffPage.body, /option value="delegatable_target"/);
+        assert.doesNotMatch(assignmentStaffPage.body, /option value="settings_target"|option value="protected_deployer"/);
+        const staffRoleBefore = await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role)));
+        const deniedStaffAssignment = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
+            'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'role=settings_target&status=busy');
+        assert.equal(deniedStaffAssignment.status, 403, deniedStaffAssignment.headers.location || deniedStaffAssignment.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), staffRoleBefore);
+
+        const memberRoleBefore = await new Promise((resolve, reject) => db.get("SELECT role, vip_level FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row)));
+        const deniedMemberAssignment = await createRequest(port, 'POST', '/management/members/update-vip/member-a', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
+            'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'vip_level=0&role=settings_target');
+        assert.equal(deniedMemberAssignment.status, 403, deniedMemberAssignment.headers.location || deniedMemberAssignment.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT role, vip_level FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row))), memberRoleBefore);
+
+        const dataSync = require('../utils/dataSync');
+        const restoreUsersSync = replaceMethod(dataSync, 'syncUsersJsonFromDb', () => () => {});
+        const restoreTalentsSync = replaceMethod(dataSync, 'syncTalentsJsonFromDb', () => () => {});
+        let allowedStaffAssignment;
+        try {
+            allowedStaffAssignment = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+                Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
+                'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+            }, 'role=delegatable_target&status=busy');
+        } finally {
+            restoreUsersSync();
+            restoreTalentsSync();
+        }
+        assert.equal(allowedStaffAssignment.status, 302, allowedStaffAssignment.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'delegatable_target');
         const missingCsrfSettings = await createRequest(port, 'POST', '/system/settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -463,7 +677,26 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(crossVip.status, 403);
         assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT vip_level,role FROM users WHERE id = 'member-b'", (error, row) => error ? reject(error) : resolve(row))), beforeVipB);
 
-        const admin = await createSession('admin-a');
+        const ordinaryAdmin = await createSession('admin-a');
+        const deniedNamedAdminRoles = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: ordinaryAdmin.cookie
+        });
+        const deniedNamedAdminSettings = await createRequest(port, 'GET', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Cookie: ordinaryAdmin.cookie
+        });
+        const deniedNamedAdminOrders = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: ordinaryAdmin.cookie
+        });
+        assert.equal(deniedNamedAdminRoles.status, 403);
+        assert.equal(deniedNamedAdminSettings.status, 403);
+        assert.equal(deniedNamedAdminOrders.status, 403);
+
+        const admin = await createSession('604610298581876746');
+        const breakGlassRoles = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+        });
+        assert.equal(breakGlassRoles.status, 200, breakGlassRoles.body);
+        assert.match(breakGlassRoles.body, /id="permission_wildcard"/);
         const url = '/system/bot-settings/sync';
         const settings = await createRequest(port, 'GET', '/system/bot-settings', {
             Host: `127.0.0.1:${port}`, Cookie: admin.cookie

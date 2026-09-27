@@ -109,7 +109,7 @@
 
                 <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center">
                     <div>
-                        <% if ((typeof hasPerm === 'function' && hasPerm('manage_orders')) || (typeof currentUser !== 'undefined' && currentUser && (currentUser.id === "604610298581876746" || currentUser.role === 'admin'))) { %>
+                        <% if ((typeof hasPerm === 'function' && hasPerm('orders.manage')) || (typeof userPerms !== 'undefined' && userPerms.includes('orders.manage'))) { %>
                             <button type="button" onclick="handleManualDeleteOrder()" class="btn btn-sm btn-outline-danger rounded-pill px-3">
                                 <i class="fa-solid fa-trash-can me-1"></i>手動刪除訂單
                             </button>

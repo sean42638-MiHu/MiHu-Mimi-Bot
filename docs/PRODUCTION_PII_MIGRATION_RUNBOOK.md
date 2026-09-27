@@ -6,7 +6,8 @@ Status: **MANUAL DEPLOYMENT REQUIRED — NOT EXECUTED**. Production database and
 
 - A production secret provider has provisioned a 32-byte `PAYROLL_DATA_ENCRYPTION_KEY`; the application accepts base64 or 64-character hex. Do not put the value in a command, ticket, log, repository, or database.
 - A sanitized pre-production copy has passed startup, profile, payout, staff/payroll, XLSX, restart, and restore validation.
-- Production DB backup is complete and restore-tested; record backup time, DB/schema version, application commit, and migration version.
+- Hosting/runtime identity and persistent absolute `DATABASE_PATH` have been verified externally; set `PRODUCTION_IDENTITY_VERIFIED=YES` and `PRODUCTION_STORAGE_VERIFIED=YES` only for the approved runtime.
+- Production DB backup is complete and restore-tested with the explicit backup/restore contracts; record backup time, DB/schema version, application commit, and migration version.
 - Inventory and secure handling for prior plaintext `data/users.json`, DB backups, exports, and snapshots is approved.
 - All web instances, bot processes, workers, and maintenance scripts that can write profile/bank fields are stopped. This release does not provide an application maintenance-mode switch; enforce write/traffic restrictions at the deployment/load-balancer layer.
 
@@ -14,18 +15,18 @@ Status: **MANUAL DEPLOYMENT REQUIRED — NOT EXECUTED**. Production database and
 
 1. **Provision key:** inject the secret through the deployment secret provider as `PAYROLL_DATA_ENCRYPTION_KEY`. Codex/application must not generate or display a production key.
 2. **Verify fail-closed behavior in staging:** start without the key against synthetic plaintext data and confirm startup exits before HTTP/Discord listeners start. Restore the staged key through the secret provider, not shell history.
-3. **Backup:** take a consistent DB backup and secure a copy of the current JSON cache/backups under the organization's retention controls. Record metadata only; never paste PII into this runbook.
+3. **Backup:** set `BACKUP_CONFIRM=YES`, `BACKUP_STORAGE_VERIFIED=YES`, and a separate absolute `DATABASE_BACKUP_DIR`; run `npm run db:backup`. Retain the timestamped SQLite file and manifest. Secure a copy of the current JSON cache/backups under the organization's retention controls. Record metadata only; never paste PII into this runbook.
 4. **Restrict writes:** stop all old application versions and prevent profile/payroll mutations while migration is running. Confirm no payout operation is active.
 5. **Pre-scan:** run `node scripts/payrollEncryptionStatus.js` in read-only mode with the production DB path and secret provider environment. Save only the count report in the approved change record. Do not print/export row values.
-6. **Run migration:** deploy the reviewed version and start the application once in the restricted maintenance environment. `initializeDatabase()` applies payout/schema and commission migrations, then transactionally encrypts non-empty `users` and `payouts` fields, records the migration marker, rewrites the ignored users JSON cache with ciphertext, and resolves `db.startupReady`. Web and bot listeners wait for readiness. Any missing/wrong key, DDL/DML/cache error leaves the service unstarted.
+6. **Run migration:** do not start Web/Bot to trigger migration. Set `PRODUCTION_WRITES_DISABLED=YES`, `MIGRATION_CONFIRM=YES`, and `MIGRATION_BACKUP_MANIFEST` to the verified pre-migration manifest, then run `npm run db:migrate` once in the restricted maintenance environment. It explicitly applies payout/schema and commission migrations, transactionally encrypts non-empty `users` and `payouts` fields, records migration markers, and rewrites the ignored users JSON cache. Any validation/key/DDL/DML/cache error exits non-zero; keep runtimes stopped.
 7. **Post-scan:** run `node scripts/payrollEncryptionStatus.js --require-encrypted`. Require `plaintext_values=0`, `invalid_ciphertext_values=0`, and expected encrypted counts. The scan uses SQLite `OPEN_READONLY` and emits counts only.
 8. **Application checks:** verify profile decrypt for the owner, masked employee payout history, sensitive permission allow/deny, manager Studio scope, request-time XLSX, payout/reconciliation reads, and audit redaction using approved staging accounts. Do not create a production test payout.
-9. **Restart and release:** restart every web/bot instance with the same secret-provider key. Confirm readiness and health checks before removing infrastructure-level write restrictions.
+9. **Restart and release:** after explicit migration succeeds, restart Web/Bot; startup runs read-only schema readiness only. Run readiness and externally confirmed Production preflight. Readiness PASS alone is not deployment/RBAC verification. Remove write restrictions only after independent checks pass.
 
 ## Failure / Rollback
 
-- Before DB transaction commit: migration rolls back all field updates; startup fails closed. Preserve logs only if they contain no secrets/PII.
-- If DB commit succeeds but JSON cache rewrite fails: application startup still fails. Keep traffic restricted and retry startup with the same key; do not downgrade to plaintext-reading code.
+- Before DB transaction commit: migration rolls back all field updates and exits non-zero. Preserve logs only if they contain no secrets/PII.
+- If DB commit succeeds but JSON cache rewrite fails: migration exits non-zero and runtimes remain stopped. Keep traffic restricted and rerun the explicit migration command only with verified backup/writer gates and the same key; do not downgrade to plaintext-reading code.
 - If post-scan/decryption fails: keep traffic restricted, retain the original secured backup, diagnose key/config/ciphertext counts, and use the approved restore plan. Never repair individual rows by hand.
 - After ciphertext is written, an older application version cannot safely read it. Rollback requires a reviewed compatible code version and the same key, or a controlled backup restore under maintenance. Do not restore a plaintext backup and serve it without re-running the migration.
 
@@ -37,7 +38,7 @@ Status: **MANUAL DEPLOYMENT REQUIRED — NOT EXECUTED**. Production database and
 | Backup and restore verified | DBA | Backup metadata / restore test | REQUIRED |
 | Write restrictions active | Operations | Start/end timestamps | REQUIRED |
 | Pre-scan counts saved | Security | Count-only report | REQUIRED |
-| Startup migration succeeds | Application owner | Startup/readiness log with no secrets | REQUIRED |
+| Explicit migration succeeds | Application owner | Migration/readiness report with no secrets | REQUIRED |
 | Post-scan plaintext/invalid count = 0 | Security/DBA | Count-only report | REQUIRED |
 | Profile/payroll/export smoke tests pass | Product/security | Staging test record | REQUIRED |
 | Write restrictions removed | Operations | Release approval | REQUIRED |

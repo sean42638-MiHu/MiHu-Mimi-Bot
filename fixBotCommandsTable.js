@@ -1,5 +1,4 @@
 const db = require('./database');
-db.initializeDatabase();
 const fs = require('fs');
 const path = require('path');
 

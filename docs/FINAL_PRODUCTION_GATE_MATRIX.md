@@ -6,7 +6,7 @@ Snapshot: 2026-09-27. Production payout count is 0. No production payout, migrat
 |---|---|---|
 | Payout contract/state machine | CODE_VERIFIED | 24-test suite includes service, HTTP, schema, failure, active-period reapplication, and cross-process coverage. Production payout workflow remains unexercised because there are 0 rows and no bank integration. |
 | SQLite Development baseline | CODE_VERIFIED | sqlite3 6.0.1/tar 7.5.22, audits 0, 24/24 tests, and CRUD/transaction/concurrency/reopen baseline pass on Windows x64/Node 24.21.0. |
-| Schema/startup migration | CODE_VERIFIED | Fresh/existing/rerun/partial/failure and commission startup tests pass on OS-temp DB. Production migration was not run. |
+| Schema/explicit migration | CODE_VERIFIED | Fresh/existing/rerun/partial/failure and commission migration tests pass on OS-temp DB. Web/Bot startup is readiness-only; Production migration was not run. |
 | PII encryption/fail-closed | CODE_VERIFIED | AES-256-GCM, env-only key, startup gate, user/payout migration, encrypted cache rewrite, wrong/missing-key rollback verified on temp DB. |
 | Production encryption rollout | DEPLOYMENT_ACTION_REQUIRED | Stage secret-provider key, backup/restore, maintenance/write control, pre/post count scan, and run [PRODUCTION_PII_MIGRATION_RUNBOOK.md](PRODUCTION_PII_MIGRATION_RUNBOOK.md). Production bank values are currently plaintext. |
 | Key rotation/recovery | MANUAL_SECURITY_ACTION_REQUIRED | Current envelope has no key ID and code supports one key. Do not rotate until versioned keyring/migration exists; follow [PII_KEY_ROTATION_RUNBOOK.md](PII_KEY_ROTATION_RUNBOOK.md). |

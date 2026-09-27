@@ -165,15 +165,12 @@
                 <% 
                     const list = (typeof staffList !== 'undefined' && staffList) ? staffList : [];
                     const perms = (typeof userPerms !== 'undefined' && userPerms) ? userPerms : [];
-                    const isSuperId = (typeof currentUser !== 'undefined' && currentUser && (currentUser.id === '604610298581876746' || currentUser.role === 'admin'));
-                    
                     const checkPermission = (node) => {
-                        if (isSuperId) return true;
                         if (typeof hasPerm === 'function') return hasPerm(node);
                         return perms.includes(node);
                     };
 
-                    const canViewPayroll = checkPermission('staff_view_payroll');
+                    const canViewPayroll = checkPermission('staff.view_sensitive') || checkPermission('staff_view_payroll');
                     const canEditRoleComm = checkPermission('staff_edit_role_commission');
 
                     if (list.length > 0) {

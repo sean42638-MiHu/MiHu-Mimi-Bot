@@ -1,5 +1,4 @@
 const db = require('./database');
-db.initializeDatabase();
 
 const sql = "UPDATE talents SET commission_rate = NULL WHERE user_id = '604610298581876746' OR commission_rate = 0.7 OR commission_rate = '0.7'";
 

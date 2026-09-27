@@ -7,16 +7,18 @@ const { normalizeTalentShareRate } = require('../../utils/commissionHelper');
 const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
 const { decryptSensitiveFields } = require('../../utils/sensitiveDataCrypto');
+const { withTransactionGate } = require('../../utils/transactionGate');
+const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 
 // 2.1 渲染「員工列表」頁面 (對應 /management/staff)
-router.get('/', ensureAuth, checkPerm('manage_staff'), (req, res) => {
+router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
     const canViewSensitive = typeof res.locals.hasPerm === 'function'
-        ? res.locals.hasPerm('payout.view_sensitive')
-        : (res.locals.userPerms || []).includes('payout.view_sensitive');
+        ? res.locals.hasPerm('staff.view_sensitive')
+        : (res.locals.userPerms || []).includes('staff.view_sensitive');
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    const canViewAllStudios = req.user.id === '604610298581876746' || req.user.role === 'admin' || userPerms.includes('sys_commission');
+    const canViewAllStudios = userPerms.includes('*') || userPerms.includes('commission.manage');
     const actorStudioId = Number(req.user && req.user.studio_id);
     if (!canViewAllStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
@@ -39,7 +41,13 @@ router.get('/', ensureAuth, checkPerm('manage_staff'), (req, res) => {
            OR u.role != 'member') ${studioFilter}
     `;
 
-    db.all(safeStaffSql, queryParams, (err, staffList) => {
+    db.all('SELECT * FROM roles ORDER BY id ASC', [], (rolesError, roles) => {
+        if (rolesError) return next(rolesError);
+        const actor = { roleKey: req.user.role, permissions: userPerms };
+        const assignableRoles = userPerms.includes('*') || userPerms.includes('staff.manage')
+            ? (roles || []).filter(role => canAssignRole(actor, role))
+            : [];
+        db.all(safeStaffSql, queryParams, (err, staffList) => {
         if (err) {
             console.error('❌ 載入員工清單 SQL 錯誤:', err);
             const fallbackSql = `SELECT u.id, u.username, u.global_name, u.custom_nickname, u.avatar, u.role, u.studio_id,
@@ -60,6 +68,7 @@ router.get('/', ensureAuth, checkPerm('manage_staff'), (req, res) => {
                     canViewSensitive,
                     currentUser: req.user,
                     userPerms: req.user ? (req.user.permissions || []) : [],
+                    assignableRoles,
                     activePage: 'staff',
                     success: req.query.success === '1',
                     errorMsg: req.query.error || null
@@ -81,21 +90,23 @@ router.get('/', ensureAuth, checkPerm('manage_staff'), (req, res) => {
             canViewSensitive,
             currentUser: req.user,
             userPerms: req.user ? (req.user.permissions || []) : [],
+            assignableRoles,
             activePage: 'staff',
             success: req.query.success === '1',
             errorMsg: req.query.error || null
+        });
         });
     });
 });
 
 // 2.2 💼 變更員工職位與設定 (對應 /management/staff/update/:id)
-router.post('/update/:id', ensureAuth, checkPerm('manage_staff'), async (req, res) => {
+router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
     const targetStaffId = req.params.id;
     const { role, status, commission_rate, staff_channel_id } = req.body;
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    const isPlatformAdmin = req.user.id === '604610298581876746' || req.user.role === 'admin';
-    const canManageStaff = isPlatformAdmin || userPerms.includes('manage_staff');
-    const canEditCommission = isPlatformAdmin || userPerms.includes('staff_edit_role_commission');
+    const isPlatformSuperuser = userPerms.includes('*');
+    const canManageStaff = isPlatformSuperuser || userPerms.includes('staff.manage');
+    const canEditCommission = isPlatformSuperuser || userPerms.includes('staff_edit_role_commission');
 
     if (!canManageStaff) return res.status(403).send('無權管理員工');
 
@@ -103,20 +114,10 @@ router.post('/update/:id', ensureAuth, checkPerm('manage_staff'), async (req, re
     if (!targetUser) return res.redirect('/management/staff?error=' + encodeURIComponent('找不到員工'));
     const actorStudioId = Number(req.user && req.user.studio_id);
     const targetStudioId = Number(targetUser.studio_id);
-    if (!isPlatformAdmin && (!Number.isInteger(actorStudioId) || actorStudioId <= 0
+    if (!isPlatformSuperuser && (!Number.isInteger(actorStudioId) || actorStudioId <= 0
         || !Number.isInteger(targetStudioId) || targetStudioId !== actorStudioId)) {
         return res.status(403).send('無權管理其他工作室員工');
     }
-
-    const newRole = role || 'staff';
-    const normalizedRate = canEditCommission ? normalizeTalentShareRate(commission_rate) : null;
-    const parsedRate = canEditCommission && normalizedRate > 0 ? normalizedRate : null;
-    const updateUserSql = canEditCommission
-        ? 'UPDATE users SET role = ?, status = ?, commission_rate = ?, staff_channel_id = ? WHERE id = ?'
-        : 'UPDATE users SET role = ?, status = ?, staff_channel_id = ? WHERE id = ?';
-    const updateUserParams = canEditCommission
-        ? [newRole, status || 'idle', parsedRate, staff_channel_id || null, targetStaffId]
-        : [newRole, status || 'idle', staff_channel_id || null, targetStaffId];
 
     try {
         const before = await dbGet(`
@@ -128,6 +129,23 @@ router.post('/update/:id', ensureAuth, checkPerm('manage_staff'), async (req, re
         await withTransactionGate(async () => {
             await dbRun('BEGIN IMMEDIATE');
             try {
+                const newRole = String(role || before.role || 'staff').trim();
+                if (newRole !== before.role) {
+                    await authorizeRoleAssignment(req.user.id, newRole, 'staff.manage', db);
+                } else {
+                    const currentActor = await loadActorContext(req.user.id, db);
+                    if (!currentActor.permissions.includes('*') && !currentActor.permissions.includes('staff.manage')) {
+                        throw Object.assign(new Error('無權管理員工'), { name: 'RoleDelegationError', statusCode: 403 });
+                    }
+                }
+                const normalizedRate = canEditCommission ? normalizeTalentShareRate(commission_rate) : null;
+                const parsedRate = canEditCommission && normalizedRate > 0 ? normalizedRate : null;
+                const updateUserSql = canEditCommission
+                    ? 'UPDATE users SET role = ?, status = ?, commission_rate = ?, staff_channel_id = ? WHERE id = ?'
+                    : 'UPDATE users SET role = ?, status = ?, staff_channel_id = ? WHERE id = ?';
+                const updateUserParams = canEditCommission
+                    ? [newRole, status || 'idle', parsedRate, staff_channel_id || null, targetStaffId]
+                    : [newRole, status || 'idle', staff_channel_id || null, targetStaffId];
                 await dbRun(updateUserSql, updateUserParams);
                 const updateTalentSql = canEditCommission
                     ? 'UPDATE talents SET status = ?, commission_rate = ?, staff_channel_id = ? WHERE user_id = ?'
@@ -158,6 +176,18 @@ router.post('/update/:id', ensureAuth, checkPerm('manage_staff'), async (req, re
                     },
                     metadata: { source: 'management-staff-route' }
                 });
+                if (newRole !== before.role) {
+                    await writeAuditLog({
+                        operatorId: req.user.id,
+                        studioId: targetUser.studio_id ?? null,
+                        action: 'STAFF_ROLE_CHANGED',
+                        targetType: 'user',
+                        targetId: targetStaffId,
+                        before: { role: before.role },
+                        after: { role: newRole },
+                        metadata: { source: 'management-staff-route' }
+                    });
+                }
                 await dbRun('COMMIT');
             } catch (error) {
                 await dbRun('ROLLBACK').catch(() => {});
@@ -172,17 +202,18 @@ router.post('/update/:id', ensureAuth, checkPerm('manage_staff'), async (req, re
         } catch (e) {}
         return res.redirect('/management/staff?success=1');
     } catch (error) {
+        if (isRoleDelegationError(error)) return res.status(403).send(error.message);
         return res.redirect('/management/staff?error=' + encodeURIComponent('員工更新失敗'));
     }
 });
 
 // 2.3 單一員工 Discord 刷洗 (對應 /management/staff/sync/:id)
-router.get('/sync/:id', ensureAuth, checkPerm('manage_staff'), async (req, res) => {
+router.get('/sync/:id', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
     res.redirect('/management/staff?success=1');
 });
 
 // 2.4 全體員工 Discord 刷洗 (對應 /management/staff/sync-all)
-router.get('/sync-all', ensureAuth, checkPerm('manage_staff'), async (req, res) => {
+router.get('/sync-all', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
     res.redirect('/management/staff?success=1');
 });
 
