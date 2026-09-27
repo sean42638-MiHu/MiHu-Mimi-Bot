@@ -1,0 +1,33 @@
+[33mee53105[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: rebase (abort): returning to refs/heads/main
+[33m8addb24[m HEAD@{1}: pull --rebase origin main (start): checkout 8addb243bceb5a0ea8827616af139b75eec69a34
+[33mee53105[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{2}: commit: refactor: optimize admin layout consistency, modularize VIP badges & withdrawal system
+[33m792ea89[m HEAD@{3}: commit: update submodule
+[33m5bef493[m HEAD@{4}: commit: 已統籌更新
+[33m5ef1d15[m HEAD@{5}: commit: 已統籌更新
+[33m92e30f6[m HEAD@{6}: commit: refactor(income): 模組化 income 頁面與 partials、修正傭金依原價計算不承擔折扣、修復 Modal JS 防呆
+[33m1966b29[m HEAD@{7}: commit: 更新說明（如：優化派單卡片排版）
+[33m99d186c[m HEAD@{8}: Branch: renamed refs/heads/main to refs/heads/main
+[33m99d186c[m HEAD@{10}: Branch: renamed refs/heads/main to refs/heads/main
+[33m99d186c[m HEAD@{12}: commit: feat: 重構五大 Modal 處理模組、優化 /指定陪玩 (/assign) 流程與專屬工單計時，修正 SQLite 欄位與錢包連動
+[33m24a1d5a[m HEAD@{13}: commit: fix 修復
+[33me0c738d[m HEAD@{14}: commit: fix: 重構獨立資金表 user_wallets，修復充值計入累積實充與 0 值覆蓋 VIP 動態連動邏輯
+[33m695bf0c[m HEAD@{15}: commit: fix: 重構獨立資金表 user_wallets，修復充值計入累積實充與 0 值覆蓋 VIP 動態連動邏輯
+[33m162d110[m HEAD@{16}: Branch: renamed refs/heads/main to refs/heads/main
+[33m162d110[m HEAD@{18}: commit: feat: 重構獨立資金表 user_wallets、批量刪除與 VIP 動態連動系統
+[33mcd40019[m HEAD@{19}: commit: feat: 完成機器人接單全流程、錢包扣退款連動、會員/員工管理及 VIP 卡片設計
+[33md367f28[m HEAD@{20}: commit: fix: 補齊 modalDispatch 的 unit 變數防呆與 SQLite 訂單寫入邏輯
+[33mca4789e[m HEAD@{21}: commit: 更正
+[33mb8981dc[m HEAD@{22}: commit: style: 更新 order_status_modal 視窗元件
+[33m29bc06f[m HEAD@{23}: commit: refactor: 修復 dispatchModal 寫入約束、簡化我的訂單介面與新增專屬詳情 modal
+[33m5f44c85[m HEAD@{24}: commit: update: 修復選人連動與 dispatchModalHandler 邏輯
+[33m9113a45[m HEAD@{25}: commit: refactor: 完成 A/B/C 三大模組化工程 (中間件解耦、Embed卡片模板化、SQLite Promise化)
+[33m469c68f[m HEAD@{26}: commit: refactor: 完成 Bot 指令模組化 (Command Handler) 與 Web 路由/工具函數拆分 (Express Modulization)
+[33mc2c632c[m HEAD@{27}: commit: feat: 彙整全域抽佣模組、動態權限同步、Bot斜線指令公告與UI調整
+[33mef2bb12[m HEAD@{28}: commit: fix: 解決 my_orders 與 staff 頁面雙重 Modal 導致背景遮罩卡住的問題
+[33m535f3c3[m HEAD@{29}: commit: refactor: 獨立未實裝功能彈窗 Partial 模組，並統一全站頁面引用位置
+[33m0cf622a[m HEAD@{30}: commit: feat: 新增 views/payroll.ejs 薪轉管理介面與外部 JSON 雙向同步
+[33m60f60c0[m HEAD@{31}: Branch: renamed refs/heads/main to refs/heads/main
+[33m60f60c0[m HEAD@{33}: Branch: renamed refs/heads/main to refs/heads/main
+[33m60f60c0[m HEAD@{35}: Branch: renamed refs/heads/main to refs/heads/main
+[33m60f60c0[m HEAD@{37}: Branch: renamed refs/heads/master to refs/heads/main
+[33m60f60c0[m HEAD@{39}: commit (initial): feat: 完成 EJS 側邊欄重構與薪轉管理模組
