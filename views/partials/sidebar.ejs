@@ -2,21 +2,17 @@
     const perms = (typeof userPerms !== 'undefined' && userPerms) ? userPerms : [];
     const currUser = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : {};
 
-    // 🚀 1. 寬鬆匹配所有管理員角色名稱 (包含 admin, manager, cfo, owner, administrator, cs 等)
-    const userRole = String(currUser.role || '').toLowerCase();
-    const isAdminUser = ['admin', 'cfo', 'manager', 'owner', 'administrator', 'cs'].includes(userRole);
+    const isAdminUser = perms.includes('*');
 
-    // 🚀 2. 萬能防護：只要是管理角色或 perms 陣列有值，直接全放行；若均無則預設放行基本選單
     const hasPerm = (node) => {
         if (isAdminUser) return true;
-        if (perms.length === 0) return true; // 避免未傳遞 perms 時側邊欄空白
         return perms.includes(node);
     };
 
     const hasPersonalSection = hasPerm('personal') || hasPerm('profile') || hasPerm('my_wallet') || hasPerm('my_income') || hasPerm('my_orders');
-    const hasManageSection = hasPerm('manage') || hasPerm('manage_members') || hasPerm('manage_staff') || hasPerm('manage_orders');
+    const hasManageSection = hasPerm('manage') || hasPerm('manage_members') || hasPerm('manage_staff') || hasPerm('manage_orders') || hasPerm('analytics.view');
     const canManageCommissionPage = hasPerm('sys_commission') || (typeof canManageStudioCommission !== 'undefined' && canManageStudioCommission);
-    const hasSystemSection = hasPerm('system') || canManageCommissionPage || hasPerm('sys_vip') || hasPerm('sys_roles') || hasPerm('sys_settings') || hasPerm('sys_logs');
+    const hasSystemSection = hasPerm('system') || canManageCommissionPage || hasPerm('sys_vip') || hasPerm('sys_roles') || hasPerm('sys_settings') || hasPerm('sys_logs') || hasPerm('audit_logs.view') || hasPerm('system_settings.view') || hasPerm('discord_control.view') || hasPerm('system_health.view');
 %>
 
 <link rel="stylesheet" href="/css/vip-badge.css">
@@ -289,7 +285,7 @@
         <% if (hasSystemSection) { %>
             <div class="menu-label">系統</div>
 
-            <% if (hasPerm('sys_settings')) { %>
+            <% if (hasPerm('sys_settings') || hasPerm('discord_control.view')) { %>
                 <a href="/system/bot-settings" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'bot_settings' ? 'active' : '' %>">
                     <i class="fa-solid fa-robot" style="color: #38bdf8;"></i>
                     <span class="fw-semibold">機器人設定</span>
@@ -317,19 +313,25 @@
                 </a>
             <% } %>
 
-            <% if (hasPerm('sys_settings')) { %>
+            <% if (hasPerm('system_settings.view') || hasPerm('discord_control.view')) { %>
                 <a href="/system/settings" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'system_settings' ? 'active' : '' %>">
                     <i class="fa-solid fa-sliders" style="color: #a78bfa;"></i>
                     <span class="fw-semibold">系統設定</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('sys_settings')) { %>
+            <% if (hasPerm('audit_logs.view')) { %>
                 <a href="/system/audit-logs" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'audit_logs' ? 'active' : '' %>">
                     <i class="fa-solid fa-clock-rotate-left"></i>
                     <span>操作紀錄</span>
                 </a>
             <% } %>
+                <% if (hasPerm('system_health.view')) { %>
+                    <a href="/system/health" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'system_health' ? 'active' : '' %>">
+                        <i class="fa-solid fa-heart-pulse"></i>
+                        <span>系統狀態</span>
+                    </a>
+                <% } %>
         <% } %>
     </div>
 </aside>

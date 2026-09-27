@@ -34,24 +34,24 @@
                                         <h3 class="admin-form-section-title">提款開放期間</h3>
                                         <p class="admin-form-section-desc">依平台時區 <%= settings.timeZone %> 判定每日 00:00 至 23:59:59。</p>
                                         <div class="system-settings-day-fields">
-                                            <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalStartDay">開始日</label><input class="admin-form-control" id="withdrawalStartDay" name="start_day" type="number" min="1" max="31" step="1" value="<%= settings.startDay %>" required aria-describedby="withdrawalStartDayError"><span id="withdrawalStartDayError" class="admin-field-error" hidden>開始日必須為 1–31 的整數。</span></div>
+                                            <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalStartDay">開始日</label><input class="admin-form-control" id="withdrawalStartDay" name="start_day" type="number" min="1" max="31" step="1" value="<%= settings.startDay %>" <%= canManageSettings ? '' : 'readonly' %> required aria-describedby="withdrawalStartDayError"><span id="withdrawalStartDayError" class="admin-field-error" hidden>開始日必須為 1–31 的整數。</span></div>
                                             <span class="system-settings-day-separator" aria-hidden="true">至</span>
-                                            <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalEndDay">結束日</label><input class="admin-form-control" id="withdrawalEndDay" name="end_day" type="number" min="1" max="31" step="1" value="<%= settings.endDay %>" required aria-describedby="withdrawalEndDayError"><span id="withdrawalEndDayError" class="admin-field-error" hidden>結束日必須大於或等於開始日。</span></div>
+                                            <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalEndDay">結束日</label><input class="admin-form-control" id="withdrawalEndDay" name="end_day" type="number" min="1" max="31" step="1" value="<%= settings.endDay %>" <%= canManageSettings ? '' : 'readonly' %> required aria-describedby="withdrawalEndDayError"><span id="withdrawalEndDayError" class="admin-field-error" hidden>結束日必須大於或等於開始日。</span></div>
                                         </div>
                                     </div>
                                     <div class="admin-form-section">
                                         <h3 class="admin-form-section-title">最低申請金額</h3>
                                         <p class="admin-form-section-desc">只接受大於等於 1 的正整數，金額以 NTD 計。</p>
-                                        <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalMinimumAmount">最低提款金額</label><div class="system-settings-money-input"><span aria-hidden="true">NT$</span><input class="admin-form-control" id="withdrawalMinimumAmount" name="minimum_amount" type="number" min="1" max="100000000" step="1" value="<%= settings.minimumAmount %>" required aria-describedby="withdrawalMinimumAmountError"></div><span id="withdrawalMinimumAmountError" class="admin-field-error" hidden>最低提款金額必須為正整數。</span></div>
+                                        <div class="admin-form-group"><label class="admin-form-label admin-form-label-required" for="withdrawalMinimumAmount">最低提款金額</label><div class="system-settings-money-input"><span aria-hidden="true">NT$</span><input class="admin-form-control" id="withdrawalMinimumAmount" name="minimum_amount" type="number" min="1" max="100000000" step="1" value="<%= settings.minimumAmount %>" <%= canManageSettings ? '' : 'readonly' %> required aria-describedby="withdrawalMinimumAmountError"></div><span id="withdrawalMinimumAmountError" class="admin-field-error" hidden>最低提款金額必須為正整數。</span></div>
                                     </div>
-                                    <div class="admin-form-actions"><button type="submit" class="admin-btn admin-btn-primary">儲存設定</button></div>
+                                    <% if (canManageSettings) { %><div class="admin-form-actions"><button type="submit" class="admin-btn admin-btn-primary">儲存設定</button></div><% } else { %><div class="admin-form-actions"><span class="admin-badge admin-badge-muted">唯讀設定</span></div><% } %>
                                 </form>
                                 <section class="system-settings-preview" aria-live="polite" aria-labelledby="withdrawalPreviewTitle"><h3 id="withdrawalPreviewTitle">目前規則</h3><p>目前提款開放期間：每月 <strong data-preview-start><%= settings.startDay %></strong> 日 00:00 至 <strong data-preview-end><%= settings.endDay %></strong> 日 23:59:59</p><p>最低提款金額：<strong>NT$<span data-preview-minimum><%= settings.minimumAmount.toLocaleString() %></span></strong></p></section>
                             </div>
                         </div>
                     </section>
                 <% } %>
-                <% if (discordStatus) { %>
+                <% if (discordStatus && discordStatus.canView) { %>
                     <section class="system-settings-panel admin-panel discord-control-panel" aria-labelledby="discordControlTitle">
                         <div class="admin-panel-header">
                             <h2 id="discordControlTitle" class="admin-section-title">Discord Bot 與部署</h2>
@@ -75,13 +75,13 @@
                                 <h3 class="admin-form-section-title">Slash Command 部署</h3>
                                 <p class="admin-form-section-desc">目前註冊 <%= discordStatus.commandCount %> 個指令。部署只會在明確提交後執行。</p>
                                 <div class="admin-form-actions">
-                                    <% if (discordStatus.environment === 'DEVELOPMENT' && discordStatus.developmentGuildConfigured) { %>
+                                    <% if (discordStatus.environment === 'DEVELOPMENT' && discordStatus.developmentGuildConfigured && discordStatus.canDeployDev) { %>
                                         <form method="POST" action="/system/settings/discord/deploy" data-admin-submit-loading data-submit-loading-text="部署中...">
                                             <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="target" value="development">
                                             <button type="submit" class="admin-btn admin-btn-primary">部署至開發測試群</button>
                                         </form>
                                     <% } else { %><span class="admin-badge admin-badge-muted">Development Deployment 不適用</span><% } %>
-                                    <% if (discordStatus.productionGateOpen) { %>
+                                    <% if (discordStatus.productionGateOpen && discordStatus.canDeployProduction) { %>
                                         <form method="POST" action="/system/settings/discord/deploy" data-admin-confirm data-confirm-title="確認部署正式 Discord 指令" data-confirm-message="這會更新正式 Discord Guild 的 Slash Commands。" data-confirm-confirm-text="確認正式部署" data-confirm-variant="danger" data-admin-submit-loading data-submit-loading-text="部署中...">
                                             <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="target" value="production">
                                             <button type="submit" class="admin-btn admin-btn-danger">部署正式指令</button>

@@ -8,6 +8,7 @@ const { getRolesDataFromDb } = require('./utils/dataSync');
 const { getRoleInfo } = require('./utils/roleHelper');
 const passport = require('./config/passport');
 const { sameOriginGuard } = require('./middleware/csrf');
+const { resolvePermissions, hasResolvedPermission } = require('./utils/permissionResolver');
 
 const authRouter = require('./routes/auth');
 const authEmailRouter = require('./routes/api/authEmail');
@@ -48,7 +49,7 @@ app.use((req, res, next) => {
             getRolesDataFromDb().then(rolesData => {
                 const role = rolesData.find(item => item.role_key === currentUser.role);
                 const isSuperAdmin = currentUser.id === '604610298581876746' || currentUser.role === 'admin';
-                const permissions = isSuperAdmin
+                const basePermissions = isSuperAdmin
                     ? [
                         'home', 'home_banner', 'home_wallet_card', 'home_info',
                         'personal', 'profile', 'profile_discord', 'profile_nickname', 'my_wallet', 'my_income', 'my_orders',
@@ -60,11 +61,12 @@ app.use((req, res, next) => {
                         ? role.permissions
                         : ['home', 'home_wallet_card', 'home_info', 'personal', 'profile', 'my_wallet', 'my_orders']);
 
+                const permissions = resolvePermissions(basePermissions, isSuperAdmin);
                 db.get('SELECT id FROM studios WHERE id = ? AND owner_user_id = ?', [Number(currentUser.studio_id), currentUser.id], (studioError, ownedStudio) => {
                     res.locals.userPerms = permissions;
                     res.locals.currentUser = currentUser;
                     res.locals.user = currentUser;
-                    res.locals.hasPerm = node => isSuperAdmin || permissions.includes(node);
+                    res.locals.hasPerm = node => hasResolvedPermission(permissions, node);
                     res.locals.canManageStudioCommission = isSuperAdmin || permissions.includes('sys_commission') || Boolean(ownedStudio);
                     next();
                 });

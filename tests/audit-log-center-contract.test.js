@@ -11,7 +11,7 @@ test('Audit Center uses the existing audit source and read-only route contract',
     const route = read('routes/system.js');
     const service = read('services/auditLogService.js');
     const view = read('views/audit_logs.ejs');
-    assert.match(route, /router\.get\('\/system\/audit-logs', ensureAuth, checkPerm\('sys_settings'\)/);
+    assert.match(route, /router\.get\('\/system\/audit-logs', ensureAuth, checkPerm\('audit_logs\.view'\)/);
     assert.match(service, /FROM audit_logs/);
     assert.match(service, /a\.studio_id = \?/);
     assert.match(service, /ORDER BY a\.created_at DESC, a\.id DESC/);

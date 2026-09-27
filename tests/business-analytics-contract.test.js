@@ -11,7 +11,7 @@ test('Business Analytics is read-only, authenticated, permissioned and studio sc
     const route = read('routes/management/analytics.js');
     const service = read('services/businessAnalyticsService.js');
     const view = read('views/business_analytics.ejs');
-    assert.match(route, /router\.get\('\/', ensureAuth, checkPerm\('manage_orders'\)/);
+    assert.match(route, /router\.get\('\/', ensureAuth, checkPerm\('analytics\.view'\)/);
     assert.match(route, /studioId: req\.user\.studio_id/);
     assert.match(service, /studio_id = \?/);
     assert.doesNotMatch(service, /INSERT|UPDATE|DELETE|wallet_transactions.*audit_logs/);

@@ -6,7 +6,7 @@ const {
     saveVipJsonFromDb, getRolesDataFromDb,
     syncCommandsJsonFromDb
 } = require('../utils/dataSync');
-const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
+const { requireAuth: ensureAuth, requirePerm: checkPerm, requireAnyPerm } = require('../middleware/auth');
 const { withTransactionGate } = require('../utils/transactionGate');
 const { normalizeTalentShareRate } = require('../utils/commissionHelper');
 const { writeAuditLog } = require('../utils/auditService');
@@ -15,6 +15,8 @@ const { resolveVipTheme, resolveVipVisual } = require('../utils/vipResolver');
 const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExecutionRole } = require('../config/discordCommandPolicy');
 const { getGuildConfigurationStatus } = require('../utils/developmentRuntime');
 const { deployDiscordCommands } = require('../utils/discordDeploymentService');
+const { PERMISSION_METADATA, sanitizePermissionKeys } = require('../utils/permissionResolver');
+const { getSystemHealth } = require('../services/systemHealthService');
 const { listAuditLogs } = require('../services/auditLogService');
 
 const commissionCategories = ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單'];
@@ -158,12 +160,16 @@ async function renderSystemSettings(req, res, feedback = {}) {
     try {
         const settings = await readWithdrawalSettings();
         const discordStatus = getDiscordControlStatus();
+        discordStatus.canView = res.locals.hasPerm('discord_control.view');
+        discordStatus.canDeployDev = res.locals.hasPerm('discord_commands.deploy_dev');
+        discordStatus.canDeployProduction = res.locals.hasPerm('discord_commands.deploy_production');
         discordStatus.lastDeployment = await getLatestDiscordDeployment();
         return res.render('system_settings', {
             activePage: 'system_settings',
             settings,
             discordStatus,
             flashData: buildSystemSettingsFlash(feedback),
+            canManageSettings: res.locals.hasPerm('system_settings.manage'),
             ...feedback
         });
     } catch (error) {
@@ -172,6 +178,7 @@ async function renderSystemSettings(req, res, feedback = {}) {
             activePage: 'system_settings',
             settings: null,
             discordStatus: getDiscordControlStatus(),
+            canManageSettings: res.locals.hasPerm('system_settings.manage'),
             error: '系統設定目前無法載入，請稍後再試。',
             flashData: buildSystemSettingsFlash({ ...feedback, error: '系統設定目前無法載入，請稍後再試。' }),
             ...feedback
@@ -230,13 +237,27 @@ function buildSystemSettingsFlash(feedback = {}) {
     return feedback.error ? { error: feedback.error } : {};
 }
 
-router.get('/system/settings', ensureAuth, checkPerm('sys_settings'), (req, res) => renderSystemSettings(req, res, {
+router.get('/system/settings', ensureAuth, requireAnyPerm('system_settings.view', 'discord_control.view'), (req, res) => renderSystemSettings(req, res, {
     saved: req.query.saved === '1',
     error: req.query.error || null,
     discordDeploy: req.query.discordDeploy || null
 }));
 
-router.get('/system/audit-logs', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+router.get('/system/health', ensureAuth, checkPerm('system_health.view'), async (req, res) => {
+    try {
+        return res.render('system_health', { activePage: 'system_health', health: await getSystemHealth(), error: null });
+    } catch (error) {
+        console.error('載入系統狀態失敗:', error.message);
+        return res.status(503).render('system_health', { activePage: 'system_health', health: null, error: '系統狀態目前無法載入，請稍後再試。' });
+    }
+});
+
+router.get('/system/health/status', ensureAuth, checkPerm('system_health.view'), async (req, res) => {
+    try { return res.json(await getSystemHealth()); }
+    catch (error) { console.error('讀取系統狀態失敗:', error.message); return res.status(503).json({ overall: 'DEGRADED', error: '狀態更新失敗' }); }
+});
+
+router.get('/system/audit-logs', ensureAuth, checkPerm('audit_logs.view'), async (req, res) => {
     try {
         const result = await listAuditLogs({
             studioId: req.user.studio_id,
@@ -258,7 +279,7 @@ router.get('/system/audit-logs', ensureAuth, checkPerm('sys_settings'), async (r
     }
 });
 
-router.post('/system/settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+router.post('/system/settings', ensureAuth, checkPerm('system_settings.manage'), async (req, res) => {
     try {
         await updateWithdrawalSettings(req);
         return res.redirect('/system/settings?saved=1');
@@ -268,9 +289,11 @@ router.post('/system/settings', ensureAuth, checkPerm('sys_settings'), async (re
     }
 });
 
-router.post('/system/settings/discord/deploy', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
+router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('discord_commands.deploy_dev', 'discord_commands.deploy_production'), async (req, res) => {
     const target = String(req.body.target || '').trim();
     const isDevelopment = String(process.env.APP_ENV || '').trim().toLowerCase() === 'development';
+    const requiredPermission = target === 'production' ? 'discord_commands.deploy_production' : 'discord_commands.deploy_dev';
+    if (!res.locals.hasPerm(requiredPermission)) return res.redirect('/system/settings?discordDeploy=error');
     if (!['development', 'production'].includes(target)
         || (target === 'development' && (!isDevelopment || !String(process.env.GUILD_DEV_ID || '').trim()))
         || (target === 'production' && (!getDiscordControlStatus().productionGateOpen || isDevelopment))) {
@@ -502,14 +525,14 @@ router.post('/system/commission/services', ensureAuth, checkPerm('sys_commission
 // 身分權限管理
 router.get('/system/roles', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
     const rolesData = await getRolesDataFromDb();
-    res.render('roles', { user: req.user, activePage: 'roles', roles: rolesData, rolesData, saved: req.query.saved === '1' });
+    res.render('roles', { user: req.user, activePage: 'roles', roles: rolesData, rolesData, saved: req.query.saved === '1', permissionMetadata: PERMISSION_METADATA });
 });
 
 router.post('/system/roles/update-permissions', ensureAuth, checkPerm('sys_roles'), async (req, res) => {
     try {
         const { role, permissions } = req.body;
         if (!role) return res.status(400).send('<script>alert("目標身分組不可為空！"); history.back();</script>');
-        const permsArray = Array.isArray(permissions) ? permissions : (permissions ? [permissions] : []);
+        const permsArray = sanitizePermissionKeys(Array.isArray(permissions) ? permissions : (permissions ? [permissions] : []));
         const before = await new Promise((resolve, reject) => db.get(
             'SELECT role_key, permissions FROM roles WHERE role_key = ?', [role],
             (error, row) => error ? reject(error) : resolve(row || null)
@@ -567,6 +590,7 @@ router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('sys_roles')
     const roleId = Number(req.params.id);
     let permissions = req.body['perms[]'] || req.body.perms || [];
     if (!Array.isArray(permissions)) permissions = [permissions];
+    permissions = sanitizePermissionKeys(permissions);
 
     const before = await new Promise((resolve, reject) => db.get(
         'SELECT role_key, permissions FROM roles WHERE id = ?', [roleId],
@@ -596,6 +620,7 @@ router.post('/system/roles/add', ensureAuth, checkPerm('sys_roles'), async (req,
     const { name, category, tier_level, description } = req.body;
     let permissions = req.body['perms[]'] || req.body.perms || [];
     if (!Array.isArray(permissions)) permissions = [permissions];
+    permissions = sanitizePermissionKeys(permissions);
 
     const keyMap = { '售後管理': 'aftersales', '財務長': 'cfo', '客服主管': 'manager', '店長': 'admin', '總召': 'leader', '客服': 'cs', '陪陪': 'talent', '會員': 'member' };
     let role_key = keyMap[name.trim()] || ('role_' + Math.random().toString(36).substring(2, 8));

@@ -491,6 +491,14 @@
                     </div>
                 </div>
 
+                <div class="admin-form-section mt-3">
+                    <h6 class="admin-form-section-title">Granular Permissions</h6>
+                    <div class="admin-permission-grid">
+                        <% Object.values(permissionMetadata || {}).forEach(permission => { %>
+                            <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="<%= permission.key %>" id="permission_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>"><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : permission.mode === 'manage' ? 'admin-badge-purple' : 'admin-badge-info' %>"><%= permission.risk === 'high' ? '高權限' : permission.mode === 'manage' ? '管理' : '唯讀' %></span><span class="admin-permission-desc"><%= permission.description %></span></label>
+                        <% }) %>
+                    </div>
+                </div>
                 <div class="modal-footer admin-modal-footer border-0 pt-0 pb-4 px-4">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-sm btn-warning rounded-pill px-4 fw-bold text-dark">儲存權限設定</button>
