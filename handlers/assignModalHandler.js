@@ -83,6 +83,7 @@ async function handleAssignModal(interaction) {
         const extra = interaction.fields.getTextInputValue('dispatch_extra') || '無';
         const note = interaction.fields.getTextInputValue('dispatch_note') || '無';
         const category = sessionData.cat || '陪玩單';
+        const csUser = interaction.user;
         const studioId = await getStudioIdForUser(csUser.id);
 
         const unit = sessionData.unit || '小時';
@@ -92,7 +93,6 @@ async function handleAssignModal(interaction) {
         const randomNum = Math.floor(1000 + Math.random() * 9000);
         const orderNo = `MH-${dateStr}-${randomNum}`;
 
-        const csUser = interaction.user;
         const csName = interaction.member?.nickname || csUser.globalName || csUser.username;
 
         await createOrder({

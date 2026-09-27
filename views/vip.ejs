@@ -256,20 +256,20 @@
         <!-- 📊 1. 獨立模組：VIP 門檻與特權對照表格 -->
         <%- include('partials/vip_table', { vipTiers: vipTiers }) %>
 
-        <!-- 💳 2. 獨立模組：VIP 1~7 尊榮金屬卡片樣式展示區塊 (單張切換) -->
-        <div class="glass-panel-card p-4 mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+        <!-- 💳 2. 獨立模組：VIP 尊榮卡片樣式展示區塊 (單張切換) -->
+        <div class="glass-panel-card p-4 mb-4 vip-showcase-shell">
+            <div class="d-flex justify-content-between align-items-center mb-4 vip-showcase-header">
                 <div>
                     <div class="h5 fw-bold text-white mb-1 d-flex align-items-center gap-2">
                         <i class="fa-solid fa-id-card text-warning"></i>
-                        <span>VIP 尊榮身份卡片樣式展示 (VIP 1 ~ VIP 7)</span>
+                        <span>VIP 尊榮身份卡片樣式展示</span>
                     </div>
                     <p class="text-secondary small mb-0">當會員達到對應 VIP 等級時，錢包與個人主頁將自動替換為該等級的限定金屬質感信用卡。</p>
                 </div>
             </div>
 
             <!-- 引用獨立模組：單張卡片展示與切換 -->
-            <%- include('partials/vip_cards_showcase', { cardUser: typeof user !== 'undefined' ? user : undefined, vipTiers: vipTiers }) %>
+            <%- include('partials/vip_cards_showcase', { vipTiers: vipTiers }) %>
         </div>
     </div>
 </div>

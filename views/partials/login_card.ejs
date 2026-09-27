@@ -1,0 +1,16 @@
+<section class="login-card" aria-labelledby="loginCardTitle">
+    <div class="login-card-heading">
+        <h2 class="login-card-title" id="loginCardTitle">歡迎回來</h2>
+        <p class="login-card-subtitle">使用 Discord 帳號安全登入米胡電競控制台</p>
+    </div>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+        <div class="login-error" role="alert"><%= error %></div>
+    <% } %>
+
+    <a href="/auth/discord" class="login-discord-btn">
+        <i class="fa-brands fa-discord" aria-hidden="true"></i>
+        <span>使用 Discord 帳號登入</span>
+    </a>
+    <p class="login-card-footnote">登入即表示你將使用已授權的 Discord 身分進入管理平台。</p>
+</section>

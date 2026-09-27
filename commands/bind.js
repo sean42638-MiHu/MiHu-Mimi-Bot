@@ -2,9 +2,10 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../database');
 const fs = require('fs');
 const path = require('path');
+const { getRuntimeDataDirectory } = require('../utils/runtimePaths');
 
 function syncTalentsJsonFromDb() {
-    const talentsFilePath = path.join(__dirname, '..', 'data', 'talents.json');
+    const talentsFilePath = path.join(getRuntimeDataDirectory(), 'talents.json');
     db.all('SELECT * FROM talents', (err, rows) => {
         if (!err && rows) {
             try { fs.writeFileSync(talentsFilePath, JSON.stringify(rows, null, 2), 'utf8'); } catch (e) {}

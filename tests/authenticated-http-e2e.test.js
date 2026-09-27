@@ -41,7 +41,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         DISCORD_ENABLED: process.env.DISCORD_ENABLED,
         SMTP_ENABLED: process.env.SMTP_ENABLED,
         DISCORD_COMMAND_REGISTRATION_ENABLED: process.env.DISCORD_COMMAND_REGISTRATION_ENABLED,
-        DISCORD_COMMAND_CLEAR_ENABLED: process.env.DISCORD_COMMAND_CLEAR_ENABLED
+        DISCORD_COMMAND_CLEAR_ENABLED: process.env.DISCORD_COMMAND_CLEAR_ENABLED,
+        GUILD_DEV_ID: process.env.GUILD_DEV_ID
     };
     Object.assign(process.env, {
         NODE_ENV: 'test',
@@ -51,7 +52,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         DISCORD_ENABLED: 'false',
         SMTP_ENABLED: 'false',
         DISCORD_COMMAND_REGISTRATION_ENABLED: 'false',
-        DISCORD_COMMAND_CLEAR_ENABLED: 'false'
+        DISCORD_COMMAND_CLEAR_ENABLED: 'false',
+        GUILD_DEV_ID: 'dev-guild-fixture'
     });
 
     const sqlite3 = require('sqlite3').verbose();
@@ -349,6 +351,15 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
 
         const admin = await createSession('admin-a');
         const url = '/system/bot-settings/sync';
+        const settings = await createRequest(port, 'GET', '/system/bot-settings', {
+            Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+        });
+        const deniedLegacyGet = await createRequest(port, 'GET', url, {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        const legacyGet = await createRequest(port, 'GET', url, {
+            Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+        });
         const missing = await createRequest(port, 'POST', url, {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: admin.cookie, 'Content-Length': '0'
         });
@@ -367,7 +378,21 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(missing.status, 403);
         assert.equal(invalid.status, 403);
         assert.equal(otherSession.status, 403);
-        assert.equal(valid.status, 410, `valid token must reach the protected route without making Discord calls: ${valid.body}`);
+        assert.equal(settings.status, 200);
+        assert.match(settings.body, /discordCommandDeployModal/);
+        assert.match(settings.body, /DEPLOYMENT ONLY/);
+        assert.match(settings.body, /npm run deploy:commands:dev/);
+        assert.match(settings.body, /npm run deploy-commands/);
+        assert.match(settings.body, /GUILD_DEV_ID 已設定/);
+        assert.match(settings.body, /獨立 Runtime 管理；網站不啟動 Bot/);
+        assert.match(settings.body, /data-copy-discord-command/);
+        assert.doesNotMatch(settings.body, /立即部署|同步到 Discord|執行註冊/);
+        assert.doesNotMatch(settings.body, /action="\/system\/bot-settings\/sync"/);
+        assert.equal(deniedLegacyGet.status, 403);
+        assert.equal(legacyGet.status, 302);
+        assert.equal(legacyGet.headers.location, '/system/bot-settings?commandDeployInfo=1');
+        assert.equal(valid.status, 303);
+        assert.equal(valid.headers.location, '/system/bot-settings?commandDeployInfo=1');
         assert.deepEqual(effects, { login: 0, rest: 0, smtp: 0 });
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));

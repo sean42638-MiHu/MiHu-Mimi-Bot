@@ -11,6 +11,7 @@ const { withTransactionGate } = require('../utils/transactionGate');
 const { normalizeTalentShareRate } = require('../utils/commissionHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('../utils/vipColor');
+const { resolveVipTheme, resolveVipVisual } = require('../utils/vipResolver');
 const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExecutionRole } = require('../config/discordCommandPolicy');
 
 const commissionCategories = ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單'];
@@ -125,15 +126,23 @@ router.get('/system/bot-settings', ensureAuth, checkPerm('sys_settings'), (req, 
                 activePage: 'bot-settings',
                 syncResult: req.query.sync || null,
                 registration: client.commandRegistration || null,
-                guildLabels: GUILD_LABELS
+                guildLabels: GUILD_LABELS,
+                commandDeployInfo: req.query.commandDeployInfo === '1',
+                devDeploymentCommand: 'npm run deploy:commands:dev',
+                formalDeploymentCommand: 'npm run deploy-commands',
+                devGuildConfigured: Boolean(String(process.env.GUILD_DEV_ID || '').trim()),
+                botRuntimeStatus: '獨立 Runtime 管理；網站不啟動 Bot'
             });
         });
     });
 });
 
-router.post('/system/bot-settings/sync', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
-    res.status(410).send('指令註冊已移至明確部署命令，網站不會呼叫 Discord REST API。');
-});
+function redirectToCommandDeploymentInfo(req, res) {
+    res.redirect(req.method === 'POST' ? 303 : 302, '/system/bot-settings?commandDeployInfo=1');
+}
+
+router.get('/system/bot-settings/sync', ensureAuth, checkPerm('sys_settings'), redirectToCommandDeploymentInfo);
+router.post('/system/bot-settings/sync', ensureAuth, checkPerm('sys_settings'), redirectToCommandDeploymentInfo);
 
 router.get('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), async (req, res) => {
     try {
@@ -213,10 +222,12 @@ router.post('/system/payout-settings', ensureAuth, checkPerm('sys_settings'), as
 // VIP 設定
 router.get('/system/vip', ensureAuth, checkPerm('sys_vip'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
-        db.all('SELECT * FROM vip_tiers ORDER BY level ASC', (vErr, tiers) => {
+        db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (vErr, tiers) => {
             const normalizedTiers = (tiers || []).map(tier => ({
                 ...tier,
-                color: normalizeVipColor(tier.color, DEFAULT_VIP_COLOR)
+                color: normalizeVipColor(tier.color, DEFAULT_VIP_COLOR),
+                theme: resolveVipTheme(tier.level),
+                visual: resolveVipVisual(tier.level)
             }));
             res.render('vip', { user: currentUser || req.user, vipTiers: normalizedTiers, success: req.query.saved === '1', error: req.query.error || null });
         });

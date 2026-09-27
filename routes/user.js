@@ -4,8 +4,9 @@ const db = require('../database');
 const { syncUsersJsonFromDb, syncTalentsJsonFromDb } = require('../utils/dataSync');
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
 const { calculateCommissionByCategory, normalizeTalentShareRate } = require('../utils/commissionHelper');
-const { getVipColorByLevel, checkAndUpdateVipLevel } = require('../utils/vipHelper');
-const { DEFAULT_VIP_COLOR } = require('../utils/vipColor');
+const { checkAndUpdateVipLevel } = require('../utils/vipHelper');
+const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../utils/vipColor');
+const { resolveVipLevel, resolveVipTier, parseVipLevel, resolveVipTheme, resolveVipVisual } = require('../utils/vipResolver');
 const { dbGet, dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
@@ -13,6 +14,19 @@ const { getEmployeePayoutOverview } = require('../services/payoutService');
 const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
 
 const payrollProfileFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
+
+function createVipInfo(tiers, level) {
+    const numericLevel = parseVipLevel(level);
+    const tier = resolveVipTier(tiers, numericLevel);
+    const name = String(tier && tier.name || '').trim();
+    return {
+        level: numericLevel,
+        name: name && name.toLowerCase() !== 'null' ? name : `VIP ${numericLevel}`,
+        color: normalizeVipColor(tier && tier.color, DEFAULT_VIP_COLOR),
+        theme: resolveVipTheme(numericLevel),
+        visual: resolveVipVisual(numericLevel)
+    };
+}
 
 // =========================================================================
 // 1. 首頁 (Dashboard)
@@ -28,13 +42,23 @@ router.get('/dashboard', ensureAuth, checkPerm('home'), (req, res) => {
         LEFT JOIN user_wallets w ON w.user_id = u.id
         WHERE u.id = ?
     `, [req.user.id], (err, currentUser) => {
-        db.get('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 1', async (aErr, latestAnnouncement) => {
-            const vipColor = await getVipColorByLevel(currentUser && currentUser.vip_level);
-            res.render('dashboard', {
-                user: currentUser || req.user,
-                announcement: latestAnnouncement || null,
-                vipColor: vipColor || DEFAULT_VIP_COLOR,
-                error: req.query.error || null
+        const dashboardUser = currentUser || req.user;
+        db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (vipError, vipTiers) => {
+            const tiers = vipTiers || [];
+            const vipLevel = resolveVipLevel({
+                tiers,
+                totalSpent: dashboardUser.manual_spent,
+                totalDeposited: dashboardUser.manual_deposited,
+                currentVip: dashboardUser.vip_level
+            });
+            const vipInfo = createVipInfo(tiers, vipLevel);
+            db.get('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 1', (aErr, latestAnnouncement) => {
+                res.render('dashboard', {
+                    user: dashboardUser,
+                    vipInfo,
+                    announcement: latestAnnouncement || null,
+                    error: req.query.error || null
+                });
             });
         });
     });
@@ -160,17 +184,7 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
         db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (vErr, vipTiers) => {
             const tiers = vipTiers || [];
 
-            // 👑 計算動態 VIP (雙軌制比對)
-            let calculatedVip = 0;
-            for (const t of tiers) {
-                const reqSpent = Number(t.spent_threshold ?? t.min_spent ?? 0);
-                const reqDeposit = Number(t.deposit_threshold ?? t.min_deposit ?? 0);
-                const tierLevel = Number(t.level || 0);
-
-                if ((reqSpent > 0 && spent >= reqSpent) || (reqDeposit > 0 && deposited >= reqDeposit)) {
-                    calculatedVip = Math.max(calculatedVip, tierLevel);
-                }
-            }
+            const calculatedVip = resolveVipLevel({ tiers, totalSpent: spent, totalDeposited: deposited });
 
             // 更新 Users 表中的 VIP 等級
             if (calculatedVip !== Number(currentUser.vip_level || 0)) {
@@ -183,7 +197,8 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
             }
 
             const actualVip = calculatedVip;
-            const vipColor = (tiers.find(tier => Number(tier.level) === actualVip) || {}).color || DEFAULT_VIP_COLOR;
+            const vipInfo = createVipInfo(tiers, actualVip);
+            const vipColor = vipInfo.color;
 
             // 🌟 VIP 進度條計算
             const nextTier = tiers.find(t => Number(t.level) === actualVip + 1);
@@ -204,7 +219,7 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
                 vipGapText = `距離 ${nextTier.name || 'VIP ' + nextTier.level} 尚需消費 $${gapSpent.toLocaleString()} 或 預存 $${gapDeposit.toLocaleString()}`;
             } else if (tiers.length === 0) {
                 progressPercent = Math.min(100, (spent / 1000) * 100);
-                vipGapText = `距離 VIP 1 尚需消費 $${Math.max(0, 1000 - spent).toLocaleString()}`;
+                vipGapText = `距離下一級 VIP 尚需消費 $${Math.max(0, 1000 - spent).toLocaleString()}`;
             } else {
                 progressPercent = 100;
                 vipGapText = '🎉 您已達到最高尊榮 VIP 等級！';
@@ -234,13 +249,14 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
                             user: { 
                                 ...currentUser, 
                                 vip_level: actualVip,
-                                vip_color: vipColor,
+                                vip_color: vipInfo.color,
                                 total_balance: totalBalance,
                                 balance: currentBalance,
                                 bonus_balance: bonusBalance,
                                 manual_spent: spent,
                                 manual_deposited: deposited // 👈 絕對對齊：累積實充
                             },
+                            vipInfo,
                             stats: {
                                 total_spent: spent,
                                 total_deposited: deposited // 👈 絕對對齊：累積實充

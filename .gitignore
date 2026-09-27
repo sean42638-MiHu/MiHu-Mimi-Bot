@@ -17,3 +17,11 @@ yarn-debug.log*
 data/users.json
 data/orders.json
 data/topups.json
+data/development/*.sqlite*
+data/development/users.json
+data/development/orders.json
+data/development/topups.json
+data/development/talents.json
+data/development/vip.json
+data/development/commands.json
+data/development/payouts.json

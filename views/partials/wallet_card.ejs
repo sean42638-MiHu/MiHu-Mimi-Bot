@@ -1,138 +1,86 @@
-<!-- 💳 模組化：頂級奢華黑金尊榮 VIP 電競信用卡組件 (帶品牌 Logo) -->
-<% 
-    const vipLevel = user.vip_level || 'VIP 3';
-    const cardHolder = user.nickname || user.global_name || user.username || 'XiaoMi';
-    const memberId = user.id ? `•••• ${user.id.slice(-4)}` : '•••• 6746';
-    const totalBalance = Number(user.balance || 0);
-    const resolvedVipColor = user.vip_color || (typeof vipColor !== 'undefined' ? vipColor : null) || '#A855F7';
+<%
+    const fallbackVipColor = '#A855F7';
+    const cardMode = ['default', 'compact', 'preview'].includes(typeof mode === 'string' ? mode : '') ? mode : 'default';
+    const cardUser = cardMode === 'preview' ? {} : (typeof user !== 'undefined' && user ? user : {});
+    const sourceVipInfo = typeof vipInfo !== 'undefined' && vipInfo && typeof vipInfo === 'object' ? vipInfo : {};
+    const rawLevel = sourceVipInfo.level ?? cardUser.vip_level ?? 1;
+    const levelText = String(rawLevel ?? '').trim();
+    const levelMatch = levelText.match(/^(?:VIP\s*)?(\d+)$/i);
+    const parsedLevel = levelMatch ? Number(levelMatch[1]) : Number(levelText);
+    const numericVipLevel = Number.isSafeInteger(parsedLevel) && parsedLevel >= 1 ? parsedLevel : 1;
+    const rawName = String(sourceVipInfo.name ?? '').trim();
+    const vipName = rawName && rawName.toLowerCase() !== 'null' ? rawName : `VIP ${numericVipLevel}`;
+    const rawColor = String(sourceVipInfo.color ?? '').trim();
+    const vipColor = /^#[0-9A-Fa-f]{6}$/.test(rawColor) ? rawColor.toUpperCase() : fallbackVipColor;
+    const colorRgb = [1, 3, 5].map(index => parseInt(vipColor.slice(index, index + 2), 16)).join(', ');
+    const rawTheme = String(sourceVipInfo.theme ?? '').trim();
+    const fallbackTheme = numericVipLevel <= 3 ? 'cyber' : (numericVipLevel <= 5 ? 'titanium' : 'royal');
+    const vipTheme = /^[a-z][a-z0-9-]*$/i.test(rawTheme) ? rawTheme : fallbackTheme;
+    const visual = sourceVipInfo.visual && typeof sourceVipInfo.visual === 'object' ? sourceVipInfo.visual : {};
+    const getVisualValue = (name, fallback) => {
+        const value = Number(visual[name]);
+        return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback;
+    };
+    const vipGlowStrength = getVisualValue('glowStrength', 0.16);
+    const vipBorderAlpha = getVisualValue('borderAlpha', 0.58);
+    const vipHighlightAlpha = getVisualValue('highlightAlpha', 0.14);
+    const vipWatermarkOpacity = getVisualValue('watermarkOpacity', 0.08);
+    const rawCardId = typeof cardId === 'string' ? cardId : '';
+    const safeCardId = rawCardId.replace(/[^A-Za-z0-9_-]/g, '');
+    const cardHolder = String(cardUser.custom_nickname || cardUser.nickname || cardUser.global_name || cardUser.username || 'Member');
+    const rawUserId = cardUser.id === undefined || cardUser.id === null ? '' : String(cardUser.id);
+    const memberId = rawUserId ? `•••• ${rawUserId.slice(-4)}` : '';
+    const rawBalance = Number(cardUser.balance || 0);
+    const totalBalance = Number.isFinite(rawBalance) ? rawBalance : 0;
 %>
-
-<style>
-    .credit-card-container {
-        position: relative;
-        width: 100%;
-        max-width: 520px;
-        height: 290px;
-        border-radius: 24px;
-        padding: 28px 32px;
-        /* 極致深邃黑金紫霓虹漸層 */
-        background: linear-gradient(135deg, #130d24 0%, #1a1033 40%, #0c1829 80%, #06111f 100%);
-        border: 1px solid rgba(168, 85, 247, 0.35);
-        box-shadow: 
-            0 20px 45px rgba(0, 0, 0, 0.75), 
-            0 0 30px rgba(168, 85, 247, 0.15),
-            inset 0 1px 2px rgba(255, 255, 255, 0.3),
-            inset 0 -1px 2px rgba(0, 0, 0, 0.5);
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        overflow: hidden;
-        user-select: none;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-
-    .credit-card-container:hover {
-        transform: translateY(-6px) rotateX(2deg) rotateY(-2deg);
-        border-color: rgba(245, 158, 11, 0.6);
-        box-shadow: 
-            0 28px 60px rgba(0, 0, 0, 0.85), 
-            0 0 40px rgba(245, 158, 11, 0.25),
-            inset 0 1px 3px rgba(255, 255, 255, 0.4);
-    }
-
-    /* 光對角掃過閃爍質感 */
-    .credit-card-container::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.12), transparent 45%);
-        pointer-events: none;
-    }
-
-    /* 晶片樣式 (立體擬真黃金質感) */
-    .sim-chip-wrap {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
-    .sim-chip {
-        width: 50px;
-        height: 38px;
-        background: linear-gradient(135deg, #fef08a 0%, #f59e0b 40%, #b45309 80%, #78350f 100%);
-        border-radius: 8px;
-        position: relative;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.6);
-        overflow: hidden;
-    }
-    /* 晶片內部金屬線條 */
-    .sim-chip::after {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: 
-            linear-gradient(to right, transparent 48%, rgba(0,0,0,0.2) 48%, rgba(0,0,0,0.2) 52%, transparent 52%),
-            linear-gradient(to bottom, transparent 48%, rgba(0,0,0,0.2) 48%, rgba(0,0,0,0.2) 52%, transparent 52%);
-        border-radius: 6px;
-    }
-
-    /* VIP 勳章 Badge (高質感黑金漸層) */
-    /* 右下水印 Logo 圖片 (質感微光與立體浮雕) */
-    .card-watermark {
-        position: absolute;
-        right: -15px;
-        bottom: -20px;
-        opacity: 0.18;
-        pointer-events: none;
-        z-index: 1;
-        transition: opacity 0.3s ease;
-    }
-    .credit-card-container:hover .card-watermark {
-        opacity: 0.28;
-    }
-    .card-watermark img {
-        width: 190px;
-        height: auto;
-        filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.6)) brightness(1.3);
-    }
-</style>
-
-<div class="credit-card-container">
-    <!-- 上排：金屬晶片與尊榮 VIP 勳章 -->
-    <div class="d-flex justify-content-between align-items-center" style="position: relative; z-index: 2;">
-        <div class="sim-chip-wrap">
-            <div class="sim-chip"></div>
-            <i class="fa-solid fa-wifi text-light" style="transform: rotate(90deg); font-size: 1.2rem; opacity: 0.75; text-shadow: 0 0 8px rgba(255,255,255,0.4);"></i>
+<div class="vip-premium-card-frame vip-premium-card-frame--<%= cardMode %>">
+<div<% if (safeCardId) { %> id="<%= safeCardId %>"<% } %> class="vip-premium-card vip-premium-card--<%= cardMode %>" data-vip-card data-vip-level="<%= numericVipLevel %>" data-vip-theme="<%= vipTheme %>" style="--vip-color: <%= vipColor %>; --vip-rgb: <%= colorRgb %>; --vip-glow-strength: <%= vipGlowStrength %>; --vip-border-alpha: <%= vipBorderAlpha %>; --vip-highlight-alpha: <%= vipHighlightAlpha %>; --vip-watermark-opacity: <%= vipWatermarkOpacity %>;" aria-label="<%= vipName %> VIP card">
+    <span class="vip-card-particles" aria-hidden="true"></span>
+    <div class="vip-premium-card__top">
+        <div class="vip-card-chip-wrap" aria-hidden="true">
+            <span class="vip-card-chip"><span class="vip-card-chip__lines"></span></span>
+            <span class="vip-card-contactless"><i class="fa-solid fa-wifi"></i></span>
         </div>
-        <%- include('vip_badge', { level: vipLevel, color: resolvedVipColor, extraClass: 'vip-badge--card' }) %>
+        <%- include('vip_badge', { level: vipName, color: vipColor, extraClass: 'vip-badge--card' }) %>
     </div>
 
-    <!-- 中排：總餘額大字展示 -->
-    <div class="my-auto pt-3" style="position: relative; z-index: 2;">
-        <div class="text-uppercase fw-bold" style="font-size: 0.72rem; letter-spacing: 2px; color: #a1a1aa;">TOTAL BALANCE</div>
-        <div class="d-flex align-items-baseline gap-2 mt-1">
-            <span class="fs-1 fw-bold text-white font-monospace" style="line-height: 1; text-shadow: 0 0 15px rgba(255,255,255,0.3);"><%= totalBalance.toLocaleString() %></span>
-            <span class="fw-bold font-monospace" style="font-size: 0.9rem; letter-spacing: 1.5px; color: #f59e0b;">NTD</span>
+    <% if (cardMode === 'preview') { %>
+        <div class="vip-premium-card__main">
+            <div class="vip-card-eyebrow">VIP MATERIAL SHOWCASE</div>
+            <div class="vip-card-preview-name" data-vip-card-name><%= vipName %></div>
         </div>
-    </div>
+        <div class="vip-premium-card__footer">
+            <div class="vip-card-footer-block">
+                <div class="vip-card-footer-label">MATERIAL TIER</div>
+                <div class="vip-card-footer-value" data-vip-card-theme><%= vipTheme.toUpperCase() %></div>
+            </div>
+            <div class="vip-card-footer-brand">MIHU GAMING</div>
+        </div>
+    <% } else { %>
+        <div class="vip-premium-card__main">
+            <div class="vip-card-eyebrow">TOTAL BALANCE</div>
+            <div class="d-flex align-items-baseline gap-2">
+                <span class="vip-card-balance"><%= totalBalance.toLocaleString() %></span>
+                <span class="vip-card-currency">NTD</span>
+            </div>
+        </div>
+        <div class="vip-premium-card__footer">
+            <div class="vip-card-footer-block">
+                <div class="vip-card-footer-label">CARD HOLDER</div>
+                <div class="vip-card-footer-value"><%= cardHolder %></div>
+            </div>
+            <% if (memberId) { %>
+                <div class="vip-card-footer-block text-end">
+                    <div class="vip-card-footer-label">MEMBER ID</div>
+                    <div class="vip-card-footer-value font-monospace"><%= memberId %></div>
+                </div>
+            <% } %>
+        </div>
+    <% } %>
 
-    <!-- 下排：持卡人與 Member ID (銀箔字體) -->
-    <div class="d-flex justify-content-between align-items-end pt-2 border-top border-white border-opacity-10" style="position: relative; z-index: 2;">
-        <div>
-            <div class="text-uppercase fw-bold" style="font-size: 0.68rem; letter-spacing: 1.2px; color: #71717a;">CARD HOLDER</div>
-            <div class="fw-bold text-white mt-1" style="font-size: 1.05rem; letter-spacing: 0.8px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);"><%= cardHolder %></div>
-        </div>
-        <div class="text-end">
-            <div class="text-uppercase fw-bold" style="font-size: 0.68rem; letter-spacing: 1.2px; color: #71717a;">MEMBER ID</div>
-            <div class="fw-bold text-white font-monospace mt-1" style="font-size: 1rem; letter-spacing: 1.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);"><%= memberId %></div>
-        </div>
+    <div class="vip-card-watermark" aria-hidden="true">
+        <img src="/images/logo.png" alt="" onerror="this.onerror=null; this.src='/images/logo2.png';">
+        <span>MIHU GAMING</span>
     </div>
-
-    <!-- 🚀 右下水印：保有專案實體 Logo 圖片 -->
-    <div class="card-watermark">
-        <img src="/images/logo.png" alt="MiHu Logo" onerror="this.src='/images/logo2.png';">
-    </div>
+</div>
 </div>

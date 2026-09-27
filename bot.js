@@ -6,6 +6,9 @@ const {
     isCommandAllowedInGuild,
     requiresAdministrator
 } = require('./config/discordCommandPolicy');
+const { resolveDiscordGuildScope } = require('./utils/discordGuildResolver');
+const { runWithDiscordRuntimeContext } = require('./utils/discordRuntimeContext');
+const { writeAuditLog } = require('./utils/auditService');
 
 // 🚀 載入獨立模組 Handlers
 const handleButtonInteraction = require('./handlers/buttonHandler');
@@ -42,8 +45,50 @@ client.once(Events.ClientReady, () => {
     client.commandRegistration = { status: 'registration-is-explicit' };
 });
 
-// 🚀 全局事件極致分發器
-client.on('interactionCreate', async (interaction) => {
+async function handleInteraction(interaction) {
+    const scope = resolveDiscordGuildScope(interaction.guildId, process.env);
+    const runtimeContext = {
+        guildId: interaction.guildId ? String(interaction.guildId) : null,
+        runtimeScope: scope.runtimeScope,
+        actorId: interaction.user && interaction.user.id ? String(interaction.user.id) : null
+    };
+
+    if (!scope.allowed) {
+        if (process.env.APP_ENV === 'development' && interaction.guildId) {
+            await runWithDiscordRuntimeContext(runtimeContext, () => writeAuditLog({
+                operatorId: runtimeContext.actorId,
+                action: 'discord_development_guild_denied',
+                targetType: 'discord_interaction',
+                targetId: interaction.commandName || interaction.customId || String(interaction.type || 'unknown'),
+                metadata: {
+                    environment: 'development',
+                    guildId: runtimeContext.guildId,
+                    actorId: runtimeContext.actorId,
+                    reason: scope.reason
+                }
+            })).catch(error => console.error('Development Guild denial audit failed:', error.message));
+        } else {
+            console.warn(`Discord interaction denied by runtime Guild scope (${scope.reason || 'unavailable'}).`);
+        }
+
+        if (!interaction.replied && !interaction.deferred) {
+            const response = process.env.APP_ENV === 'development'
+                ? 'Development Bot 僅允許 GUILD_DEV_ID；未執行資料庫異動。'
+                : '此 Guild 未啟用目前 Bot Runtime；未執行資料庫異動。';
+            await interaction.reply({ content: response, flags: 64 }).catch(() => {});
+        }
+        return false;
+    }
+
+    return runWithDiscordRuntimeContext(runtimeContext, () => dispatchInteraction(interaction));
+}
+
+// Guild scope is resolved before any command, modal, or button handler runs.
+client.on('interactionCreate', interaction => {
+    handleInteraction(interaction).catch(error => console.error('Discord interaction dispatch failed:', error.message));
+});
+
+async function dispatchInteraction(interaction) {
     // 1. 處理按鈕點擊事件 (分發至 handlers/buttonHandler.js)
     if (interaction.isButton()) {
         try {
@@ -127,7 +172,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ content: '⚠️ 執行指令時發生錯誤！', flags: 64 }).catch(() => {});
         }
     }
-});
+}
 
 // 🛡️ 全域 Unhandled Error 防崩潰護盾
 process.on('unhandledRejection', (reason, promise) => {
@@ -142,4 +187,4 @@ client.on('error', (error) => {
     console.error('❌ [Discord Client 錯誤]:', error);
 });
 
-module.exports = { client };
+module.exports = { client, handleInteraction };

@@ -1,0 +1,20 @@
+<div class="modal fade" id="withdrawalRequestModal" tabindex="-1" aria-labelledby="withdrawalRequestTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="withdrawalRequestTitle">確認提款金額</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <label for="withdrawalAmount" class="form-label">申請金額</label>
+                <input id="withdrawalAmount" class="form-control" type="number" min="<%= payoutOverview.settings.minimumAmount %>" max="<%= payoutOverview.availableAmount %>" step="1" value="<%= Math.floor(payoutOverview.availableAmount) %>" required>
+                <div class="form-text text-light">可提領 $<%= Number(payoutOverview.availableAmount).toLocaleString() %>，送出前會再次要求確認。</div>
+                <div id="withdrawalRequestError" class="text-danger small mt-2" role="alert"></div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">返回</button>
+                <button type="button" class="btn btn-info" id="submitWithdrawalRequest"><i class="fa-solid fa-lock me-1"></i>確認並送出</button>
+            </div>
+        </div>
+    </div>
+</div>

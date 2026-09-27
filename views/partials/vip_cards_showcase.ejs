@@ -1,34 +1,58 @@
-<!-- 💳 模組化：VIP 尊榮信用卡單張展示與動態切換組件 (零警告終極版) -->
+<!-- VIP tier selector backed by the canonical wallet card preview component. -->
 <%
-    const currentShowcaseUser = typeof cardUser !== 'undefined' && cardUser ? cardUser : {
-        nickname: 'XiaoMi',
-        username: 'Xiaomi_Boss',
-        id: '123456789012346746',
-        balance: 88888
+    const fallbackVipColor = '#A855F7';
+    const normalizeShowcaseColor = value => {
+        const color = String(value || '').trim();
+        return /^#[0-9A-Fa-f]{6}$/.test(color) ? color.toUpperCase() : fallbackVipColor;
     };
-
-    const cardHolder = currentShowcaseUser.nickname || currentShowcaseUser.global_name || currentShowcaseUser.username || 'VIP Member';
-    const memberId = currentShowcaseUser.id ? `•••• ${currentShowcaseUser.id.slice(-4)}` : '•••• 6746';
-    const totalBalance = Number(currentShowcaseUser.balance || 0);
-    const vipColors = Object.fromEntries((vipTiers || []).map(tier => [Number(tier.level), tier.color || '#A855F7']));
-
-    const defaultGradient = 'linear-gradient(135deg, #130d24 0%, #1a1033 40%, #0c1829 80%, #06111f 100%)';
-    const defaultBorder = 'rgba(168, 85, 247, 0.4)';
-    const defaultBadgeBg = 'rgba(168, 85, 247, 0.2)';
-    const defaultBadgeColor = '#d8b4fe';
-    const defaultCrownColor = vipColors[3] || '#A855F7';
+    const configuredVipTiers = (typeof vipTiers !== 'undefined' && Array.isArray(vipTiers) ? vipTiers : [])
+        .map(tier => ({
+            level: Number(tier.level),
+            name: String(tier.name || '').trim(),
+            color: normalizeShowcaseColor(tier.color),
+            theme: /^[a-z][a-z0-9-]*$/i.test(String(tier.theme || '').trim())
+                ? String(tier.theme).trim()
+                : (Number(tier.level) <= 3 ? 'cyber' : (Number(tier.level) <= 5 ? 'titanium' : 'royal')),
+            visual: tier.visual && typeof tier.visual === 'object' ? tier.visual : {}
+        }))
+        .filter(tier => Number.isSafeInteger(tier.level) && tier.level > 0)
+        .sort((left, right) => left.level - right.level);
+    const showcaseVipTiers = configuredVipTiers;
+    showcaseVipTiers.forEach(tier => {
+        if (!tier.name) tier.name = `VIP ${tier.level}`;
+    });
+    const initialVip = showcaseVipTiers[0] || null;
+    const initialVipInfo = initialVip ? {
+        level: initialVip.level,
+        name: initialVip.name,
+        color: initialVip.color,
+        theme: initialVip.theme,
+        visual: initialVip.visual
+    } : null;
 %>
 
 <style>
-    /* 選項切換按鈕區 */
-    .vip-selector-wrap {
+    .vip-showcase-shell {
+        width: 100%;
+        min-width: 0;
+    }
+    .vip-showcase-header { text-align: left; }
+    .vip-showcase-content {
+        width: 100%;
+        max-width: 860px;
+        min-width: 0;
+        margin-inline: auto;
+    }
+    .vip-showcase-tabs {
         display: flex;
-        flex-wrap: wrap;
         justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
         gap: 8px;
         margin-bottom: 24px;
+        max-width: 100%;
     }
-    .vip-select-btn {
+    .vip-showcase-tabs .btn-vip-preview-tab {
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.1);
         color: #94a3b8;
@@ -37,184 +61,155 @@
         font-size: 0.85rem;
         font-weight: 700;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
     }
-    .vip-select-btn:hover {
+    .vip-showcase-tabs .btn-vip-preview-tab:hover {
         color: #fff;
-        background: rgba(168, 85, 247, 0.2);
-        border-color: rgba(168, 85, 247, 0.4);
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.3);
     }
-    .vip-select-btn.active {
-        color: #fff;
-        background: linear-gradient(135deg, rgba(168, 85, 247, 0.4), rgba(236, 72, 153, 0.4));
-        border: 1px solid rgba(168, 85, 247, 0.6);
-        box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+    .vip-showcase-tabs .btn-vip-preview-tab.active {
+        color: var(--vip-color, #A855F7);
+        background: rgba(var(--vip-rgb, 168, 85, 247), 0.1);
+        border-color: var(--vip-color, #A855F7);
+        box-shadow: 0 0 8px rgba(var(--vip-rgb, 168, 85, 247), 0.42), inset 0 0 12px rgba(var(--vip-rgb, 168, 85, 247), 0.12);
     }
-
-    /* 單張卡片展示位 */
-    .single-vip-card-wrap {
+    .vip-showcase-stage {
         display: flex;
         justify-content: center;
         align-items: center;
-        perspective: 1000px;
-    }
-
-    .vip-card-item {
-        position: relative;
         width: 100%;
-        max-width: 480px;
-        height: 270px;
-        border-radius: 22px;
-        padding: 26px 30px;
+        min-width: 0;
+    }
+    .vip-showcase-card-wrap {
         display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        overflow: hidden;
-        user-select: none;
-        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.75), inset 0 1px 2px rgba(255, 255, 255, 0.25);
-        transition: transform 0.4s ease, box-shadow 0.4s ease, background 0.5s ease, border-color 0.5s ease;
-        background: var(--card-bg);
-        border: 1px solid var(--card-border);
+        justify-content: center;
+        width: min(100%, 480px);
+        max-width: 480px;
+        min-width: 0;
+        margin-inline: auto;
     }
+    .vip-showcase-card-wrap > .vip-premium-card-frame { width: 100%; }
 
-    .vip-card-item:hover {
-        transform: translateY(-6px) rotateX(2deg) rotateY(-2deg);
-        box-shadow: 0 28px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(168, 85, 247, 0.25);
+    @media (min-width: 576px) and (max-width: 1199px) {
+        .vip-showcase-card-wrap { width: min(100%, 460px); max-width: 460px; }
     }
-
-    .vip-card-sim-chip {
-        width: 48px;
-        height: 35px;
-        background: linear-gradient(135deg, #fef08a 0%, #f59e0b 50%, #b45309 100%);
-        border-radius: 8px;
-        position: relative;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-    }
-
-    .vip-crown-icon {
-        color: var(--crown-color);
-        transition: all 0.3s ease;
-    }
-
-    .vip-card-watermark {
-        position: absolute;
-        right: -15px;
-        bottom: -20px;
-        opacity: 0.18;
-        pointer-events: none;
-    }
-    .vip-card-watermark img {
-        width: 170px;
-        height: auto;
-        filter: brightness(1.3);
+    @media (max-width: 575px) {
+        .vip-showcase-shell { padding: 16px !important; }
+        .vip-showcase-content { max-width: 100%; }
+        .vip-showcase-card-wrap { width: 100%; max-width: 100%; }
+        .vip-showcase-tabs { gap: 8px; margin-bottom: 18px; }
+        .vip-showcase-tabs .btn-vip-preview-tab { padding: 7px 11px; }
     }
 </style>
 
-<!-- 🚀 1. VIP 1 ~ 7 等級選擇按鈕群 -->
-<div class="vip-selector-wrap" id="vipShowcaseContainer">
-    <% for(let i = 1; i <= 7; i++) { %>
-        <button type="button" 
-                class="vip-select-btn <%= i === 3 ? 'active' : '' %>" 
-            data-vip-level="<%= i %>">
-            <i class="fa-solid fa-crown me-1" style="font-size: 0.75rem;"></i>VIP <%= i %>
+<div class="vip-showcase-content">
+<div class="vip-showcase-tabs" id="vipShowcaseContainer" role="group" aria-label="VIP preview">
+    <% showcaseVipTiers.forEach((tier, index) => {
+        const visual = tier.visual || {};
+        const glowStrength = Number(visual.glowStrength);
+        const borderAlpha = Number(visual.borderAlpha);
+        const highlightAlpha = Number(visual.highlightAlpha);
+        const watermarkOpacity = Number(visual.watermarkOpacity);
+    %>
+        <button type="button"
+                class="btn-vip-preview-tab <%= index === 0 ? 'active' : '' %>"
+                data-vip-level="<%= tier.level %>"
+                data-vip-name="<%= tier.name %>"
+                data-vip-color="<%= tier.color %>"
+                data-vip-theme="<%= tier.theme %>"
+                data-vip-glow-strength="<%= Number.isFinite(glowStrength) && glowStrength >= 0 && glowStrength <= 1 ? glowStrength : 0.16 %>"
+                data-vip-border-alpha="<%= Number.isFinite(borderAlpha) && borderAlpha >= 0 && borderAlpha <= 1 ? borderAlpha : 0.58 %>"
+                data-vip-highlight-alpha="<%= Number.isFinite(highlightAlpha) && highlightAlpha >= 0 && highlightAlpha <= 1 ? highlightAlpha : 0.14 %>"
+                data-vip-watermark-opacity="<%= Number.isFinite(watermarkOpacity) && watermarkOpacity >= 0 && watermarkOpacity <= 1 ? watermarkOpacity : 0.08 %>"
+                style="--vip-color: <%= index === 0 ? tier.color : fallbackVipColor %>; --vip-rgb: <%= index === 0 ? tier.color.slice(1).match(/.{2}/g).map(value => parseInt(value, 16)).join(', ') : '168, 85, 247' %>;"
+                aria-pressed="<%= index === 0 ? 'true' : 'false' %>">
+            <i class="fa-solid fa-crown me-1" style="font-size: 0.75rem;"></i><%= tier.name %>
         </button>
-    <% } %>
+    <% }) %>
 </div>
 
-<!-- 🚀 2. 單張卡片展示區 -->
-<div class="single-vip-card-wrap">
-    <div class="vip-card-item" id="vipShowcaseCard" style="--card-bg: <%= defaultGradient %>; --card-border: <%= defaultBorder %>;">
-        <!-- 上排：IC 晶片與 VIP 標籤 -->
-        <div class="d-flex justify-content-between align-items-center" style="position: relative; z-index: 2;">
-            <div class="d-flex align-items-center gap-2">
-                <div class="vip-card-sim-chip"></div>
-                <i class="fa-solid fa-wifi text-light" style="transform: rotate(90deg); font-size: 1.1rem; opacity: 0.75;"></i>
-            </div>
-            <%- include('vip_badge', { id: 'vipBadgePill', iconId: 'vipCrownIcon', labelId: 'vipBadgeText', level: 'VIP 3', color: vipColors[3] || defaultBadgeColor, extraClass: 'vip-badge--card' }) %>
-        </div>
-
-        <!-- 中排：總餘額 -->
-        <div class="my-auto pt-3" style="position: relative; z-index: 2;">
-            <div class="text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1.5px; color: #94a3b8;">TOTAL BALANCE</div>
-            <div class="d-flex align-items-baseline gap-2 mt-1">
-                <span class="fs-1 fw-bold text-white font-monospace" style="line-height: 1;">$<%= totalBalance.toLocaleString() %></span>
-                <span class="fw-bold font-monospace small" style="color: #f59e0b;">NTD</span>
-            </div>
-        </div>
-
-        <!-- 下排：持卡人與 ID -->
-        <div class="d-flex justify-content-between align-items-end pt-2 border-top border-white border-opacity-10" style="position: relative; z-index: 2;">
-            <div>
-                <div class="text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 1px; color: #64748b;">CARD HOLDER</div>
-                <div class="fw-bold text-white mt-1 small"><%= cardHolder %></div>
-            </div>
-            <div class="text-end">
-                <div class="text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 1px; color: #64748b;">MEMBER ID</div>
-                <div class="fw-bold text-white font-monospace mt-1 small"><%= memberId %></div>
-            </div>
-        </div>
-
-        <!-- 水印 Logo -->
-        <div class="vip-card-watermark">
-            <img src="/images/logo.png" alt="MiHu Logo" onerror="this.src='/images/logo2.png';">
-        </div>
-    </div>
+<div class="vip-showcase-stage">
+<div class="vip-showcase-card-wrap">
+    <% if (initialVipInfo) { %>
+        <%- include('wallet_card', { user: null, vipInfo: initialVipInfo, mode: 'preview', cardId: 'vip-showcase-card' }) %>
+    <% } else { %>
+        <div class="vip-showcase-empty" role="status">目前尚無 VIP 等級設定</div>
+    <% } %>
+</div>
+</div>
 </div>
 
 <script>
-    // 純 JavaScript 設定檔 (避開 EJS 標籤誤判)
-    const jsVipThemes = {
-        1: { name: 'VIP 1 黑鐵鈦灰', gradient: 'linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #020617 100%)', border: 'rgba(148, 163, 184, 0.4)', badgeBg: 'rgba(148, 163, 184, 0.2)', badgeColor: '#cbd5e1', crownColor: '#94a3b8' },
-        2: { name: 'VIP 2 青鋼翡翠', gradient: 'linear-gradient(135deg, #064e3b 0%, #022c22 50%, #031716 100%)', border: 'rgba(52, 211, 153, 0.4)', badgeBg: 'rgba(52, 211, 153, 0.2)', badgeColor: '#6ee7b7', crownColor: '#34d399' },
-        3: { name: 'VIP 3 極光霓虹紫', gradient: 'linear-gradient(135deg, #130d24 0%, #1a1033 40%, #0c1829 80%, #06111f 100%)', border: 'rgba(168, 85, 247, 0.4)', badgeBg: 'rgba(168, 85, 247, 0.2)', badgeColor: '#d8b4fe', crownColor: '#f59e0b' },
-        4: { name: 'VIP 4 璀璨鉑金', gradient: 'linear-gradient(135deg, #334155 0%, #1e293b 40%, #475569 80%, #0f172a 100%)', border: 'rgba(226, 232, 240, 0.6)', badgeBg: 'rgba(255, 255, 255, 0.25)', badgeColor: '#ffffff', crownColor: '#e2e8f0' },
-        5: { name: 'VIP 5 耀眼流金', gradient: 'linear-gradient(135deg, #451a03 0%, #78350f 40%, #291003 80%, #0f0501 100%)', border: 'rgba(245, 158, 11, 0.6)', badgeBg: 'rgba(245, 158, 11, 0.25)', badgeColor: '#fef08a', crownColor: '#f59e0b' },
-        6: { name: 'VIP 6 赤紅幻影', gradient: 'linear-gradient(135deg, #450a0a 0%, #7f1d1d 40%, #1c0505 80%, #090101 100%)', border: 'rgba(248, 113, 113, 0.6)', badgeBg: 'rgba(239, 68, 68, 0.25)', badgeColor: '#fca5a5', crownColor: '#ef4444' },
-        7: { name: 'VIP 7 星鑽神話', gradient: 'linear-gradient(135deg, #3b0764 0%, #581c87 30%, #1e1b4b 70%, #030712 100%)', border: 'rgba(236, 72, 153, 0.7)', badgeBg: 'linear-gradient(90deg, rgba(236, 72, 153, 0.3), rgba(168, 85, 247, 0.3))', badgeColor: '#f472b6', crownColor: '#f43f5e' }
-    };
+    (() => {
+        const fallbackVipColor = '#A855F7';
+        const container = document.getElementById('vipShowcaseContainer');
+        const card = document.getElementById('vip-showcase-card');
 
-    function switchVipCardShowcase(level) {
-        const theme = jsVipThemes[level];
-        if (!theme) return;
-        const vipColor = vipColors[level] || theme.crownColor;
+        function normalizeVipColor(value) {
+            const color = String(value || '').trim();
+            return /^#[0-9A-Fa-f]{6}$/.test(color) ? color.toUpperCase() : fallbackVipColor;
+        }
 
-        // 1. 切換按鈕高亮
-        document.querySelectorAll('.vip-select-btn').forEach((btn, idx) => {
-            if (idx + 1 === level) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
+        function hexToRgb(hex) {
+            const color = normalizeVipColor(hex).slice(1);
+            return [0, 2, 4].map(index => parseInt(color.slice(index, index + 2), 16)).join(', ');
+        }
+
+        function normalizeVisualValue(value, fallback) {
+            const number = Number(value);
+            return Number.isFinite(number) && number >= 0 && number <= 1 ? number : fallback;
+        }
+
+        function switchVipCardPreview(buttonEl) {
+            if (!container || !card || !(buttonEl instanceof HTMLButtonElement)
+                || !buttonEl.matches('.btn-vip-preview-tab') || !container.contains(buttonEl)) return;
+
+            const level = Number(buttonEl.dataset.vipLevel);
+            if (!Number.isSafeInteger(level) || level < 1) return;
+            const name = String(buttonEl.dataset.vipName || `VIP ${level}`).trim() || `VIP ${level}`;
+            const color = normalizeVipColor(buttonEl.dataset.vipColor);
+            const rawTheme = String(buttonEl.dataset.vipTheme || 'cyber').trim();
+            const theme = /^[a-z][a-z0-9-]*$/i.test(rawTheme) ? rawTheme : 'cyber';
+            const rgb = hexToRgb(color);
+
+            container.querySelectorAll('.btn-vip-preview-tab').forEach(tab => {
+                const isActive = tab === buttonEl;
+                tab.classList.toggle('active', isActive);
+                tab.setAttribute('aria-pressed', String(isActive));
+                tab.style.removeProperty('--vip-color');
+                tab.style.removeProperty('--vip-rgb');
+                if (isActive) {
+                    tab.style.setProperty('--vip-color', color);
+                    tab.style.setProperty('--vip-rgb', rgb);
+                }
+            });
+
+            card.dataset.vipLevel = String(level);
+            card.dataset.vipTheme = theme;
+            card.style.setProperty('--vip-color', color);
+            card.style.setProperty('--vip-rgb', rgb);
+            card.style.setProperty('--vip-glow-strength', normalizeVisualValue(buttonEl.dataset.vipGlowStrength, 0.16));
+            card.style.setProperty('--vip-border-alpha', normalizeVisualValue(buttonEl.dataset.vipBorderAlpha, 0.58));
+            card.style.setProperty('--vip-highlight-alpha', normalizeVisualValue(buttonEl.dataset.vipHighlightAlpha, 0.14));
+            card.style.setProperty('--vip-watermark-opacity', normalizeVisualValue(buttonEl.dataset.vipWatermarkOpacity, 0.08));
+
+            const badge = card.querySelector('[data-vip-badge]');
+            if (badge) badge.style.setProperty('--vip-color', color);
+            const badgeLabel = card.querySelector('[data-vip-badge-label]');
+            if (badgeLabel) badgeLabel.textContent = name;
+            const cardName = card.querySelector('[data-vip-card-name]');
+            if (cardName) cardName.textContent = name;
+            const themeLabel = card.querySelector('[data-vip-card-theme]');
+            if (themeLabel) themeLabel.textContent = theme.toUpperCase();
+        }
+
+        container?.addEventListener('click', event => {
+            const button = event.target.closest('.btn-vip-preview-tab');
+            if (button) switchVipCardPreview(button);
         });
 
-        // 2. 更新卡片背景與邊框 CSS 變數
-        const cardEl = document.getElementById('vipShowcaseCard');
-        if (cardEl) {
-            cardEl.style.setProperty('--card-bg', theme.gradient);
-            cardEl.style.setProperty('--card-border', theme.border);
-        }
-
-        // 3. 更新 VIP 標籤與圖示顏色
-        const badgeEl = document.getElementById('vipBadgePill');
-        if (badgeEl) {
-            badgeEl.style.setProperty('--vip-color', vipColor);
-        }
-
-        const crownEl = document.getElementById('vipCrownIcon');
-        if (crownEl) {
-            crownEl.style.color = vipColor;
-        }
-
-        const textEl = document.getElementById('vipBadgeText');
-        if (textEl) {
-            textEl.textContent = `VIP ${level}`;
-        }
-    }
-
-    document.querySelectorAll('.vip-select-btn').forEach((button) => {
-        button.addEventListener('click', () => {
-            switchVipCardShowcase(Number(button.dataset.vipLevel));
-        });
-    });
+        const firstButton = container?.querySelector('.btn-vip-preview-tab');
+        if (firstButton) switchVipCardPreview(firstButton);
+    })();
 </script>

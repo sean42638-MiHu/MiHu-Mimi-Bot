@@ -2,8 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../database');
 const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./vipColor');
+const { getRuntimeDataDirectory } = require('./runtimePaths');
 
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = getRuntimeDataDirectory();
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
 }

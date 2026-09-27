@@ -5,8 +5,8 @@ const os = require('os');
 const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./utils/vipColor');
 const { ensurePayoutSchema } = require('./utils/payoutSchema');
 const { withTransactionGate } = require('./utils/transactionGate');
+const { getDatabasePath, getRuntimeDataDirectory } = require('./utils/runtimePaths');
 const {
-    assertEncryptionKey,
     isEncryptedSensitiveValue,
     encryptSensitiveValue,
     decryptSensitiveValue
@@ -17,9 +17,8 @@ const testDbPath = process.env.TEST_DATABASE_PATH;
 if (process.env.NODE_ENV === 'test' && !testDbPath) {
     throw new Error('NODE_ENV=test requires TEST_DATABASE_PATH; refusing to open the production database');
 }
-const dbPath = process.env.NODE_ENV === 'test'
-    ? path.resolve(testDbPath)
-    : path.resolve(process.env.DATABASE_PATH || productionDbPath);
+const dbPath = getDatabasePath(process.env);
+const dataDirectory = getRuntimeDataDirectory(process.env);
 if (process.env.NODE_ENV === 'test' && dbPath === path.resolve(productionDbPath)) {
     throw new Error('Test database must not point to the production database');
 }
@@ -31,6 +30,8 @@ if (process.env.NODE_ENV === 'test') {
     }
 }
 const db = new sqlite3.Database(dbPath);
+db.databasePath = dbPath;
+db.databaseScope = process.env.APP_ENV === 'development' ? 'DEVELOPMENT' : 'NORMAL';
 let initialized = false;
 let startupReady = Promise.resolve();
 
@@ -70,7 +71,6 @@ function createDeferred() {
 }
 
 async function migrateSensitivePayrollData() {
-    assertEncryptionKey();
     await withTransactionGate(async () => {
         await migrationRun('BEGIN IMMEDIATE');
         try {
@@ -272,7 +272,7 @@ function initializeCommissionSettings(callback = () => {}) {
 
                         const defaultRates = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
                         const seedRates = {};
-                        const jsonPath = path.join(__dirname, 'data', 'commission.json');
+                        const jsonPath = path.join(dataDirectory, 'commission.json');
                         try {
                             if (fs.existsSync(jsonPath)) {
                                 const savedRates = JSON.parse(fs.readFileSync(jsonPath, 'utf8') || '{}');
@@ -344,7 +344,10 @@ function initializeDatabase() {
             commissionStartup.reject(studioCreateError);
             return;
         }
-        db.run('INSERT OR IGNORE INTO studios (id, name, owner_user_id) VALUES (1, ?, ?)', ['預設工作室', '604610298581876746']);
+        const defaultStudioOwnerId = process.env.APP_ENV === 'development'
+            ? (process.env.DEV_MANAGER_DISCORD_ID || 'dev-system-owner')
+            : '604610298581876746';
+        db.run('INSERT OR IGNORE INTO studios (id, name, owner_user_id) VALUES (1, ?, ?)', ['預設工作室', defaultStudioOwnerId]);
     });
 
     // 1. 使用者資料表 (自動與 data/users.json 雙向同步)
@@ -385,7 +388,7 @@ function initializeDatabase() {
                 });
             });
         });
-        const usersJsonPath = path.join(__dirname, 'data', 'users.json');
+        const usersJsonPath = path.join(dataDirectory, 'users.json');
         db.get('SELECT COUNT(*) AS count FROM users', (countErr, countRow) => {
         if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(usersJsonPath)) return;
             try {
@@ -503,7 +506,7 @@ function initializeDatabase() {
                 console.error('❌ 移除 talents 0.7 預設值失敗:', migrationErr.message);
                 return;
             }
-        const talentsJsonPath = path.join(__dirname, 'data', 'talents.json');
+        const talentsJsonPath = path.join(dataDirectory, 'talents.json');
             db.get('SELECT COUNT(*) AS count FROM talents', (countErr, countRow) => {
             if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(talentsJsonPath)) return;
             try {
@@ -566,7 +569,7 @@ function initializeDatabase() {
             return;
         }
         const defaults = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
-        const commissionJsonPath = path.join(__dirname, 'data', 'commission.json');
+        const commissionJsonPath = path.join(dataDirectory, 'commission.json');
         try {
             if (fs.existsSync(commissionJsonPath)) {
                 const savedRates = JSON.parse(fs.readFileSync(commissionJsonPath, 'utf8') || '{}');
@@ -723,7 +726,7 @@ function initializeDatabase() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `, () => {
-        const topupsJsonPath = path.join(__dirname, 'data', 'topups.json');
+        const topupsJsonPath = path.join(dataDirectory, 'topups.json');
         db.get('SELECT COUNT(*) AS count FROM topups', (countErr, countRow) => {
         if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(topupsJsonPath)) return;
             try {
@@ -791,7 +794,7 @@ function initializeDatabase() {
         });
 
         function syncVipTiersFromJson() {
-            const vipJsonPath = path.join(__dirname, 'data', 'vip.json');
+            const vipJsonPath = path.join(dataDirectory, 'vip.json');
             if (!fs.existsSync(vipJsonPath)) return;
             db.get('SELECT COUNT(*) AS count FROM vip_tiers', (countErr, countRow) => {
                 if (countErr || Number(countRow && countRow.count) > 0) return;
@@ -835,7 +838,7 @@ function initializeDatabase() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `, () => {
-        const rolesJsonPath = path.join(__dirname, 'data', 'roles.json');
+        const rolesJsonPath = path.join(dataDirectory, 'roles.json');
         db.get('SELECT COUNT(*) AS count FROM roles', (countErr, countRow) => {
         if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(rolesJsonPath)) return;
             try {
@@ -904,7 +907,7 @@ function initializeDatabase() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `, () => {
-        const commandsJsonPath = path.join(__dirname, 'data', 'commands.json');
+        const commandsJsonPath = path.join(dataDirectory, 'commands.json');
         db.get('SELECT COUNT(*) AS count FROM bot_commands', (countErr, countRow) => {
         if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(commandsJsonPath)) return;
             try {

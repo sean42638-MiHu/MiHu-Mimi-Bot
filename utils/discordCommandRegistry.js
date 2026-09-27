@@ -67,6 +67,21 @@ async function registerGuildCommands(rest, applicationId, commandCollection, env
     };
 }
 
+async function registerDevelopmentGuildCommands(rest, applicationId, commandCollection, env = process.env) {
+    if (env.APP_ENV !== 'development') throw new Error('Development command deployment requires APP_ENV=development');
+    assertMutationEnabled(env, 'DISCORD_COMMAND_REGISTRATION_ENABLED');
+    if (!applicationId) throw new Error('DISCORD_CLIENT_ID is required to register development commands');
+    if (!String(env.GUILD_DEV_ID || '').trim()) throw new Error('GUILD_DEV_ID is required for development command deployment');
+
+    const developmentCommands = Array.from(commandCollection.values())
+        .filter(command => getCommandGuildKeys(command.data.name).includes('DEV'));
+    developmentCommands.forEach(applyCommandDefaultPermissions);
+    const body = developmentCommands.map(command => command.data.toJSON());
+    await rest.put(Routes.applicationGuildCommands(applicationId, env.GUILD_DEV_ID), { body });
+
+    return { guildKey: 'DEV', guildId: env.GUILD_DEV_ID, commandCount: body.length };
+}
+
 async function clearGuildCommands(rest, applicationId, env = process.env) {
     assertMutationEnabled(env, 'DISCORD_COMMAND_CLEAR_ENABLED');
     if (!applicationId) throw new Error('DISCORD_CLIENT_ID is required to clear commands');
@@ -96,4 +111,4 @@ function assertMutationEnabled(env, flag) {
     if (env[flag] !== 'true') throw new Error(`Set ${flag}=true for explicit Discord REST mutation`);
 }
 
-module.exports = { clearGuildCommands, registerGuildCommands };
+module.exports = { clearGuildCommands, registerDevelopmentGuildCommands, registerGuildCommands };

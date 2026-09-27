@@ -1,0 +1,104 @@
+<%
+    const withdrawalSettings = typeof settings !== 'undefined' && settings ? settings : {};
+    const minimumAmount = Number(withdrawalSettings.minimumAmount);
+    const startDay = Number(withdrawalSettings.startDay);
+    const endDay = Number(withdrawalSettings.endDay);
+%>
+<style>
+    .withdrawal-terms-modal .modal-dialog {
+        width: calc(100% - 1rem);
+        max-width: 700px;
+        max-height: calc(100vh - 1rem);
+        margin: 0.5rem auto;
+    }
+    .withdrawal-terms-modal .modal-content {
+        max-height: calc(100vh - 1rem);
+        overflow: hidden;
+        color: #f8fafc;
+        background: rgba(15, 18, 32, 0.98);
+        border: 1px solid rgba(56, 189, 248, 0.34);
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.72), 0 0 28px rgba(56, 189, 248, 0.12);
+        backdrop-filter: blur(20px);
+    }
+    .withdrawal-terms-modal .modal-header,
+    .withdrawal-terms-modal .modal-footer {
+        flex: 0 0 auto;
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    .withdrawal-terms-modal .withdrawal-terms-body {
+        max-height: min(65vh, 540px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 18px 24px;
+    }
+    .withdrawal-terms-modal .withdrawal-terms-section + .withdrawal-terms-section {
+        margin-top: 22px;
+    }
+    .withdrawal-terms-modal .withdrawal-terms-section h6 {
+        margin: 0 0 9px;
+        color: #7dd3fc;
+        font-weight: 750;
+    }
+    .withdrawal-terms-modal .withdrawal-terms-section ul {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding-left: 20px;
+        color: #d1d5db;
+        line-height: 1.65;
+    }
+    .withdrawal-terms-modal .withdrawal-terms-section li::marker { color: #38bdf8; }
+    .withdrawal-terms-modal .withdrawal-terms-highlight { color: #f8fafc; font-weight: 700; }
+    .withdrawal-terms-modal .withdrawal-terms-continue {
+        border: 1px solid rgba(52, 211, 153, 0.5);
+        color: #ecfdf5;
+        background: linear-gradient(135deg, #059669, #6d28d9);
+        box-shadow: 0 0 18px rgba(52, 211, 153, 0.2);
+    }
+    @media (max-width: 575px) {
+        .withdrawal-terms-modal .modal-dialog { width: calc(100% - 1rem); margin: 0.5rem; }
+        .withdrawal-terms-modal .withdrawal-terms-body { max-height: calc(100vh - 210px); padding: 14px 16px; }
+        .withdrawal-terms-modal .modal-footer { gap: 8px; }
+        .withdrawal-terms-modal .modal-footer .btn { flex: 1 1 auto; }
+    }
+</style>
+
+<div class="modal fade withdrawal-terms-modal" id="withdrawalTermsModal" tabindex="-1" aria-labelledby="withdrawalTermsTitle" aria-hidden="true" data-flow-context="READ_ONLY">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="withdrawalTermsTitle">薪資提款注意事項與稅務說明</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body withdrawal-terms-body">
+                <section class="withdrawal-terms-section">
+                    <h6>1. 提領限制</h6>
+                    <ul>
+                        <li>最低申請金額依目前系統設定：<span class="withdrawal-terms-highlight">$<%= Number.isFinite(minimumAmount) && minimumAmount > 0 ? minimumAmount.toLocaleString() : '--' %> NTD</span>。</li>
+                        <li>提領開放時間依目前系統設定：每月 <span class="withdrawal-terms-highlight"><%= Number.isInteger(startDay) ? startDay : '--' %> 日至 <%= Number.isInteger(endDay) ? endDay : '--' %> 日</span>。</li>
+                        <li>非玉山銀行 (808) 帳戶設為薪轉，可能會需要負擔跨行轉帳手續費。</li>
+                    </ul>
+                </section>
+                <section class="withdrawal-terms-section">
+                    <h6>2. 稅務預扣與申報</h6>
+                    <ul>
+                        <li>所得類別標示說明：代號 9A 代表執行業務所得，依主管稽徵機關規定辦理申報。</li>
+                        <li>預扣所得稅：單筆報酬達到 NT$ 20,010（含）以上者，公司將依法先行預扣 10% 所得稅款。</li>
+                        <li>二代健保補充保費：單筆報酬達到 NT$ 20,000（含）以上者，公司將依法代扣 2.11% 二代健保補充保費。</li>
+                    </ul>
+                </section>
+                <section class="withdrawal-terms-section">
+                    <h6>3. 複查與異議申報</h6>
+                    <ul>
+                        <li>如對本月發放金額有任何疑義，請於發放日起 3 個工作天內向工作室財務部門提出複查申請，逾期將視為確認無誤。</li>
+                    </ul>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">關閉</button>
+                <button type="button" class="btn withdrawal-terms-continue" id="withdrawalTermsContinue" hidden>我已了解，前往提領</button>
+            </div>
+        </div>
+    </div>
+</div>

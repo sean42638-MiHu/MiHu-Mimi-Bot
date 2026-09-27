@@ -204,6 +204,49 @@
             font-size: 0.78rem;
             margin-left: 2px;
         }
+
+        .withdrawal-card-shell {
+            margin-bottom: 24px;
+            padding: 20px 22px;
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            background: var(--card-bg);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+        }
+        .withdrawal-card-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; }
+        .withdrawal-card-heading { min-width: 0; }
+        .withdrawal-card-heading h5 { margin: 0 0 4px; font-weight: 800; }
+        .withdrawal-card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+        .withdrawal-card-info-btn,
+        .withdrawal-card-apply-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 40px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 0.86rem;
+            font-weight: 700;
+            transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .withdrawal-card-info-btn { color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.38); background: rgba(100, 116, 139, 0.08); }
+        .withdrawal-card-info-btn:hover { color: #f8fafc; border-color: #94a3b8; background: rgba(100, 116, 139, 0.18); }
+        .withdrawal-card-apply-btn { color: #f8fafc; border: 1px solid rgba(52, 211, 153, 0.48); background: linear-gradient(120deg, #059669, #6d28d9); box-shadow: 0 0 18px rgba(52, 211, 153, 0.18), 0 5px 18px rgba(109, 40, 217, 0.24); }
+        .withdrawal-card-apply-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 24px rgba(52, 211, 153, 0.28), 0 7px 22px rgba(109, 40, 217, 0.32); }
+        .withdrawal-card-apply-btn:disabled { opacity: 0.48; cursor: not-allowed; box-shadow: none; }
+        .withdrawal-card-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .withdrawal-pending-badge { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(253, 224, 71, 0.7); border-radius: 8px; color: #fde047; background: rgba(253, 224, 71, 0.08); font-weight: 700; }
+        .withdrawal-card-period { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(125, 211, 252, 0.28); border-radius: 8px; color: #bae6fd; background: rgba(56, 189, 248, 0.07); font-size: 0.9rem; }
+        .withdrawal-card-notes { display: grid; gap: 5px; margin-top: 15px; }
+        .withdrawal-card-note { margin: 0; color: #94a3b8; font-size: 0.8rem; line-height: 1.5; }
+        @media (max-width: 575px) {
+            .withdrawal-card-shell { padding: 16px; }
+            .withdrawal-card-header { align-items: stretch; flex-direction: column; gap: 14px; }
+            .withdrawal-card-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+            .withdrawal-card-actions button { width: 100%; }
+            .withdrawal-card-metrics { align-items: flex-start; flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -227,17 +270,31 @@
         <!-- 🚀 1. 載入獨立模組：四大金流卡片 -->
         <%- include('partials/income_stat_cards') %>
 
-        <section class="mb-4 p-4 rounded-3" style="background: var(--card-bg); border: 1px solid var(--card-border);">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
-                <div>
-                    <h5 class="fw-bold text-white mb-1"><i class="fa-solid fa-building-columns text-info me-2"></i>薪資提款</h5>
-                    <div class="text-secondary small">撥款中：$<%= Number(payoutOverview.pendingAmount).toLocaleString() %> · 本月申請期間：每月 <%= payoutOverview.settings.startDay %> 至 <%= payoutOverview.settings.endDay %> 日</div>
-                    <div class="text-secondary small mt-1">最低申請金額 $<%= Number(payoutOverview.settings.minimumAmount).toLocaleString() %> · <%= payoutOverview.bankDetailsReady ? '薪轉帳戶已設定' : '薪轉帳戶請至個人檔案確認' %></div>
-                    <div class="text-secondary small mt-1">非玉山銀行 (808) 帳戶設為薪轉，可能會需要負擔跨行轉帳手續費。</div>
+        <% const minimumWithdrawalAmount = Number(payoutOverview.settings.minimumAmount); %>
+        <section class="withdrawal-card-shell" aria-labelledby="withdrawalCardTitle">
+            <div class="withdrawal-card-header">
+                <div class="withdrawal-card-heading">
+                    <h5 class="text-white" id="withdrawalCardTitle"><i class="fa-solid fa-building-columns text-info me-2"></i>薪資提款</h5>
                 </div>
-                <button type="button" class="btn btn-info fw-semibold" data-bs-toggle="modal" data-bs-target="#withdrawalRequestModal" <%= payoutOverview.windowOpen && payoutOverview.availableAmount >= payoutOverview.settings.minimumAmount ? '' : 'disabled' %>>
-                    <i class="fa-solid fa-arrow-up-from-bracket me-1"></i>申請提款
-                </button>
+                <div class="withdrawal-card-actions">
+                    <button type="button" class="withdrawal-card-info-btn" id="showWithdrawalTerms"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>提款須知</button>
+                    <button type="button" class="withdrawal-card-apply-btn" id="beginWithdrawalFlow"
+                        data-window-open="<%= payoutOverview.windowOpen ? 'true' : 'false' %>"
+                        data-bank-ready="<%= payoutOverview.bankDetailsReady ? 'true' : 'false' %>"
+                        data-available="<%= Number(payoutOverview.availableAmount) %>"
+                        data-minimum="<%= minimumWithdrawalAmount %>"
+                        <% if (!payoutOverview.windowOpen || !payoutOverview.bankDetailsReady || Number(payoutOverview.availableAmount) < minimumWithdrawalAmount) { %>disabled<% } %>>
+                        <i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i>申請提款
+                    </button>
+                </div>
+            </div>
+            <div class="withdrawal-card-metrics">
+                <span class="withdrawal-pending-badge"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>撥款中：$<%= Number(payoutOverview.pendingAmount).toLocaleString() %> NTD</span>
+                <span class="withdrawal-card-period"><i class="fa-regular fa-calendar" aria-hidden="true"></i>申請期間：每月 <%= payoutOverview.settings.startDay %> 日 ~ <%= payoutOverview.settings.endDay %> 日</span>
+            </div>
+            <div class="withdrawal-card-notes">
+                <p class="withdrawal-card-note">• 最低申請金額 $<%= minimumWithdrawalAmount.toLocaleString() %> · <%= payoutOverview.bankDetailsReady ? '薪轉帳戶已設定' : '薪轉帳戶尚未設定' %></p>
+                <p class="withdrawal-card-note">• 非玉山銀行 (808) 帳戶設為薪轉，可能會需要負擔跨行轉帳手續費。</p>
             </div>
             <% if (payoutOverview.payouts.length) { %>
                 <div class="table-responsive mt-3">
@@ -288,26 +345,8 @@
     </div>
 </div>
 
-<div class="modal fade" id="withdrawalRequestModal" tabindex="-1" aria-labelledby="withdrawalRequestTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content bg-dark text-white border-secondary">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title" id="withdrawalRequestTitle">確認提款金額</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
-            </div>
-            <div class="modal-body">
-                <label for="withdrawalAmount" class="form-label">申請金額</label>
-                <input id="withdrawalAmount" class="form-control" type="number" min="<%= payoutOverview.settings.minimumAmount %>" max="<%= payoutOverview.availableAmount %>" step="1" value="<%= Math.floor(payoutOverview.availableAmount) %>" required>
-                <div class="form-text text-light">可提領 $<%= Number(payoutOverview.availableAmount).toLocaleString() %>，送出前會再次要求確認。</div>
-                <div id="withdrawalRequestError" class="text-danger small mt-2" role="alert"></div>
-            </div>
-            <div class="modal-footer border-secondary">
-                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">返回</button>
-                <button type="button" class="btn btn-info" id="submitWithdrawalRequest"><i class="fa-solid fa-lock me-1"></i>確認並送出</button>
-            </div>
-        </div>
-    </div>
-</div>
+<%- include('partials/income_withdrawal_modal', { payoutOverview: payoutOverview }) %>
+<%- include('modals/withdrawal_terms_modal', { settings: payoutOverview.settings }) %>
 
 <!-- 🚀 3. 載入獨立模組：分潤成數彈窗 -->
 <%- include('partials/income_commission_modal') %>
@@ -320,7 +359,62 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    document.getElementById('submitWithdrawalRequest')?.addEventListener('click', async () => {
+    (() => {
+        const termsModalEl = document.getElementById('withdrawalTermsModal');
+        const amountModalEl = document.getElementById('withdrawalRequestModal');
+        const termsButton = document.getElementById('showWithdrawalTerms');
+        const applyButton = document.getElementById('beginWithdrawalFlow');
+        const continueButton = document.getElementById('withdrawalTermsContinue');
+        if (!termsModalEl || !amountModalEl || !termsButton || !applyButton || !continueButton || !window.bootstrap?.Modal) return;
+
+        const termsModal = bootstrap.Modal.getOrCreateInstance(termsModalEl);
+        const amountModal = bootstrap.Modal.getOrCreateInstance(amountModalEl);
+        let flowContext = 'READ_ONLY';
+        let transitionPending = false;
+        let continueToAmount = false;
+
+        function openTerms(context) {
+            if (transitionPending || termsModalEl.classList.contains('show') || amountModalEl.classList.contains('show')) return;
+            flowContext = context;
+            termsModalEl.dataset.flowContext = context;
+            continueButton.hidden = context !== 'WITHDRAWAL_GATE';
+            termsModal.show();
+        }
+
+        termsButton.addEventListener('click', () => openTerms('READ_ONLY'));
+        applyButton.addEventListener('click', () => {
+            if (applyButton.disabled || transitionPending) return;
+            const canRequest = applyButton.dataset.windowOpen === 'true'
+                && applyButton.dataset.bankReady === 'true'
+                && Number(applyButton.dataset.available) >= Number(applyButton.dataset.minimum);
+            if (!canRequest) return;
+            openTerms('WITHDRAWAL_GATE');
+        });
+
+        termsModalEl.addEventListener('hidden.bs.modal', () => {
+            transitionPending = false;
+            const shouldOpenAmount = continueToAmount && flowContext === 'WITHDRAWAL_GATE';
+            continueToAmount = false;
+            flowContext = 'READ_ONLY';
+            termsModalEl.dataset.flowContext = flowContext;
+            continueButton.hidden = true;
+            if (shouldOpenAmount) amountModal.show();
+        });
+
+        continueButton.addEventListener('click', () => {
+            if (flowContext !== 'WITHDRAWAL_GATE' || transitionPending) return;
+            transitionPending = true;
+            continueToAmount = true;
+            termsModal.hide();
+        });
+    })();
+
+    let withdrawalSubmitting = false;
+    const submitWithdrawalButton = document.getElementById('submitWithdrawalRequest');
+    const originalSubmitMarkup = submitWithdrawalButton ? submitWithdrawalButton.innerHTML : '';
+
+    submitWithdrawalButton?.addEventListener('click', async () => {
+        if (withdrawalSubmitting) return;
         const amountInput = document.getElementById('withdrawalAmount');
         const errorBox = document.getElementById('withdrawalRequestError');
         const amount = Number(amountInput.value);
@@ -329,8 +423,9 @@
             return;
         }
         if (!window.confirm(`確定申請提款 $${amount.toLocaleString()}？申請後無法自行取消。`)) return;
-        const button = document.getElementById('submitWithdrawalRequest');
-        button.disabled = true;
+        withdrawalSubmitting = true;
+        submitWithdrawalButton.disabled = true;
+        submitWithdrawalButton.textContent = '處理中...';
         errorBox.textContent = '';
         try {
             const response = await fetch('/api/withdrawals/request', {
@@ -343,7 +438,9 @@
             window.location.reload();
         } catch (error) {
             errorBox.textContent = error.message;
-            button.disabled = false;
+            withdrawalSubmitting = false;
+            submitWithdrawalButton.disabled = false;
+            submitWithdrawalButton.innerHTML = originalSubmitMarkup;
         }
     });
 

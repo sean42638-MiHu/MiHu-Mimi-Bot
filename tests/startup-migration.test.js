@@ -68,6 +68,35 @@ test('fresh application startup completes payout and commission migrations in a 
     }
 });
 
+test('fresh application startup without payroll data does not require an encryption key', async () => {
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-startup-no-payroll-key-'));
+    const databasePath = path.join(tempDirectory, 'fresh.sqlite');
+    try {
+        const result = runStartupWorker(databasePath, {}, null);
+        assert.ifError(result.error);
+        assert.equal(result.status, 0, result.stderr || result.stdout);
+        assert.deepEqual(JSON.parse(result.stdout), {
+            commissionMigrations: 2,
+            payoutSettings: 4,
+            hasPayoutPeriod: true,
+            commissionPlayRate: 0.8,
+            commissionCustomRate: null,
+            encryptedUsers: false,
+            encryptedPayouts: false,
+            encryptedCache: false,
+            encryptedValueCount: 0,
+            accountRoundTrip: null,
+            payoutRoundTrip: null
+        });
+    } finally {
+        try {
+            fs.rmSync(tempDirectory, { recursive: true, force: true });
+        } catch (error) {
+            if (error.code !== 'EPERM' && error.code !== 'EBUSY') throw error;
+        }
+    }
+});
+
 test('existing commission data is transformed once and preserved across startup rerun', async () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-existing-startup-'));
     const databasePath = path.join(tempDirectory, 'existing.sqlite');

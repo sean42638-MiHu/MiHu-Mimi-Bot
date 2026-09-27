@@ -1,4 +1,5 @@
 const db = require('../database');
+const { getDiscordRuntimeContext } = require('./discordRuntimeContext');
 
 const SENSITIVE_KEY = /pass(?:word|wd|phrase)?|session|csrf|token|secret|api.?key|credential|bank|account|routing|verification|code_hash/i;
 
@@ -19,6 +20,24 @@ function serializeAuditValue(value) {
 }
 
 function writeAuditLog({ operatorId = null, studioId = null, action, targetType, targetId = null, before = null, after = null, metadata = null, ipAddress = null }) {
+    const runtimeContext = getDiscordRuntimeContext();
+    let auditMetadata = metadata;
+    if (runtimeContext) {
+        const baseMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+            ? metadata
+            : (metadata === null || metadata === undefined ? {} : { detail: metadata });
+        const orderId = targetType === 'order'
+            ? targetId
+            : (baseMetadata.orderId || (baseMetadata.referenceType === 'order' ? baseMetadata.referenceId : null));
+        auditMetadata = {
+            ...baseMetadata,
+            environment: runtimeContext.runtimeScope === 'DEVELOPMENT' ? 'development' : (process.env.APP_ENV || process.env.NODE_ENV || 'production'),
+            guildId: runtimeContext.guildId,
+            actorId: operatorId || runtimeContext.actorId || null,
+            ...(orderId === null || orderId === undefined ? {} : { orderId: String(orderId) })
+        };
+    }
+
     return new Promise((resolve, reject) => {
         db.run(`
             INSERT INTO audit_logs
@@ -32,7 +51,7 @@ function writeAuditLog({ operatorId = null, studioId = null, action, targetType,
             targetId === null || targetId === undefined ? null : String(targetId),
             serializeAuditValue(before),
             serializeAuditValue(after),
-            serializeAuditValue(metadata),
+            serializeAuditValue(auditMetadata),
             ipAddress
         ], function (err) {
             if (err) reject(err);

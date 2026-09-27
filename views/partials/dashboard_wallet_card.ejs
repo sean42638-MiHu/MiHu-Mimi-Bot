@@ -39,10 +39,7 @@
     }
 
     /* 限制卡片本體在容器中的最大寬度，確保不會被拉太寬 */
-    .vip-card-center-container > div,
-    .vip-card-center-container .wallet-vip-card,
-    .vip-card-center-container .vip-credit-card-container,
-    .vip-card-center-container .vip-credit-card-compact {
+    .vip-card-center-container > .vip-premium-card-frame {
         width: 100%;
         max-width: 420px;
     }
@@ -59,6 +56,6 @@
 
     <!-- 💳 完美置中區域 -->
     <div class="vip-card-center-container">
-        <%- include('wallet_card', { user: activeUser, vipColor: typeof vipColor !== 'undefined' ? vipColor : null }) %>
+        <%- include('wallet_card', { user: activeUser, vipInfo: vipInfo, mode: 'compact' }) %>
     </div>
 </div>

@@ -1,0 +1,82 @@
+<div class="modal fade" id="discordCommandDeployModal" tabindex="-1" aria-hidden="true"
+    aria-labelledby="discordCommandDeployModalTitle" aria-describedby="discordCommandDeployModalDescription">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable discord-command-deploy-dialog">
+        <div class="modal-content discord-command-deploy-content">
+            <div class="modal-header discord-command-deploy-header">
+                <div class="d-flex align-items-start gap-3">
+                    <span class="discord-command-deploy-icon" aria-hidden="true">
+                        <i class="fa-brands fa-discord"></i>
+                    </span>
+                    <div>
+                        <h2 class="modal-title discord-command-deploy-title" id="discordCommandDeployModalTitle">Discord 指令部署</h2>
+                        <p class="discord-command-deploy-subtitle mb-0">Slash Commands 已與網站 Runtime 完全分離</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+
+            <div class="modal-body discord-command-deploy-body" id="discordCommandDeployModalDescription">
+                <section class="discord-deploy-security" aria-labelledby="discordDeploySecurityTitle">
+                    <div class="discord-deploy-security-icon" aria-hidden="true">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div class="discord-deploy-security-copy">
+                        <span class="discord-deploy-badge"><span class="discord-deploy-dot" aria-hidden="true"></span>DEPLOYMENT ONLY</span>
+                        <h3 id="discordDeploySecurityTitle">Web Runtime 安全隔離</h3>
+                        <p>網站啟動與 HTTP Request 不會呼叫 Discord REST API。</p>
+                    </div>
+                </section>
+
+                <ul class="discord-deploy-status-list" aria-label="服務狀態">
+                    <li><span><i class="fa-solid fa-globe" aria-hidden="true"></i>網站啟動</span><strong>不註冊指令</strong></li>
+                    <li><span><i class="fa-brands fa-discord" aria-hidden="true"></i>OAuth 登入</span><strong>正常使用</strong></li>
+                    <li><span><i class="fa-solid fa-robot" aria-hidden="true"></i>Discord Bot</span><strong><%= botRuntimeStatus %></strong></li>
+                    <li><span><i class="fa-solid fa-code-branch" aria-hidden="true"></i>Slash Commands</span><strong>需明確部署</strong></li>
+                </ul>
+
+                <div class="discord-deploy-command-section">
+                    <div class="discord-deploy-target-state">
+                        <span>開發測試群</span>
+                        <strong class="<%= devGuildConfigured ? 'is-configured' : 'is-missing' %>">
+                            <i class="fa-solid <%= devGuildConfigured ? 'fa-circle-check' : 'fa-circle-xmark' %>" aria-hidden="true"></i>
+                            GUILD_DEV_ID <%= devGuildConfigured ? '已設定' : '未設定' %>
+                        </strong>
+                    </div>
+                    <p class="discord-deploy-command-intro">本機開發時，需要更新 Development Slash Commands 才執行：</p>
+                    <div class="discord-deploy-command-box">
+                        <span class="discord-deploy-prompt" aria-hidden="true">&gt;</span>
+                        <code id="discordDevCommandDeployValue"><%= devDeploymentCommand %></code>
+                        <button type="button" class="discord-deploy-copy-button" data-copy-discord-command="discordDevCommandDeployValue"
+                            aria-label="複製開發測試群部署命令" title="複製開發部署指令">
+                            <i class="fa-regular fa-copy" aria-hidden="true"></i>
+                            <span data-copy-label>複製開發指令</span>
+                        </button>
+                    </div>
+                    <p class="discord-deploy-copy-status" data-copy-status role="status" aria-live="polite"></p>
+                </div>
+
+                <div class="discord-deploy-formal-command">
+                    <p>正式部署仍使用既有明確部署命令：</p>
+                    <div class="discord-deploy-command-box">
+                        <span class="discord-deploy-prompt" aria-hidden="true">&gt;</span>
+                        <code id="discordFormalCommandDeployValue"><%= formalDeploymentCommand %></code>
+                        <button type="button" class="discord-deploy-copy-button" data-copy-discord-command="discordFormalCommandDeployValue"
+                            aria-label="複製正式 Discord 指令部署命令" title="複製正式部署指令">
+                            <i class="fa-regular fa-copy" aria-hidden="true"></i>
+                            <span data-copy-label>複製正式指令</span>
+                        </button>
+                    </div>
+                    <p class="discord-deploy-copy-status" data-copy-status role="status" aria-live="polite"></p>
+                </div>
+
+                <aside class="discord-deploy-warning" aria-label="部署提醒">
+                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                    <div>
+                        <p>只有在新增、刪除或修改 Slash Command 定義後，才需要重新執行部署。</p>
+                        <p>一般 npm start、網站重新啟動、OAuth 登入，皆不需要重新部署 Discord Commands。</p>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+</div>

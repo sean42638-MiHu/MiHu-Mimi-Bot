@@ -62,7 +62,11 @@ test('application, bot and mailer imports do not trigger external effects', asyn
         require('../deploy-commands');
         const { clearAllCommands } = require('../clear-commands');
         const { registerGuildCommands, clearGuildCommands } = require('../utils/discordCommandRegistry');
-        const { sendVerificationCode, createEmailService } = require('../services/emailService');
+            require('../scripts/deployDevelopmentCommands');
+            require('../scripts/startDevelopmentBot');
+            require('../scripts/seedDevelopmentUsers');
+            require('../scripts/resetDevelopmentData');
+            const { sendVerificationCode, createEmailService } = require('../services/emailService');
         db = require('../database');
 
         assert.equal(typeof app, 'function');
@@ -109,5 +113,35 @@ test('application, bot and mailer imports do not trigger external effects', asyn
         } catch (error) {
             if (error.code !== 'EPERM' && error.code !== 'EBUSY') throw error;
         }
+    }
+});
+
+test('explicit command deployment entrypoint invokes only an injected registration mock', () => {
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-command-deploy-'));
+    const preloadPath = path.join(tempDirectory, 'mock-registration.cjs');
+    const deploymentEntry = path.join(__dirname, '..', 'deploy-commands.js');
+
+    fs.writeFileSync(preloadPath, `
+        const Module = require('node:module');
+        const originalLoad = Module._load;
+        Module._load = function (request, parent, isMain) {
+            if (request === './scripts/registerDiscordCommands' && parent && parent.filename === process.env.MOCK_DEPLOYMENT_ENTRY) {
+                return { registerDiscordCommands: async () => process.stdout.write('MOCK_REGISTRATION_CALLED\\n') };
+            }
+            return originalLoad.call(this, request, parent, isMain);
+        };
+    `);
+
+    try {
+        const result = spawnSync(process.execPath, ['--require', preloadPath, deploymentEntry], {
+            cwd: path.dirname(deploymentEntry),
+            env: { ...process.env, MOCK_DEPLOYMENT_ENTRY: deploymentEntry },
+            encoding: 'utf8'
+        });
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /MOCK_REGISTRATION_CALLED/);
+        assert.doesNotMatch(result.stdout + result.stderr, /api\.discord\.com|Discord command registration completed/);
+    } finally {
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
     }
 });

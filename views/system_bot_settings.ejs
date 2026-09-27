@@ -6,6 +6,7 @@
     <title>機器人指令設定 · 米胡電競 MiHu Gaming</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/discord-command-deploy-modal.css">
     <style>
         html, body {
             background-color: #0b0914 !important;
@@ -56,18 +57,18 @@
                         <i class="fa-solid fa-robot text-info"></i>
                         <span>Discord 機器人設定</span>
                     </div>
-                    <p class="text-secondary small mb-0">顯示機器人目前載入的 Discord 指令；同步會重新註冊現有指令</p>
+                    <p class="text-secondary small mb-0">顯示 Web Runtime 已載入的指令；Discord 部署需由操作人員明確執行</p>
                 </div>
 
                 <div class="d-flex align-items-center gap-2">
                     <a href="/system/payout-settings" class="btn btn-outline-light rounded-pill px-3 py-2 small fw-semibold">
                         <i class="fa-solid fa-calendar-days me-1"></i>薪資提款設定
                     </a>
-                    <form action="/system/bot-settings/sync" method="POST">
-                        <button type="submit" class="btn btn-outline-info rounded-pill px-3 py-2 small fw-semibold">
-                            <i class="fa-solid fa-rotate me-1"></i>同步至 Discord
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-outline-info rounded-pill px-3 py-2 small fw-semibold"
+                        data-bs-toggle="modal" data-bs-target="#discordCommandDeployModal"
+                        aria-controls="discordCommandDeployModal">
+                        <i class="fa-solid fa-terminal me-1" aria-hidden="true"></i>指令部署
+                    </button>
                 </div>
             </div>
 
@@ -110,10 +111,18 @@
 
             <!-- 🚀 模組化：引進 10 則動態滾動表格組件 -->
             <%- include('partials/bot_commands_table', { commands: commandList }) %>
+
+            <%- include('modals/discord_command_deploy_modal', {
+                devDeploymentCommand,
+                formalDeploymentCommand,
+                devGuildConfigured,
+                botRuntimeStatus
+            }) %>
         </div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/discord-command-deploy-modal.js" defer></script>
 </body>
 </html>

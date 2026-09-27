@@ -61,7 +61,7 @@ const WALLET_FIELDS = {
         shortName: 'VIP',
         dbColumn: 'vip_level',
         type: 'number',
-        description: '會員當前獲得的尊榮 VIP 階級 (VIP 0 ~ VIP 7)'
+        description: '會員目前獲得的尊榮 VIP 階級'
     }
 };
 

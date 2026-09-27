@@ -16,7 +16,8 @@ if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) passport
     clientID: process.env.DISCORD_CLIENT_ID,
     clientSecret: process.env.DISCORD_CLIENT_SECRET,
     callbackURL: process.env.DISCORD_CALLBACK_URL || 'http://localhost:3000/auth/discord/callback',
-    scope: scopes
+    scope: scopes,
+    state: true
 }, (accessToken, refreshToken, profile, done) => {
     const { id, username, global_name, avatar } = profile;
 

@@ -1,0 +1,29 @@
+[
+  {
+    "role_key": "member",
+    "name": "DEV Member",
+    "category": "Development",
+    "tier_level": 1,
+    "color_badge": "info",
+    "description": "Development sandbox member",
+    "permissions": ["home", "profile", "my_wallet", "my_orders"]
+  },
+  {
+    "role_key": "staff",
+    "name": "DEV Staff",
+    "category": "Development",
+    "tier_level": 2,
+    "color_badge": "success",
+    "description": "Development sandbox staff",
+    "permissions": ["home", "profile", "my_wallet", "my_orders"]
+  },
+  {
+    "role_key": "admin",
+    "name": "DEV Manager",
+    "category": "Development",
+    "tier_level": 3,
+    "color_badge": "primary",
+    "description": "Development sandbox manager",
+    "permissions": ["home", "profile", "my_wallet", "my_orders", "sys_settings"]
+  }
+]

@@ -9,7 +9,7 @@
     const safeIconId = typeof iconId !== 'undefined' && iconId ? String(iconId).replace(/[^A-Za-z0-9_-]/g, '') : '';
     const safeLabelId = typeof labelId !== 'undefined' && labelId ? String(labelId).replace(/[^A-Za-z0-9_-]/g, '') : '';
 %>
-<span<% if (safeId) { %> id="<%= safeId %>"<% } %> class="vip-badge<% if (safeExtraClass) { %> <%= safeExtraClass %><% } %>" style="--vip-color: <%= safeVipColor %>;">
+<span<% if (safeId) { %> id="<%= safeId %>"<% } %> class="vip-badge<% if (safeExtraClass) { %> <%= safeExtraClass %><% } %>" data-vip-badge style="--vip-color: <%= safeVipColor %>;">
     <i<% if (safeIconId) { %> id="<%= safeIconId %>"<% } %> class="fa-solid fa-crown vip-badge__icon"></i>
-    <span<% if (safeLabelId) { %> id="<%= safeLabelId %>"<% } %> class="vip-badge__label" data-vip-preview-name><%= rawLevel %></span>
+    <span<% if (safeLabelId) { %> id="<%= safeLabelId %>"<% } %> class="vip-badge__label" data-vip-badge-label data-vip-preview-name><%= rawLevel %></span>
 </span>

@@ -7,9 +7,13 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "bot:start": "node botRunner.js",
+    "bot:start:dev": "node scripts/startDevelopmentBot.js",
     "discord:register": "node scripts/registerDiscordCommands.js",
     "discord:clear": "node clear-commands.js",
     "deploy-commands": "node scripts/registerDiscordCommands.js",
+    "deploy:commands:dev": "node scripts/deployDevelopmentCommands.js",
+    "dev:seed-users": "node scripts/seedDevelopmentUsers.js",
+    "dev:reset-data": "node scripts/resetDevelopmentData.js",
     "test": "node --test"
   },
   "dependencies": {

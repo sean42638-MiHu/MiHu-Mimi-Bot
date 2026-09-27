@@ -2,6 +2,7 @@ const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('disc
 const db = require('../database');
 const fs = require('fs');
 const path = require('path');
+const { getRuntimeDataDirectory } = require('../utils/runtimePaths');
 const { dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
@@ -11,7 +12,7 @@ function checkDiscordAdminPermission(interaction) {
 }
 
 function syncUsersJsonFromDb() {
-    const usersFilePath = path.join(__dirname, '..', 'data', 'users.json');
+    const usersFilePath = path.join(getRuntimeDataDirectory(), 'users.json');
     db.all('SELECT * FROM users ORDER BY created_at DESC', (err, rows) => {
         if (!err && rows) {
             try { fs.writeFileSync(usersFilePath, JSON.stringify(rows, null, 2), 'utf8'); } catch (e) {}
