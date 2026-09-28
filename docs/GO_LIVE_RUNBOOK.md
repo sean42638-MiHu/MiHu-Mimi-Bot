@@ -31,7 +31,7 @@ Status: **NO-GO / PREPARATION ONLY**. This checklist is operational guidance; it
 - [ ] Run `npm run db:readiness`; PASS is configuration/schema readiness only, not deployment or RBAC verification.
 - [ ] Stop writers, create a verified pre-migration backup with `npm run db:backup`, then run `npm run db:migrate` with its explicit confirmation and manifest.
 - [ ] Confirm migration failures exit non-zero; Web/Bot startup must only validate schema and must not migrate.
-- [ ] Run `npm run db:preflight` only after externally verifying the Production instance and setting `PRODUCTION_PREFLIGHT_CONFIRM=YES`.
+- [ ] Run `npm run db:preflight` only after externally verifying the Production instance and setting `PRODUCTION_PREFLIGHT_CONFIRM=YES`. `PRODUCTION_PREFLIGHT_MODE=INITIALIZATION` PASS is structural evidence only and is never a GO; see PRODUCTION_VPS_RUNBOOK T/U.
 - [ ] Run `node scripts/payrollEncryptionStatus.js --require-encrypted`; require zero plaintext and invalid ciphertext values.
 - [ ] Verify schema/index/defaults; no production payout/test row may be inserted.
 
@@ -69,8 +69,11 @@ Status: **NO-GO / PREPARATION ONLY**. This checklist is operational guidance; it
 - [ ] External staging and rotation checklists pass.
 - [ ] No new unexplained financial reconciliation difference.
 - [ ] Manual financial approvals are recorded; no inferred repair is pending.
+- [ ] `GO_LIVE` mode preflight PASS with `goLive.rbac: RBAC_STAFFED`: the break-glass principal's stored role is `admin` and every studio has at least one `admin`-assigned user.
+- [ ] If the restricted Web OAuth initialization exception (PRODUCTION_VPS_RUNBOOK U.2) was used, its window is closed and its audit review is recorded.
+- [ ] `MIHU_RBAC_INITIALIZATION_WINDOW` is absent from every Web env file, and the initialization Nginx site is replaced by the reviewed normal site.
 
-Any critical gate failure, invalid ciphertext, nonzero plaintext post-scan, missing key, new unexplained finance delta, or unapproved external target is **NO-GO**.
+Any critical gate failure, invalid ciphertext, nonzero plaintext post-scan, missing key, new unexplained finance delta, or unapproved external target is **NO-GO**. Staffing of zero, `INITIALIZATION`-only preflight evidence, or `goLive.rbac: NO_GO` is **NO-GO**.
 
 ## H. Rollback
 

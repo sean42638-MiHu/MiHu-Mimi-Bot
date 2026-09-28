@@ -1,0 +1,89 @@
+# Template only — RBAC initialization window (PRODUCTION_VPS_RUNBOOK U.2).
+# Replace server_name/TLS paths as in mihu.conf.example. Install only for the approved window,
+# then restore the normal site config. Nothing here is applied automatically.
+#
+# Source-address trust:
+# - $remote_addr equals CF-Connecting-IP only when the TCP peer is inside the http-level
+#   set_real_ip_from list (real_ip_header CF-Connecting-IP). Refresh that list from
+#   Cloudflare's published ranges at window start; a stale list mis-identifies clients.
+# - A direct connection from a non-Cloudflare peer keeps its real peer address, so a forged
+#   CF-Connecting-IP header cannot satisfy the allow list.
+# - An address is a network egress, not a person (CGNAT, shared office/VPN, dynamic IPv6).
+#   Identity comes from Discord OAuth plus the application guard and audit review.
+#
+# Access mode (choose one in /etc/nginx/snippets/mihu-init-access.conf):
+#   A. SSH tunnel (preferred):
+#        if ($realip_remote_addr !~ "^(127\.0\.0\.1|::1)$") { return 403; }
+#      $realip_remote_addr is the real TCP peer, so no edge-asserted address can pass.
+#      Requires a publicly trusted certificate on a loopback-only listener (127.0.0.1:8443);
+#      the Cloudflare Origin CA certificate is not browser-trusted (PRODUCTION_VPS_RUNBOOK U.3).
+#      Operator forwards local 443 to VPS 127.0.0.1:8443 and maps only this host in a dedicated
+#      browser profile (--host-resolver-rules), so the URL and DISCORD_CALLBACK_URL stay unchanged.
+#   B. Named egress addresses via Cloudflare (approved 2026-09-28):
+#        allow 203.0.113.10;              # operator IPv4 /32 as reported by /cdn-cgi/trace over IPv4
+#        allow 2001:db8:1234:5678::abcd;  # operator IPv6 exact /128 from /cdn-cgi/trace over IPv6
+#        deny all;
+#      The hostname is dual-stack at Cloudflare, so CF-Connecting-IP is IPv6 for IPv6 clients;
+#      list both families or the operator is refused. Never widen IPv6 to a /64; if the address
+#      changes, abort and re-verify (PRODUCTION_VPS_RUNBOOK U.4). Do not enable Pseudo IPv4 overwrite.
+#      Record each address and its owner in the change record.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.invalid;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/acme-challenge;
+        default_type text/plain;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name example.invalid;
+
+    ssl_certificate /etc/nginx/tls/mihu/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/mihu/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 1m;
+
+    include /etc/nginx/snippets/mihu-init-access.conf;
+
+    location ~ ^/(css|js|images)/ {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:3000;
+        include /etc/nginx/snippets/mihu-init-proxy.conf;
+    }
+
+    location ~ ^/(login|logout|auth/discord|auth/discord/callback|auth/login-transition|management/members/?)$ {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:3000;
+        include /etc/nginx/snippets/mihu-init-proxy.conf;
+    }
+
+    location ~ ^/management/members/update-vip/[^/]+$ {
+        limit_except POST { deny all; }
+        proxy_pass http://127.0.0.1:3000;
+        include /etc/nginx/snippets/mihu-init-proxy.conf;
+    }
+
+    location / {
+        return 503;
+    }
+}
+
+# /etc/nginx/snippets/mihu-init-proxy.conf (lines prefixed with "#| ")
+#| proxy_http_version 1.1;
+#| proxy_set_header Host $host;
+#| proxy_set_header X-Real-IP $remote_addr;
+#| proxy_set_header X-Forwarded-For $remote_addr;
+#| proxy_set_header X-Forwarded-Proto https;
+#| proxy_connect_timeout 5s;
+#| proxy_send_timeout 60s;
+#| proxy_read_timeout 120s;

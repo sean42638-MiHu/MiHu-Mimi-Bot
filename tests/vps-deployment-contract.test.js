@@ -22,7 +22,9 @@ test('VPS systemd templates run distinct non-root runtimes with no migration or 
     assert.match(bot, /Group=mihu/);
     assert.match(bot, /EnvironmentFile=\/etc\/mihu\/mihu\.env/);
     assert.match(bot, /EnvironmentFile=\/etc\/mihu\/mihu-bot\.env/);
-    assert.match(bot, /ExecStart=\/usr\/bin\/node mihu-bot-mimi\/botRunner\.js/);
+    assert.match(bot, /WorkingDirectory=\/opt\/mihu\/app/);
+    assert.match(bot, /ExecStart=\/usr\/bin\/node botRunner\.js/);
+    assert.ok(fs.existsSync(path.join(root, 'botRunner.js')), 'bot ExecStart must resolve inside WorkingDirectory');
     assert.doesNotMatch(bot, /index\.js|db:migrate|registerDiscordCommands/);
     assert.match(web, /NoNewPrivileges=true/);
     assert.match(bot, /NoNewPrivileges=true/);

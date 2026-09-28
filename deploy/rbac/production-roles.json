@@ -1,0 +1,80 @@
+{
+  "contractVersion": 1,
+  "approval": {
+    "status": "PENDING_OWNER_APPROVAL",
+    "approvedBy": null,
+    "changeRecord": null
+  },
+  "roles": [
+    {
+      "role_key": "admin",
+      "name": "店長",
+      "category": "最高權限",
+      "tier_level": 100,
+      "color_badge": "danger",
+      "description": "店長兼財務：營運管理與完整提款作業（查看、敏感資料、匯出、核銷、駁回）",
+      "permissions": [
+        "home", "personal", "profile", "my_wallet", "my_income", "my_orders",
+        "manage", "manage_members", "manage_staff", "manage_orders",
+        "system", "sys_vip", "sys_roles", "sys_settings",
+        "member_adjust_balance", "member_adjust_vip",
+        "staff_view_payroll", "staff_edit_role_commission", "orders_edit_and_reassign",
+        "payout.view", "payout.view_sensitive", "payout.export", "payout.mark_paid", "payout.reject"
+      ]
+    },
+    {
+      "role_key": "aftersales",
+      "name": "售後管理",
+      "category": "主管職位",
+      "tier_level": 80,
+      "color_badge": "warning",
+      "description": "專責處理顧客售後客訴、爭議訂單仲裁、退款稽核與客服運作監管",
+      "permissions": [
+        "home", "personal", "profile", "my_wallet", "my_income", "my_orders",
+        "manage_members", "manage_staff", "manage_orders", "member_adjust_balance", "member_adjust_vip"
+      ]
+    },
+    {
+      "role_key": "manager",
+      "name": "客服主管",
+      "category": "主管職位",
+      "tier_level": 75,
+      "color_badge": "warning",
+      "description": "督導日常派單運作、管理客服與陪陪人員、處理售後爭議與訂單改派",
+      "permissions": [
+        "home", "personal", "profile", "my_wallet", "my_income", "my_orders",
+        "manage", "manage_members", "manage_staff", "manage_orders", "member_adjust_balance", "orders_edit_and_reassign"
+      ]
+    },
+    {
+      "role_key": "cs",
+      "name": "客服",
+      "category": "客服職位",
+      "tier_level": 50,
+      "color_badge": "info",
+      "description": "負責 Discord 前線派單、接單改派、處理玩家諮詢與訂單狀態維護",
+      "permissions": [
+        "home", "personal", "profile", "my_wallet", "my_orders",
+        "manage_members", "manage_staff", "manage_orders", "orders_edit_and_reassign"
+      ]
+    },
+    {
+      "role_key": "talent",
+      "name": "陪陪",
+      "category": "一般職位",
+      "tier_level": 30,
+      "color_badge": "primary",
+      "description": "工作室陪玩師，可即時查看接單紀錄、收益明細與提領帳務",
+      "permissions": ["home", "personal", "profile", "my_wallet", "my_income", "my_orders"]
+    },
+    {
+      "role_key": "member",
+      "name": "會員",
+      "category": "會員",
+      "tier_level": 10,
+      "color_badge": "secondary",
+      "description": "平台一般註冊玩家老闆，可進行點單、儲值與檢視個人錢包 VIP 進度",
+      "permissions": ["home", "home_wallet_card", "home_info", "personal", "profile", "profile_nickname", "my_wallet", "my_orders"]
+    }
+  ]
+}

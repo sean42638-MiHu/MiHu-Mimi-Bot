@@ -27,7 +27,9 @@ const PERMISSIONS = Object.freeze([
     ['payroll.manage', '管理薪轉', '薪轉', 'manage', 'high'],
     ['payout.view', '查看提款', '提款', 'read', 'high'],
     ['payout.export', '匯出提款資料', '提款', 'manage', 'high'],
-    ['payout.view_sensitive', '查看提款敏感資料', '提款', 'read', 'high']
+    ['payout.view_sensitive', '查看提款敏感資料', '提款', 'read', 'high'],
+    ['payout.mark_paid', '標記提款已匯款', '提款', 'manage', 'high'],
+    ['payout.reject', '駁回提款申請', '提款', 'manage', 'high']
 ].map(([key, label, group, mode, risk]) => Object.freeze({ key, label, description: `${mode === 'manage' ? '可執行' : '唯讀'}${label}`, group, mode, risk })));
 
 const PERMISSION_METADATA = Object.freeze(Object.fromEntries(PERMISSIONS.map(item => [item.key, item])));

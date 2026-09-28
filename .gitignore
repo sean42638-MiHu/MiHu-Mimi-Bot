@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .env
 .env.local
 .env.*
@@ -14,6 +14,15 @@ artifacts/test/
 npm-debug.log*
 yarn-debug.log*
 .DS_Store
+# SSH and private key material must never be committed.
+.ssh/
+id_rsa*
+id_ecdsa*
+id_ed25519*
+authorized_keys
+known_hosts
+*.pem
+*.key
 data/users.json
 data/orders.json
 data/topups.json

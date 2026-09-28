@@ -22,6 +22,7 @@
     "db:backup": "node scripts/backupDatabase.js",
     "db:migrate": "node scripts/migrateDatabase.js",
     "db:restore": "node scripts/restoreDatabase.js",
+    "db:rbac-bootstrap": "node scripts/bootstrapProductionRbac.js",
     "test": "node --test"
   },
   "dependencies": {

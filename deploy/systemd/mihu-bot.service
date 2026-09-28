@@ -13,7 +13,7 @@ EnvironmentFile=/etc/mihu/mihu-bot.env
 Environment=NODE_ENV=production
 Environment=APP_ENV=production
 Environment=DISCORD_ENABLED=true
-ExecStart=/usr/bin/node mihu-bot-mimi/botRunner.js
+ExecStart=/usr/bin/node botRunner.js
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s

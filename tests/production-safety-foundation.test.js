@@ -382,22 +382,33 @@ test('explicit migration and restore contracts round-trip only an isolated tempo
         assert.match(migration.stdout, /MIGRATION_AND_READINESS_PASS/);
 
         const seedProductionLike = new sqlite3.Database(databasePath);
-        const readyPermissions = [
+        const approverPermissions = [
             'members.manage', 'staff.manage', 'staff.view_sensitive', 'orders.manage', 'roles.manage',
             'system_settings.manage', 'audit_logs.view', 'system_health.view', 'analytics.view',
-            'discord_control.view', 'payroll.view', 'payout.view', 'payout.view_sensitive',
-            'payout.export', 'payout.mark_paid', 'payout.reject'
+            'discord_control.view', 'payroll.view', 'payout.view', 'payout.view_sensitive', 'payout.export',
+            'payout.mark_paid', 'payout.reject'
         ];
-        await new Promise((resolve, reject) => seedProductionLike.run(
-            'INSERT INTO roles (role_key,name,permissions) VALUES (?,?,?)',
-            ['admin', '店長', JSON.stringify(readyPermissions)],
-            error => error ? reject(error) : resolve()
-        ));
-        await new Promise((resolve, reject) => seedProductionLike.run(
-            'INSERT INTO users (id,username,role,studio_id) VALUES (?,?,?,?)',
-            ['preflight-breakglass-user', 'Fixture', 'admin', 1],
-            error => error ? reject(error) : resolve()
-        ));
+        const fixtureRoles = [
+            ['admin', '店長', approverPermissions],
+            ['member', '會員', ['home', 'profile']]
+        ];
+        const fixtureUsers = [
+            ['preflight-breakglass-user', 'Fixture', 'admin', 1]
+        ];
+        for (const [roleKey, name, permissions] of fixtureRoles) {
+            await new Promise((resolve, reject) => seedProductionLike.run(
+                'INSERT INTO roles (role_key,name,permissions) VALUES (?,?,?)',
+                [roleKey, name, JSON.stringify(permissions)],
+                error => error ? reject(error) : resolve()
+            ));
+        }
+        for (const user of fixtureUsers) {
+            await new Promise((resolve, reject) => seedProductionLike.run(
+                'INSERT INTO users (id,username,role,studio_id) VALUES (?,?,?,?)',
+                user,
+                error => error ? reject(error) : resolve()
+            ));
+        }
         await new Promise(resolve => seedProductionLike.close(resolve));
 
         const preflight = spawnSync(process.execPath, ['scripts/productionPreflight.js'], {
@@ -421,6 +432,9 @@ test('explicit migration and restore contracts round-trip only an isolated tempo
         assert.equal(typeof preflightReport.sqlite.journalMode, 'string');
         assert.equal(preflightReport.checks.deploymentVerified, false);
         assert.equal(preflightReport.checks.productionRbacVerified, true);
+        assert.equal(preflightReport.mode, 'GO_LIVE');
+        assert.equal(preflightReport.goLive.rbac, 'RBAC_STAFFED');
+        assert.equal(preflightReport.goLive.declared, false);
         assert.equal(preflight.stdout.includes('preflight-breakglass-user'), false);
 
         const restoreSource = await createDatabaseBackup(testEnv, new Date('2026-09-28T12:10:00.000Z'));

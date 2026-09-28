@@ -13,6 +13,7 @@ const { getRolesDataFromDb } = require('./utils/dataSync');
 const { getRoleInfo } = require('./utils/roleHelper');
 const passport = require('./config/passport');
 const { sameOriginGuard } = require('./middleware/csrf');
+const { initializationWindowGuard, isRbacInitializationWindow } = require('./middleware/initializationWindowGuard');
 const { isPlatformSuperuserId, resolvePermissions, hasResolvedPermission } = require('./utils/permissionResolver');
 
 const authRouter = require('./routes/auth');
@@ -88,6 +89,8 @@ if (process.env.NODE_ENV === 'test' && process.env.TEST_AUTH_FIXTURE_ENABLED ===
         });
     });
 }
+
+if (isRbacInitializationWindow(process.env)) app.use(initializationWindowGuard);
 
 app.use('/', authRouter);
 app.use('/', authEmailRouter);

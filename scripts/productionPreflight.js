@@ -5,27 +5,15 @@ const { ALL_GRANULAR_PERMISSIONS, PERMISSION_METADATA } = require('../config/per
 const { KNOWN_LEGACY_PERMISSIONS, isPlatformSuperuserId, resolvePermissions } = require('../utils/permissionResolver');
 const { inspectProductionDatabaseConfig } = require('../utils/productionDatabaseConfig');
 const { inspectDatabaseReadiness } = require('../utils/databaseReadiness');
+const {
+    ADMIN_REQUIRED_PERMISSION_GROUPS,
+    evaluateBreakGlassStoredRole,
+    evaluatePayoutDuties,
+    evaluateStaffing
+} = require('../utils/rbacPolicy');
 
-const REQUIRED_PERMISSION_GROUPS = Object.freeze({
-    members: [['members.manage', 'manage_members']],
-    staff: [['staff.manage', 'manage_staff'], ['staff.view_sensitive', 'staff_view_payroll']],
-    orders: [['orders.manage', 'manage_orders']],
-    roles: [['roles.manage', 'sys_roles']],
-    system_settings: [['system_settings.manage', 'sys_settings']],
-    audit_logs: [['audit_logs.view', 'sys_settings']],
-    system_health: [['system_health.view', 'sys_settings']],
-    analytics: [['analytics.view', 'manage_orders']],
-    discord_control: [['discord_control.view', 'sys_settings']],
-    payroll_payout: [
-        ['payroll.view', 'staff_view_payroll'],
-        ['payout.view'],
-        ['payout.view_sensitive'],
-        ['payout.export'],
-        ['payout.mark_paid'],
-        ['payout.reject'],
-        ['staff.view_sensitive', 'staff_view_payroll']
-    ]
-});
+const REQUIRED_PERMISSION_GROUPS = ADMIN_REQUIRED_PERMISSION_GROUPS;
+const PREFLIGHT_MODES = Object.freeze(['INITIALIZATION', 'GO_LIVE']);
 
 function getAll(db, sql, params = []) {
     if (!/^\s*(SELECT|PRAGMA)\b/i.test(sql) || /\b(INSERT|UPDATE|DELETE|REPLACE|ALTER|DROP|CREATE|VACUUM|REINDEX)\b/i.test(sql)) {
@@ -96,6 +84,8 @@ function refuse(reason, database = null) {
 
 async function runProductionPreflight(env = process.env) {
     if (env.PRODUCTION_PREFLIGHT_CONFIRM !== 'YES') return refuse('Set PRODUCTION_PREFLIGHT_CONFIRM=YES after verifying the Production runtime externally.');
+    const mode = String(env.PRODUCTION_PREFLIGHT_MODE || 'GO_LIVE').trim().toUpperCase();
+    if (!PREFLIGHT_MODES.includes(mode)) return refuse('PRODUCTION_PREFLIGHT_MODE must be INITIALIZATION or GO_LIVE.');
     const databaseConfig = inspectProductionDatabaseConfig(env);
     if (!databaseConfig.ok) return refuse(databaseConfig.errors, databaseConfig);
 
@@ -114,8 +104,10 @@ async function runProductionPreflight(env = process.env) {
         const invalidPermissionSets = findInvalidPermissionSets(allRoles);
         const platformId = String(env.PLATFORM_SUPERUSER_ID || '').trim();
         const platformUser = platformId
-            ? await getOne(db, 'SELECT role FROM users WHERE id = ?', [platformId])
+            ? await getOne(db, 'SELECT id, role FROM users WHERE id = ?', [platformId])
             : null;
+        const users = await getAll(db, 'SELECT id, role, studio_id FROM users');
+        const studios = await getAll(db, 'SELECT id FROM studios ORDER BY id');
         const breakGlassPermissions = resolvePermissions([], Boolean(platformId && isPlatformSuperuserId(platformId)));
         const assignmentIntegrity = await getOne(db, `
             SELECT COUNT(*) AS invalid_assignments
@@ -136,11 +128,25 @@ async function runProductionPreflight(env = process.env) {
         const configuredBusyTimeoutMs = Number(env.SQLITE_BUSY_TIMEOUT_MS || 0);
         const busyTimeoutPass = Number.isInteger(configuredBusyTimeoutMs) && configuredBusyTimeoutMs >= 100 && configuredBusyTimeoutMs <= 30000;
         const adminRolePass = Boolean(adminRole);
-        const preflightPass = integrityPass && schema.ready && adminRolePass && requiredCapabilitiesPass
-            && wildcardResolverPass && Boolean(platformUser) && noUnknownPermissions && permissionJsonValid && assignmentPass && busyTimeoutPass;
+        const payoutDuties = evaluatePayoutDuties(allRoles);
+        const noWildcardRoles = explicitWildcardRoles.length === 0;
+        const breakGlassStoredRole = evaluateBreakGlassStoredRole(platformUser);
+        const initializationPass = integrityPass && schema.ready && adminRolePass && requiredCapabilitiesPass
+            && wildcardResolverPass && Boolean(platformUser) && noUnknownPermissions && permissionJsonValid && assignmentPass && busyTimeoutPass
+            && payoutDuties.coveragePass && noWildcardRoles && ['MEMBER', 'ADMIN'].includes(breakGlassStoredRole);
+        const staffing = evaluateStaffing({ users, studios });
+        const goLiveRbacPass = initializationPass && breakGlassStoredRole === 'ADMIN' && staffing.status === 'STAFFED';
+        const modePass = mode === 'INITIALIZATION' ? initializationPass : goLiveRbacPass;
 
         return {
-            status: preflightPass ? 'PASS' : 'ACTION_REQUIRED',
+            status: modePass ? 'PASS' : 'ACTION_REQUIRED',
+            mode,
+            initializationCheck: initializationPass ? 'PASS' : 'ACTION_REQUIRED',
+            goLive: {
+                rbac: goLiveRbacPass ? 'RBAC_STAFFED' : 'NO_GO',
+                declared: false,
+                note: 'Preflight never declares GO; every GO_LIVE_RUNBOOK gate must still be signed.'
+            },
             readOnly: true,
             identity: databaseConfig.safeIdentity,
             sqlite: {
@@ -156,13 +162,19 @@ async function runProductionPreflight(env = process.env) {
                 adminEffectiveCapabilities: capabilityChecks,
                 breakGlassConfigured: platformId ? 'CONFIGURED' : 'MISSING',
                 breakGlassUserPresent: platformUser ? 'YES' : 'NO',
+                breakGlassStoredRole,
                 resolverWildcard: wildcardResolverPass ? 'PASS' : 'FAIL',
+                wildcardRoles: noWildcardRoles ? 'PASS' : 'FAIL',
+                payoutDutyCoverage: payoutDuties.coveragePass ? 'PASS' : 'FAIL',
+                staffing: staffing.status,
                 roleAssignments: assignmentPass ? 'PASS' : 'FAIL',
                 permissionJson: permissionJsonValid ? 'PASS' : 'FAIL',
                 sqliteBusyTimeout: busyTimeoutPass ? 'PASS' : 'FAIL',
                 deploymentVerified: false,
-                productionRbacVerified: preflightPass
+                productionRbacVerified: goLiveRbacPass
             },
+            payoutDuties: { coverage: payoutDuties.coverage, combinedDutyRoles: payoutDuties.combinedDutyRoles },
+            staffing: staffing.studios,
             adminRole: adminRole ? { role_key: adminRole.role_key, role_name: adminRole.role_name, storedPermissions, containsWildcard: storedPermissions.includes('*') } : null,
             explicitWildcardRoles: explicitWildcardRoles.map(({ role_key, role_name }) => ({ role_key, role_name })),
             unknownPermissions,
@@ -184,4 +196,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { REQUIRED_PERMISSION_GROUPS, findInvalidPermissionSets, findUnknownPermissions, permissionCapabilityReport, runProductionPreflight };
+module.exports = { PREFLIGHT_MODES, REQUIRED_PERMISSION_GROUPS, findInvalidPermissionSets, findUnknownPermissions, permissionCapabilityReport, runProductionPreflight };
