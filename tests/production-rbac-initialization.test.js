@@ -173,11 +173,11 @@ test('staffing requires at least one admin-assigned user in every studio, includ
     assert.equal(evaluateStaffing({ users: [{ id: 'a', role: 'admin', studio_id: 2 }], studios }).status, 'NOT_STAFFED');
 });
 
-test('repository Production roles definition satisfies the policy but remains pending owner approval', () => {
-    assert.deepEqual(validateRolesDefinition(readRepoRoles()), ['Roles definition is not owner-approved']);
-    assert.equal(readRepoRoles().approval.status, 'PENDING_OWNER_APPROVAL');
-    assert.equal(readRepoRoles().approval.approvedBy, null);
-    assert.equal(readRepoRoles().approval.changeRecord, null);
+test('repository Production roles definition records owner approval and satisfies the policy', () => {
+    assert.deepEqual(validateRolesDefinition(readRepoRoles()), []);
+    assert.equal(readRepoRoles().approval.status, 'APPROVED');
+    assert.equal(readRepoRoles().approval.approvedBy, 'sean42638-MiHu');
+    assert.equal(readRepoRoles().approval.changeRecord, 'MIHU-20260930-WEB-01');
     assert.deepEqual(validateRolesDefinition(approvedCopy()), []);
     const withApproval = approval => ({ ...approvedCopy(), approval: { status: 'APPROVED', ...approval } });
     assert.deepEqual(validateRolesDefinition(withApproval({ approvedBy: 'owner', changeRecord: null })), ['Approved roles definition requires a non-empty changeRecord']);
@@ -211,6 +211,8 @@ test('RBAC bootstrap and preflight separate initialization from go-live staffing
     const fixture = createMigratedFixture();
     const approvedRolesFile = path.join(fixture.directory, 'approved-roles.json');
     fs.writeFileSync(approvedRolesFile, JSON.stringify(approvedCopy()));
+    const pendingRolesFile = path.join(fixture.directory, 'pending-roles.json');
+    fs.writeFileSync(pendingRolesFile, JSON.stringify({ ...approvedCopy(), approval: { status: 'PENDING_OWNER_APPROVAL', approvedBy: null, changeRecord: null } }));
     const bootstrapEnv = extra => ({ ...fixture.productionEnv, RBAC_BOOTSTRAP_CONFIRM: 'YES', PRODUCTION_WRITES_DISABLED: 'YES', BACKUP_STORAGE_VERIFIED: 'YES', ...extra });
 
     try {
@@ -220,7 +222,7 @@ test('RBAC bootstrap and preflight separate initialization from go-live staffing
         await assert.rejects(runRbacBootstrap({ ...bootstrapEnv({ RBAC_BOOTSTRAP_BACKUP_MANIFEST: manifest }), RBAC_BOOTSTRAP_CONFIRM: '' }, { rolesFilePath: approvedRolesFile }), /RBAC_BOOTSTRAP_CONFIRM/);
         await assert.rejects(runRbacBootstrap({ ...bootstrapEnv({ RBAC_BOOTSTRAP_BACKUP_MANIFEST: manifest }), PRODUCTION_WRITES_DISABLED: '' }, { rolesFilePath: approvedRolesFile }), /PRODUCTION_WRITES_DISABLED/);
         await assert.rejects(runRbacBootstrap(bootstrapEnv({}), { rolesFilePath: approvedRolesFile }), /RBAC_BOOTSTRAP_BACKUP_MANIFEST/);
-        await assert.rejects(runRbacBootstrap(bootstrapEnv({ RBAC_BOOTSTRAP_BACKUP_MANIFEST: manifest })), /not owner-approved/);
+        await assert.rejects(runRbacBootstrap(bootstrapEnv({ RBAC_BOOTSTRAP_BACKUP_MANIFEST: manifest }), { rolesFilePath: pendingRolesFile }), /not owner-approved/);
 
         const sqlite3Module = require('sqlite3');
         const OriginalDatabase = sqlite3Module.Database;

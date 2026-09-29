@@ -1,9 +1,9 @@
 {
   "contractVersion": 1,
   "approval": {
-    "status": "PENDING_OWNER_APPROVAL",
-    "approvedBy": null,
-    "changeRecord": null
+    "status": "APPROVED",
+    "approvedBy": "sean42638-MiHu",
+    "changeRecord": "MIHU-20260930-WEB-01"
   },
   "roles": [
     {
