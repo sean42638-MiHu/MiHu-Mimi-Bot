@@ -32,8 +32,9 @@ module.exports = {
             const totalDeposited = Number(vipInfo.totalDeposited || 0);
 
             // 3. 撈取資料庫中的 VIP 階級門檻表，計算下一級升等距離
-            const vipTiers = await new Promise((resolve) => {
-                db.all('SELECT * FROM vip_tiers ORDER BY level ASC', (err, rows) => {
+            const vipTiers = await new Promise((resolve, reject) => {
+                db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (err, rows) => {
+                    if (err) return reject(err);
                     resolve(rows || []);
                 });
             });
@@ -42,7 +43,9 @@ module.exports = {
             const nextTier = vipTiers.find(t => Number(t.level) > currentVipLevel);
 
             let vipProgressText = '';
-            if (nextTier) {
+            if (vipTiers.length === 0) {
+                vipProgressText = 'ℹ️ VIP 升級門檻尚未設定';
+            } else if (nextTier) {
                 const reqDeposited = Number(nextTier.deposit_threshold || 0);
                 const shortDeposited = Math.max(0, reqDeposited - totalDeposited);
 
