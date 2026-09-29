@@ -1,4 +1,5 @@
 const db = require('../database');
+const { checkAndUpdateVipLevel } = require('./vipHelper');
 const { syncUsersJsonFromDb } = require('./dataSync');
 const { DEFAULT_VIP_COLOR } = require('./vipColor');
 const { resolveVipLevel, resolveVipTier } = require('./vipResolver');
@@ -7,12 +8,13 @@ const { resolveVipLevel, resolveVipTier } = require('./vipResolver');
  * 💡 1. 計算並自動更新指定使用者的 VIP 等級與點單折扣 (完整保留原代碼)
  */
 async function getUserVipInfo(userId) {
+    await checkAndUpdateVipLevel(userId);
     return new Promise((resolve) => {
         // 1. 取得使用者與消費/預存統計
         const sql = `
             SELECT u.*,
-                COALESCE((SELECT SUM(total_amount) FROM orders WHERE boss_id = u.id AND status != 'cancelled'), 0) + COALESCE(w.manual_spent, 0) as total_spent,
-                COALESCE((SELECT SUM(amount) FROM topups WHERE user_id = u.id AND amount > 0), 0) + COALESCE(w.manual_deposited, 0) as total_deposited
+                COALESCE(w.manual_spent, (SELECT SUM(total_amount) FROM orders WHERE boss_id = u.id AND status = 'completed'), 0) as total_spent,
+                COALESCE(w.manual_deposited, (SELECT SUM(amount) FROM topups WHERE user_id = u.id AND amount > 0), 0) as total_deposited
             FROM users u LEFT JOIN user_wallets w ON w.user_id = u.id WHERE u.id = ?
         `;
 

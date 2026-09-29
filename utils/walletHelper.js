@@ -135,7 +135,7 @@ async function adjustUserWalletInternal({
             if (bonusChange !== null && bonusChange !== undefined && String(bonusChange).trim() !== '' && !isNaN(Number(bonusChange))) {
                 const parsedBonus = Number(bonusChange);
                 newBonus = currBonus + parsedBonus;
-                newBalance = newBalance + parsedBonus; // 贈送金加減直接影響目前可用餘額
+                // 實充與贈送餘額分開儲存，總額由兩者相加。
             }
 
             // 5. 零負數防護驗證 (防呆鎖)
@@ -191,6 +191,7 @@ async function adjustUserWalletInternal({
                             success: true,
                             newBalance,
                             newBonus,
+                            newTotalBalance: newBalance + newBonus,
                             newSpent,
                             newDeposited
                         });

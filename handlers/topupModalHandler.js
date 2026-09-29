@@ -49,7 +49,7 @@ async function handleTopupModal(interaction) {
                 { name: '💵 本次實充金額', value: `$${realAmount.toLocaleString()} NTD`, inline: true },
                 { name: '🎁 本次贈送金', value: `$${bonusAmount.toLocaleString()} NTD`, inline: true },
                 { name: '📝 充值備註原因', value: note, inline: false },
-                { name: '💰 最新可用總餘額', value: `$${result.newBalance.toLocaleString()} NTD`, inline: true },
+                { name: '💰 最新可用總餘額', value: `$${result.newTotalBalance.toLocaleString()} NTD`, inline: true },
                 { name: '💎 最新總累積實充', value: `$${result.newDeposited.toLocaleString()} NTD`, inline: true }
             )
             .setFooter({ text: `操作管理員：${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
