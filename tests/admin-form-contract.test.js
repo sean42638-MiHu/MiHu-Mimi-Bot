@@ -15,7 +15,7 @@ test('Phase 4 form and modal primitives are scoped and present', () => {
 });
 
 test('Roles, Staff and VIP CRUD forms opt into shared modal and submit loading behavior', () => {
-    const roles = read('views/roles.ejs');
+    const roles = ['views/roles.ejs', 'views/partials/roles_table.ejs', 'views/modals/role_info_modal.ejs', 'views/modals/role_permission_modal.ejs'].map(read).join('\n');
     const staff = read('views/modals/staff_modals.ejs');
     const vip = read('views/modals/vip_modals.ejs');
     for (const view of [roles, staff, vip]) {
@@ -32,7 +32,7 @@ test('Roles, Staff and VIP CRUD forms opt into shared modal and submit loading b
 
 test('Shared form states expose invalid, required, help and sensitive contracts', () => {
     const css = read('public/css/admin-components.css');
-    const roles = read('views/roles.ejs');
+    const roles = ['views/roles.ejs', 'views/modals/role_info_modal.ejs'].map(read).join('\n');
     const staff = read('views/modals/staff_modals.ejs');
     assert.match(css, /aria-invalid=/);
     assert.match(css, /admin-form-label-required/);

@@ -154,8 +154,13 @@
                         const discount = Number(o.discount || 0);
                         const originalPrice = totalAmount + discount;
 
-                        const canEdit = (typeof hasPerm === 'function' && hasPerm('orders.manage')) ||
-                                        (typeof userPerms !== 'undefined' && (userPerms.includes('orders.manage') || userPerms.includes('orders_edit_and_reassign')));
+                        const canEdit = typeof hasPerm === 'function' && hasPerm('orders.manage');
+                        const canAdjustPrice = typeof hasPerm === 'function' && hasPerm('orders.price_adjust');
+                        const canRefund = typeof hasPerm === 'function' && hasPerm('orders.refund');
+                        const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('orders.refund_completed');
+                        const canRefundThisOrder = canRefund
+                            && !['cancelled', 'refunded'].includes(o.status)
+                            && (o.status !== 'completed' || canRefundCompleted);
 
                         const orderObj = {
                             id: o.id,
@@ -185,7 +190,10 @@
                             startTime: o.start_time || '尚未開始',
                             endTime: o.end_time || '尚未結束',
                             createdAt: o.created_at || o.created_time || o.order_date || '未記錄時間',
-                            canEdit: canEdit
+                            canEdit: canEdit,
+                            canAdjustPrice: canAdjustPrice,
+                            canRefund: canRefund,
+                            canRefundCompleted: canRefundCompleted
                         };
                     %>
                         <tr class="order-row" 
@@ -201,7 +209,7 @@
                             <% if (typeof canBatchDeleteOrders !== 'undefined' && canBatchDeleteOrders) { %>
                                 <!-- 🚀 僅限店長顯示 Checkbox，並使用 stopPropagation 避免點擊勾選框時誤觸展開編輯 Modal -->
                                 <td style="text-align: center;" onclick="event.stopPropagation();">
-                                    <input type="checkbox" class="order-checkbox order-checkbox-custom" value="<%= o.id %>">
+                                    <% if (canRefundThisOrder) { %><input type="checkbox" class="order-checkbox order-checkbox-custom" value="<%= o.id %>"><% } %>
                                 </td>
                             <% } %>
 

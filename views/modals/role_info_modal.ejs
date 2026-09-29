@@ -1,0 +1,110 @@
+<% if (hasPerm('roles.manage')) { %>
+<!-- 彈窗 2：編輯身分基本資料 Modal -->
+<div class="modal fade admin-modal" id="editRoleInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--md">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form id="editRoleInfoForm" class="admin-form" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-user-pen text-warning"></i>
+                        <span id="editRoleInfoTitle">編輯身分資料</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body admin-modal-body py-3">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="small text-secondary fw-semibold mb-1">職位名稱</label>
+                            <input type="text" id="editInfoName" name="name" class="form-control form-control-glass admin-form-control" aria-describedby="editInfoNameError" required>
+                            <span id="editInfoNameError" class="admin-field-error" hidden>請輸入職位名稱。</span>
+                        </div>
+                        <div class="col-6">
+                            <label class="small text-secondary fw-semibold mb-1">所屬階級</label>
+                            <select id="editInfoCategory" name="category" class="form-select form-control-glass" style="background-color: #171326; color: #fff;">
+                                <option value="最高權限">最高權限</option>
+                                <option value="主管職位">主管職位</option>
+                                <option value="客服職位">客服職位</option>
+                                <option value="一般職位">一般職位</option>
+                                <option value="會員">會員</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="small text-secondary fw-semibold mb-1">權限權重等級 (1~100)</label>
+                        <input type="number" id="editInfoTier" name="tier_level" class="form-control form-control-glass admin-form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="small text-secondary fw-semibold mb-1">職責說明</label>
+                        <input type="text" id="editInfoDesc" name="description" class="form-control form-control-glass admin-form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer admin-modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4" style="background-color: #9333ea; border: none;">儲存資料</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 彈窗 4：新增身分職位 Modal -->
+<div class="modal fade admin-modal" id="addRoleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg admin-modal-dialog admin-modal-dialog--md">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form class="admin-form" action="/system/roles/add" method="POST" data-admin-submit-loading data-submit-loading-text="建立中...">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-success"></i>
+                        <span>新增身分職位</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body admin-modal-body py-2">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="small text-secondary fw-semibold mb-1">職位名稱 (中文)</label>
+                            <input type="text" name="name" class="form-control form-control-glass" placeholder="例如：售後管理" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small text-secondary fw-semibold mb-1">所屬階級</label>
+                            <select name="category" class="form-select form-control-glass" style="background-color: #171326; color: #fff;">
+                                <option value="主管職位">主管職位</option>
+                                <option value="最高權限">最高權限</option>
+                                <option value="客服職位">客服職位</option>
+                                <option value="一般職位">一般職位</option>
+                                <option value="會員">會員</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small text-secondary fw-semibold mb-1">權限權重等級 (1~100)</label>
+                            <input type="number" name="tier_level" class="form-control form-control-glass" placeholder="80" value="80" min="1" max="100" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="small text-secondary fw-semibold mb-1">職責說明</label>
+                        <input type="text" name="description" class="form-control form-control-glass" placeholder="例如：負責客訴爭議與售後仲裁">
+                    </div>
+                    <div class="admin-form-section mt-3">
+                        <h6 class="admin-form-section-title">可委派權限</h6>
+                        <% if (canGrantWildcard) { %>
+                            <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="*" id="new_permission_wildcard"><span class="admin-permission-name">最高權限萬用授權</span><span class="admin-badge admin-badge-danger">最高權限</span><span class="admin-permission-desc">授予此項目會授予所有已知權限</span></label>
+                        <% } %>
+                        <div class="admin-permission-grid">
+                            <% Object.values(permissionMetadata || {}).forEach(permission => { %>
+                                <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="<%= permission.key %>" id="new_permission_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled title="你沒有權限授予此項目"' %>><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : permission.mode === 'manage' ? 'admin-badge-purple' : 'admin-badge-info' %>"><%= permission.risk === 'high' ? '高權限' : permission.mode === 'manage' ? '管理' : '唯讀' %></span><span class="admin-permission-desc"><%= permission.description %></span><% if (!(delegatablePermissions || []).includes(permission.key)) { %><i class="fa-solid fa-lock text-secondary" title="你沒有權限授予此項目" aria-label="你沒有權限授予此項目"></i><% } %></label>
+                            <% }) %>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer admin-modal-footer border-0">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-success rounded-pill px-4 fw-semibold">確認建立</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<% } %>

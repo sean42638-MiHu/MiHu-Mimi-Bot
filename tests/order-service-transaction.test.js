@@ -93,7 +93,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             discount: 0,
             operatorId: 'operator',
             source: 'test'
-        });
+        }, { allowPriceAdjustment: true });
         assert.equal(assigned.walletDelta, -50);
         assert.equal(assigned.order.total_amount, 250);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 750);
@@ -105,10 +105,35 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         const updated = await updateOrder('TEST-ORDER-1', {
             original_price: 275, unit_price: 275, duration: 1, discount: 0,
             status: 'accepted', operatorId: 'operator', source: 'test-edit'
-        });
+        }, { allowPriceAdjustment: true });
         assert.equal(updated.total_amount, 275);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 725);
         assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'order_adjustment'")).count, 2);
+
+        const beforeUnauthorizedIncrease = await snapshot();
+        await assert.rejects(updateOrder('TEST-ORDER-1', {
+            original_price: 300, unit_price: 300, duration: 1, discount: 0, operatorId: 'cs'
+        }), error => error.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN');
+        await assert.rejects(assignOrder('TEST-ORDER-1', {
+            talentId: 'talent', originalPrice: 300, discount: 0, operatorId: 'manager'
+        }), error => error.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN');
+        assert.deepEqual(await snapshot(), beforeUnauthorizedIncrease);
+
+        const beforeSamePriceReassignment = await snapshot();
+        await assignOrder('TEST-ORDER-1', {
+            talentId: 'talent', originalPrice: 275, discount: 0, operatorId: 'cs'
+        });
+        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, beforeSamePriceReassignment.wallet.balance);
+        assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions')).count, beforeSamePriceReassignment.ledger.count);
+
+        const beforeDeniedCredits = await snapshot();
+        await assert.rejects(updateOrder('TEST-ORDER-1', {
+            original_price: 200, unit_price: 200, duration: 1, discount: 0, operatorId: 'cs'
+        }, { allowPriceAdjustment: true }), /會增加會員錢包/);
+        await assert.rejects(assignOrder('TEST-ORDER-1', {
+            talentId: 'talent', originalPrice: 200, discount: 0, operatorId: 'manager'
+        }, { allowPriceAdjustment: true }), /會增加會員錢包/);
+        assert.deepEqual(await snapshot(), beforeDeniedCredits);
 
         const unlinkedHistorical = await createOrder({
             ...input, orderNo: 'TEST-UNLINKED-HISTORY', status: 'pending', finalAmount: 50,
@@ -117,10 +142,10 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         const beforeUnlinkedEdit = await snapshot();
         await assert.rejects(assignOrder(unlinkedHistorical.id, {
             talentId: 'talent', originalPrice: 60, discount: 0, operatorId: 'operator'
-        }), /付款 Ledger/);
+        }, { allowPriceAdjustment: true }), /付款 Ledger/);
         await assert.rejects(updateOrder(unlinkedHistorical.id, {
             original_price: 60, unit_price: 60, duration: 1, discount: 0, operatorId: 'operator'
-        }), /付款 Ledger/);
+        }, { allowPriceAdjustment: true }), /付款 Ledger/);
         assert.deepEqual(await snapshot(), beforeUnlinkedEdit);
 
         await run(`CREATE TRIGGER fail_order_create_audit BEFORE INSERT ON audit_logs
@@ -130,7 +155,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         assert.equal((await get('SELECT COUNT(*) AS count FROM orders')).count, 2);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 725);
         assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions')).count, 3);
-        assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 7);
+        assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 8);
         await run('DROP TRIGGER fail_order_create_audit');
 
         const stableState = await snapshot();
@@ -138,7 +163,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             BEGIN SELECT RAISE(ABORT, 'injected order update failure'); END`);
         await assert.rejects(assignOrder('TEST-ORDER-1', {
             talentId: 'talent', originalPrice: 300, discount: 0, operatorId: 'operator'
-        }));
+        }, { allowPriceAdjustment: true }));
         await run('DROP TRIGGER fail_order_update');
         assert.deepEqual(await snapshot(), stableState);
 
@@ -175,9 +200,13 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             JSON.stringify(completeResults.map(result => result.status === 'rejected' ? result.reason.message : 'fulfilled')));
         assert.equal((await get("SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'order_complete'")).count, 1);
 
+        const completedOrderState = await snapshot();
+        await assert.rejects(refundOrder(created.id, 'operator', 'after-sales-test'), /需由店長審核/);
+        assert.deepEqual(await snapshot(), completedOrderState);
+
         const refundResults = await Promise.allSettled([
-            refundOrder(created.id, 'operator', 'concurrency-test'),
-            refundOrder(created.id, 'operator', 'concurrency-test')
+            refundOrder(created.id, 'admin', 'concurrency-test', { allowCompleted: true }),
+            refundOrder(created.id, 'admin', 'concurrency-test', { allowCompleted: true })
         ]);
         assert.equal(refundResults.filter(result => result.status === 'fulfilled').length, 1,
             JSON.stringify(refundResults.map(result => result.status === 'rejected' ? result.reason.message : 'fulfilled')));
@@ -186,9 +215,13 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
 
         const batchOne = await createOrder({ ...input, orderNo: 'TEST-BATCH-1', finalAmount: 25, originalAmount: 25, unitPrice: 25, walletDelta: -25 });
         const batchTwo = await createOrder({ ...input, orderNo: 'TEST-BATCH-2', finalAmount: 30, originalAmount: 30, unitPrice: 30, walletDelta: -30 });
+        await completeOrder(batchTwo.id, 'operator');
+        const beforeCompletedBatchRefund = await snapshot();
+        await assert.rejects(refundOrders([batchOne.id, batchTwo.id], 'operator', 'after-sales-batch-test'), /需由店長審核/);
+        assert.deepEqual(await snapshot(), beforeCompletedBatchRefund);
         const batchResults = await Promise.allSettled([
-            refundOrders([batchOne.id, batchTwo.id], 'operator', 'concurrent-batch-test'),
-            refundOrders([batchOne.id, batchTwo.id], 'operator', 'concurrent-batch-test')
+            refundOrders([batchOne.id, batchTwo.id], 'admin', 'concurrent-batch-test', { allowCompleted: true }),
+            refundOrders([batchOne.id, batchTwo.id], 'admin', 'concurrent-batch-test', { allowCompleted: true })
         ]);
         assert.equal(batchResults.filter(result => result.status === 'fulfilled').length, 1);
         assert.equal(batchResults.filter(result => result.status === 'rejected').length, 1);

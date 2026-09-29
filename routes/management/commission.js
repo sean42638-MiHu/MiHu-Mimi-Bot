@@ -54,7 +54,7 @@ function syncCommissionJson() {
 	});
 }
 
-router.get('/', ensureAuth, checkPerm('sys_commission'), async (req, res) => {
+router.get('/', ensureAuth, checkPerm('commission.view'), async (req, res) => {
 	try {
 		const rows = await all('SELECT category, rate FROM commission_settings ORDER BY category COLLATE NOCASE');
 		const categoriesByName = new Map();
@@ -86,7 +86,7 @@ router.get('/', ensureAuth, checkPerm('sys_commission'), async (req, res) => {
 	}
 });
 
-router.post('/update-single', ensureAuth, checkPerm('sys_commission'), async (req, res) => {
+router.post('/update-single', ensureAuth, checkPerm('commission.manage'), async (req, res) => {
 	const submittedCategory = req.body.category_name ?? req.body.category;
 	const categoryValue = Array.isArray(submittedCategory) ? submittedCategory[0] : submittedCategory;
 	const category = canonicalCategory(String(categoryValue || '').trim());
@@ -134,7 +134,7 @@ router.post('/update-single', ensureAuth, checkPerm('sys_commission'), async (re
 	}
 });
 
-router.post('/update-rates', ensureAuth, checkPerm('sys_commission'), async (req, res) => {
+router.post('/update-rates', ensureAuth, checkPerm('commission.manage'), async (req, res) => {
 	const submittedCategories = Array.isArray(req.body.categories) ? req.body.categories : [req.body.categories].filter(Boolean);
 	const submittedRates = Array.isArray(req.body.rates) ? req.body.rates : [req.body.rates].filter(value => value !== undefined);
 	const updates = [];
@@ -187,7 +187,7 @@ router.post('/update-rates', ensureAuth, checkPerm('sys_commission'), async (req
 	}
 });
 
-router.post('/add-category', ensureAuth, checkPerm('sys_commission'), async (req, res) => {
+router.post('/add-category', ensureAuth, checkPerm('commission.manage'), async (req, res) => {
 	const category = canonicalCategory(String(req.body.category || '').trim());
 	const rate = normalizeTalentShareRate(req.body.rate);
 
@@ -229,7 +229,7 @@ router.post('/add-category', ensureAuth, checkPerm('sys_commission'), async (req
 	}
 });
 
-router.post('/delete-category', ensureAuth, checkPerm('sys_commission'), async (req, res) => {
+router.post('/delete-category', ensureAuth, checkPerm('commission.manage'), async (req, res) => {
 	const submittedCategory = req.body.category_name ?? req.body.category;
 	const categoryValue = Array.isArray(submittedCategory) ? submittedCategory[0] : submittedCategory;
 	const category = canonicalCategory(String(categoryValue || '').trim());

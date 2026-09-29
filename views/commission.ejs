@@ -173,10 +173,12 @@
 
                 <div class="row">
                     <div class="col-lg-8 col-md-7 commission-category-manager-row">
-                        <%- include('partials/commission_add_category', { categories }) %>
+                        <% if (hasPerm('commission.manage')) { %>
+<%- include('partials/commission_add_category', { categories }) %>
                     </div>
                 </div>
                 <%- include('modals/commission_edit_modal') %>
+<% } %>
             </div>
 
         </div>

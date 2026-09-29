@@ -98,14 +98,14 @@ test('Development order lifecycle uses one isolated DB for order, wallet, ledger
 
         const assigned = await runWithDiscordRuntimeContext(context, () => assignOrder(created.order_no, {
             talentId, originalPrice: 1200, discount: 0, operatorId: managerId, source: 'discord-development-e2e'
-        }));
+        }, { allowPriceAdjustment: true }));
         assert.equal(assigned.walletDelta, -200);
         assert.equal(assigned.order.status, 'accepted');
 
         const updated = await runWithDiscordRuntimeContext(context, () => updateOrder(created.order_no, {
             original_price: 1300, unit_price: 1300, duration: 1, discount: 0, status: 'accepted',
             operatorId: managerId, source: 'discord-development-price-adjustment'
-        }));
+        }, { allowPriceAdjustment: true }));
         assert.equal(updated.total_amount, 1300);
 
         const completed = await runWithDiscordRuntimeContext(context, () => completeOrder(created.id, managerId));
@@ -113,21 +113,29 @@ test('Development order lifecycle uses one isolated DB for order, wallet, ledger
         assert.ok(Number(completed.platform_commission) >= 0);
         assert.ok(Number(completed.talent_earning) >= 0);
 
-        const refunded = await runWithDiscordRuntimeContext(context, () => refundOrder(created.id, managerId, 'discord-development-e2e'));
-        assert.equal(refunded.refundAmount, 1300);
-        assert.equal((await get('SELECT status FROM orders WHERE id = ?', [created.id])).status, 'cancelled');
-        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', [bossId])).balance, 10000);
-        assert.equal((await get('SELECT balance FROM users WHERE id = ?', [bossId])).balance, 10000);
-        assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions WHERE reference_type IN (\'order\',\'order_adjustment\') OR type = \'refund\'')).count, 4);
+        const beforeDeniedRefund = {
+            order: await get('SELECT status FROM orders WHERE id = ?', [created.id]),
+            wallet: await get('SELECT balance FROM user_wallets WHERE user_id = ?', [bossId]),
+            ledger: await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund'"),
+            audits: await get("SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'refund_order'")
+        };
+        await assert.rejects(
+            runWithDiscordRuntimeContext(context, () => refundOrder(created.id, managerId, 'discord-development-e2e')),
+            /需由店長審核/
+        );
+        assert.deepEqual(await get('SELECT status FROM orders WHERE id = ?', [created.id]), beforeDeniedRefund.order);
+        assert.deepEqual(await get('SELECT balance FROM user_wallets WHERE user_id = ?', [bossId]), beforeDeniedRefund.wallet);
+        assert.deepEqual(await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund'"), beforeDeniedRefund.ledger);
+        assert.deepEqual(await get("SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'refund_order'"), beforeDeniedRefund.audits);
         assert.ok((await get('SELECT commission_rate_snapshot FROM orders WHERE id = ?', [created.id])).commission_rate_snapshot !== null);
 
         const audits = await new Promise((resolve, reject) => db.all(
             'SELECT action, target_id, metadata FROM audit_logs ORDER BY id',
             (error, rows) => error ? reject(error) : resolve(rows || [])
         ));
-        const lifecycleActions = new Set(['order_create', 'order_assign', 'order_price_adjustment', 'order_complete', 'refund_order']);
+        const lifecycleActions = new Set(['order_create', 'order_assign', 'order_price_adjustment', 'order_complete']);
         const orderAudits = audits.filter(row => lifecycleActions.has(row.action));
-        assert.ok(orderAudits.length >= 5);
+        assert.ok(orderAudits.length >= 4);
         for (const audit of orderAudits) {
             const metadata = JSON.parse(audit.metadata);
             assert.equal(metadata.environment, 'development');

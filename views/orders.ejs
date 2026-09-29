@@ -115,7 +115,8 @@
 
 <% 
     const activeCurrUser = typeof currentUser !== 'undefined' && currentUser ? currentUser : ((typeof user !== 'undefined' && user) ? user : {});
-    const canBatchDeleteOrders = typeof hasPerm === 'function' && hasPerm('orders.manage');
+    const canBatchDeleteOrders = typeof hasPerm === 'function' && hasPerm('orders.refund');
+    const canRefundCompletedOrders = typeof hasPerm === 'function' && hasPerm('orders.refund_completed');
 %>
 
 <div class="app-layout">
@@ -157,7 +158,7 @@
                         <div id="batchInputsContainer"></div>
                         <button type="button" class="btn-batch-delete" id="btnBatchDelete" style="display: none;">
                             <i class="fa-solid fa-trash-can"></i>
-                            <span>批量刪除 (<span id="selectedCount">0</span>)</span>
+                            <span>批量退款並取消 (<span id="selectedCount">0</span>)</span>
                         </button>
                     </form>
                 <% } %>
@@ -180,7 +181,8 @@
                 orders: typeof orders !== 'undefined' ? orders : [], 
                 currentUser: activeCurrUser, 
                 userPerms: typeof userPerms !== 'undefined' ? userPerms : [],
-                canBatchDeleteOrders
+                canBatchDeleteOrders,
+                canRefundCompletedOrders
             }) %>
         </div>
     </div>
@@ -216,6 +218,10 @@
         if (!data) return;
 
         window.currentOrderCanEdit = !!data.canEdit;
+        window.currentOrderCanAdjustPrice = !!data.canAdjustPrice;
+        window.currentOrderCanRefund = !!data.canRefund
+            && !['cancelled', 'refunded'].includes(data.status)
+            && (data.status !== 'completed' || !!data.canRefundCompleted);
 
         const form = document.getElementById('modalOrderEditForm');
         if (form) form.action = `/management/orders/update/${data.id}`;
@@ -344,7 +350,7 @@
                 const checkedBoxes = document.querySelectorAll('.order-checkbox:checked');
                 if (checkedBoxes.length === 0) return;
 
-                if (!confirm(`⚠️ 確定要刪除勾選的 ${checkedBoxes.length} 筆訂單嗎？`)) {
+                if (!confirm(`⚠️ 確定要全額退款並取消勾選的 ${checkedBoxes.length} 筆訂單嗎？`)) {
                     return;
                 }
 

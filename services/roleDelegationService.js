@@ -27,17 +27,19 @@ function effectiveRolePermissions(role) {
 }
 
 function canGrantPermission(actorPermissions, permission) {
-    return Boolean(PERMISSION_METADATA[permission]) && hasResolvedPermission(actorPermissions, permission);
+    return Boolean(PERMISSION_METADATA[permission] || KNOWN_LEGACY_PERMISSIONS.has(permission))
+        && hasResolvedPermission(actorPermissions, permission);
 }
 
-function validatePermissionGrant(actorPermissions, requestedPermissions) {
+function validatePermissionGrant(actorPermissions, requestedPermissions, { preserveLegacy = false } = {}) {
     if (!Array.isArray(requestedPermissions) || requestedPermissions.some(permission => typeof permission !== 'string')) {
         throw new RoleDelegationError('權限清單格式無效');
     }
 
     const requested = [...new Set(requestedPermissions)];
     const isSuperuser = hasResolvedPermission(actorPermissions, '*');
-    if (requested.some(permission => permission !== '*' && !PERMISSION_METADATA[permission])) {
+    if (requested.some(permission => permission !== '*' && !PERMISSION_METADATA[permission]
+        && !(preserveLegacy && KNOWN_LEGACY_PERMISSIONS.has(permission)))) {
         throw new RoleDelegationError('權限清單包含未知項目');
     }
     if (requested.includes('*') && !isSuperuser) {
@@ -48,6 +50,10 @@ function validatePermissionGrant(actorPermissions, requestedPermissions) {
     }
 
     const normalized = resolvePermissions(requested);
+    if (preserveLegacy && !requested.includes('*')) {
+        const legacy = requested.filter(permission => KNOWN_LEGACY_PERMISSIONS.has(permission) && !PERMISSION_METADATA[permission]);
+        return [...legacy, ...ALL_GRANULAR_PERMISSIONS.filter(permission => normalized.includes(permission))];
+    }
     return requested.includes('*')
         ? ['*']
         : ALL_GRANULAR_PERMISSIONS.filter(permission => normalized.includes(permission));

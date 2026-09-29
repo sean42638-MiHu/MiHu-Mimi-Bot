@@ -75,7 +75,7 @@ function saveVipJsonFromDb() {
 
 function getRolesDataFromDb() {
     return new Promise((resolve, reject) => {
-        db.all('SELECT * FROM roles ORDER BY id ASC', (error, rows) => {
+        db.all('SELECT * FROM roles ORDER BY tier_level DESC, id ASC', (error, rows) => {
             if (error) return reject(error);
             resolve((rows || []).map(row => ({
                 ...row,

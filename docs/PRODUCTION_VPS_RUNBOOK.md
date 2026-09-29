@@ -131,7 +131,7 @@ Effective granular permissions of the initialization-relevant roles (computed fr
 | `members.view`, `members.manage`, `member_ledger.view` | low–high | Y | — |
 | `roles.view`, `roles.manage` | medium/high | Y | — |
 | `staff.view`, `staff.manage`, `staff.view_sensitive` | low–high | Y | — |
-| `vip.view`, `vip.manage`, `orders.view`, `orders.manage` | low/high | Y | — |
+| `vip.view`, `vip.manage`, `orders.view`, `orders.manage`, `orders.price_adjust`, `orders.refund`, `orders.refund_completed` | low/high | Y | — |
 | `payroll.view` | high | Y | — |
 | `payout.view`, `payout.view_sensitive`, `payout.export`, `payout.mark_paid`, `payout.reject` | high | Y | — |
 | `commission.view`, `commission.manage`, `payroll.manage` | medium/high | — | — |
@@ -140,6 +140,20 @@ Effective granular permissions of the initialization-relevant roles (computed fr
 Stored legacy keys (route gates that are not granular): `admin` — `home, personal, profile, my_wallet, my_income, my_orders, manage, manage_members, manage_staff, manage_orders, system, sys_vip, sys_roles, sys_settings, member_adjust_balance, member_adjust_vip, staff_view_payroll, staff_edit_role_commission, orders_edit_and_reassign`; `member` — `home, home_wallet_card, home_info, personal, profile, profile_nickname, my_wallet, my_orders`. Studio commission editing is available to the owner of studio 1 (the break-glass principal) without `commission.manage`.
 
 `cfo` is intentionally not defined in Production. Remaining code references are display or filter only and fail closed without a `cfo` row: the hard-coded `cfo` option in `views/modals/member_modals.ejs` (assignment is refused by `authorizeRoleAssignment` because the role row does not exist), the `財務長` → `cfo` key mapping for new roles in `routes/system.js`, badge metadata in `utils/roleHelper.js`, and `role IN (...)` staff-list filters in `routes/orders.js`, `routes/management/orders.js` and `routes/management/staff.js`. Safer follow-up (separate change): render the role options from the `roles` table instead of the hard-coded list.
+
+### Order permissions and Bot release gate
+
+| Production role | `orders.view` | `orders.manage` | `orders.price_adjust` | `orders.refund` | `orders.refund_completed` |
+|---|---:|---:|---:|---:|---:|
+| `admin` 店長兼財務 | Y | Y | Y | Y | Y |
+| `aftersales` 售後 | Y | Y | — | Y | — |
+| `manager` 客服主管 | Y | Y | — | — | — |
+| `cs` 客服 | Y | Y | — | — | — |
+| `talent`, `member` | Personal orders only | — | — | — | — |
+
+`orders.view` does not grant mutations or refunds; `orders.manage` permits non-refund order operations and implies view only. Neither `orders.manage` nor legacy `manage_orders` grants `orders.price_adjust`; this separate permission is required for changes to order price terms, including price changes during reassignment. `orders.refund` is separately required by single cancel, legacy `is_delete`, and batch-delete routes. `orders.refund_completed` is an additional approval permission held only by `admin`. After-sales refunds are full refunds of unfinished orders only. Completed-order full refunds require the store manager (`admin`) to approve and execute them; no partial-refund path is enabled. Do not add a partial-refund workflow until it is safely tied to a specific order and auditable. The Web routes enforce these permissions independently of the Bot.
+
+Grant Discord guild Administrator permission only to the store manager (`admin`). Keep `mihu-bot` stopped: `/topup` still needs authorization revalidation at submission time and `/abandon_order` still needs studio-scope enforcement. Do not treat this role-file change as approval to start the Bot.
 
 ### U.2 Restricted Web OAuth initialization exception
 

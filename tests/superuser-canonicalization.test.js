@@ -134,7 +134,7 @@ test('runtime authorization code contains no role-name admin shortcut', () => {
 
 test('granular route gates use the order, staff-sensitive and commission permissions', () => {
     assert.match(read('routes/management/orders.js'), /checkPerm\('orders\.manage'\)/);
-    assert.match(read('routes/orders.js'), /checkPerm\('orders\.manage'\)/);
+    assert.match(read('routes/orders.js'), /checkPerm\(permission\)/);
     assert.match(read('routes/management/members.js'), /checkPerm\('members\.manage'\)/);
     assert.match(read('routes/management/staff.js'), /hasPerm\('staff\.view_sensitive'\)/);
     assert.match(read('routes/management/staff.js'), /includes\('commission\.manage'\)/);

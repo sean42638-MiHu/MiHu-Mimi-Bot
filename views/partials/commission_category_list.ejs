@@ -3,7 +3,7 @@
         <div>
             <div class="commission-panel-kicker mb-1">CATEGORY MATRIX</div>
             <h2 class="commission-panel-title">訂單類別與陪玩實得比例</h2>
-            <p class="commission-panel-note">點擊「管理」即可編輯、儲存或刪除單一類別。</p>
+            <p class="commission-panel-note"><%= hasPerm('commission.manage') ? '點擊「管理」即可編輯、儲存或刪除單一類別。' : '目前僅可查看抽佣比例。' %></p>
         </div>
     </header>
 
@@ -15,7 +15,7 @@
                         <tr>
                             <th class="commission-table-heading commission-col-category">訂單類別</th>
                             <th class="commission-table-heading commission-col-rate">陪陪實得分潤比例 (%)</th>
-                            <th class="commission-table-heading commission-col-action">操作</th>
+                            <% if (hasPerm('commission.manage')) { %><th class="commission-table-heading commission-col-action">操作</th><% } %>
                         </tr>
                     </thead>
                     <tbody>
@@ -44,11 +44,11 @@
                                 <span class="commission-rate-display"><%= (Number(item.rate) * 100).toFixed(2).replace(/\.00$/, '') %><span class="commission-rate-display-unit">%</span></span>
                             </div>
                         </td>
-                        <td class="commission-cell commission-col-action">
+                        <% if (hasPerm('commission.manage')) { %><td class="commission-cell commission-col-action">
                             <button type="button" class="commission-manage-btn" data-category-name="<%= item.category %>" data-current-rate="<%= (Number(item.rate) * 100).toFixed(2).replace(/\.00$/, '') %>" title="管理 <%= item.category %>">
                                 <i class="fa-solid fa-gear"></i><span>管理</span>
                             </button>
-                        </td>
+                        </td><% } %>
                     </tr>
                 <% }) %>
                     </tbody>

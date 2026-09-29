@@ -39,7 +39,7 @@ module.exports = {
         } catch (e) {}
 
         if (!checkDiscordAdminPermission(interaction)) {
-            return interaction.editReply({ content: '🚫 只有 Discord 客服與管理者身分能使用修改訂單指令。' });
+            return interaction.editReply({ content: '🚫 只有 Discord 伺服器管理員能使用修改訂單指令。' });
         }
 
         const orderNo = interaction.options.getString('order_no').trim();
@@ -112,7 +112,7 @@ module.exports = {
                     status: newStatus,
                     operatorId: interaction.user.id,
                     source: 'discord-edit-order-command'
-                });
+                }, { allowPriceAdjustment: checkDiscordAdminPermission(interaction) });
             } catch (updateError) {
                 return interaction.editReply({ content: `❌ 修改訂單資料失敗：${updateError.message}` });
             }

@@ -111,8 +111,11 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run(`INSERT INTO users (id,username,role,studio_id) VALUES
         ('member-a','member','member',1),('member-b','member-b','member',2),('staff-a','staff','staff',1),
         ('manager-a','manager-a','manager',1),('manager-b','manager-b','manager',2),('admin-a','admin','admin',1),
+        ('talent-a','talent-a','talent',1),
         ('604610298581876746','platform-user','admin',1),
-        ('manager-limited','manager-limited','limited_staff_manager',1),('settings-viewer','settings-viewer','settings_viewer',1),
+        ('manager-limited','manager-limited','limited_staff_manager',1),('cs-orders','cs-orders','cs',1),
+        ('legacy-orders','legacy-orders','legacy_order_manager',1),('aftersales-orders','aftersales-orders','aftersales',1),
+        ('settings-viewer','settings-viewer','settings_viewer',1),
         ('roles-viewer','roles-viewer','roles_viewer',1),('legacy-roles','legacy-roles','legacy_roles',1),
         ('security-self','security-self','security_self',1),('security-cross','security-cross','security_cross',1),
         ('security-allow','security-allow','security_allow',1),('legacy-security','legacy-security','legacy_security',1),
@@ -128,12 +131,16 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (10,'security_allow','Allowed Editor','["roles.manage","members.view","staff.view"]'),
         (11,'legacy_security','Legacy Security','["sys_roles"]'),
         (12,'assignment_manager','Assignment Manager','["staff.manage","member_adjust_vip","members.view","staff.view"]'),
-        (13,'star_actor','Star Actor','["*"]'),(17,'admin','店長','[]'),
+        (13,'star_actor','Star Actor','["*"]'),
+        (17,'admin','店長','["orders.view","orders.manage","orders.price_adjust","orders.refund","orders.refund_completed"]'),
+        (18,'cs','客服','["orders.view","orders.manage","orders_edit_and_reassign"]'),
+        (19,'legacy_order_manager','Legacy Order Manager','["manage_orders"]'),
+        (20,'aftersales','售後','["orders.view","orders.manage","orders.refund"]'),
         (14,'protected_deployer','Protected Deployer','["roles.manage","discord_commands.deploy_production"]'),
         (15,'settings_target','Settings Target','["system_settings.manage"]'),
         (16,'delegatable_target','Delegatable Target','["members.view","staff.view"]')`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','manager-b')");
-    await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP)");
+    await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP),('cs-orders',0,0,0,0,CURRENT_TIMESTAMP),('legacy-orders',0,0,0,0,CURRENT_TIMESTAMP),('aftersales-orders',0,0,0,0,CURRENT_TIMESTAMP)");
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,headcount,discount,total_amount,status,created_at,studio_id)
         VALUES (101,'ORDER-A','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,1),
                (202,'ORDER-B','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,2)`);
@@ -152,10 +159,16 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     }
     await run("INSERT INTO orders (id,order_no,talent_id,category,duration,unit_price,total_amount,talent_earning,status,created_at,studio_id) VALUES (303,'EARN-A','member-a','陪玩單',1,1500,1500,1500,'completed',CURRENT_TIMESTAMP,1),(404,'EARN-B','member-b','陪玩單',1,1500,1500,1500,'completed',CURRENT_TIMESTAMP,2)");
     await run("INSERT INTO orders (id,order_no,talent_id,category,duration,unit_price,total_amount,talent_earning,status,created_at,studio_id) VALUES (505,'EARN-STAFF','staff-a','陪玩單',1,500,500,500,'completed',CURRENT_TIMESTAMP,1)");
+    await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,discount,total_amount,status,created_at,studio_id)
+        VALUES (606,'ORDER-REFUND-OPEN','member-a','陪玩單','game','standard',1,'h',45,0,45,'accepted',CURRENT_TIMESTAMP,1),
+               (607,'ORDER-REFUND-DONE','member-a','陪玩單','game','standard',1,'h',35,0,35,'completed',CURRENT_TIMESTAMP,1)`);
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
                ('member-b', 'mystery_type', -25, 200, 175, 'wallet', 'LEDGER-B', 'Studio B fixture', 'manager-b', '2026-01-01 11:00:00')`);
+    await run(`INSERT INTO wallet_transactions
+        (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
+        VALUES ('member-a', 'order_payment', -100, 200, 100, 'order', '101', 'ORDER-A payment', 'member-a', '2026-01-01 12:00:00')`);
     await new Promise(resolve => setup.close(resolve));
 
     const discord = require('discord.js');
@@ -350,6 +363,47 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(superuserRolePage.status, 200, superuserRolePage.body);
         assert.match(superuserRolePage.body, /id="permission_wildcard"/);
         assert.match(superuserRolePage.body, /id="new_permission_wildcard"/);
+        assert.match(superuserRolePage.body, /value="orders\.price_adjust" id="role_granular_orders_price_adjust"/);
+
+        const saveRolePermissions = async (roleKey, permissions) => {
+            const fields = new URLSearchParams([['role', roleKey]]);
+            permissions.forEach(permission => fields.append('permissions', permission));
+            const response = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+                Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+                'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+            }, fields.toString());
+            assert.equal(response.status, 302, `${roleKey}: ${response.body}`);
+        };
+        const storedRolePermissions = async roleKey => JSON.parse(await new Promise((resolve, reject) => db.get(
+            'SELECT permissions FROM roles WHERE role_key = ?', [roleKey], (error, row) => error ? reject(error) : resolve(row.permissions)
+        )));
+        for (const roleKey of ['cs', 'manager', 'admin']) {
+            const permissions = await storedRolePermissions(roleKey);
+            await saveRolePermissions(roleKey, permissions);
+        }
+        const savedRolePage = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: starActor.cookie
+        });
+        assert.equal(savedRolePage.status, 200, savedRolePage.body);
+        const rolePermissionsFromPage = roleKey => {
+            const row = savedRolePage.body.match(new RegExp(`<tr class="role-row"(?=[^>]*data-rolekey="${roleKey}")[^>]*>`));
+            assert.ok(row, `missing role row ${roleKey}`);
+            const encoded = row[0].match(/data-perms='([^']*)'/);
+            assert.ok(encoded, `missing stored permission payload for ${roleKey}`);
+            return JSON.parse(encoded[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+        };
+        const csPermissionsAfterReload = rolePermissionsFromPage('cs');
+        const managerPermissionsAfterReload = rolePermissionsFromPage('manager');
+        const adminPermissionsAfterReload = rolePermissionsFromPage('admin');
+        assert.ok(csPermissionsAfterReload.includes('orders.manage'));
+        assert.ok(managerPermissionsAfterReload.includes('manage_orders'));
+        assert.ok(managerPermissionsAfterReload.includes('orders.manage'));
+        assert.ok(adminPermissionsAfterReload.includes('orders.price_adjust'));
+        for (const [roleKey, permissions] of [['cs', csPermissionsAfterReload], ['manager', managerPermissionsAfterReload]]) {
+            assert.equal(permissions.includes('orders.price_adjust'), false, `${roleKey} price toggle must reload off`);
+        }
+        assert.ok(adminPermissionsAfterReload.includes('orders.price_adjust'), 'admin price toggle must reload on');
+
         const superuserCreate = await createRequest(port, 'POST', '/system/roles/add', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
@@ -689,7 +743,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(deniedNamedAdminRoles.status, 403);
         assert.equal(deniedNamedAdminSettings.status, 403);
-        assert.equal(deniedNamedAdminOrders.status, 403);
+        assert.equal(deniedNamedAdminOrders.status, 200);
 
         const admin = await createSession('604610298581876746');
         const breakGlassRoles = await createRequest(port, 'GET', '/system/roles', {
@@ -740,6 +794,114 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(legacyGet.headers.location, '/system/bot-settings?commandDeployInfo=1');
         assert.equal(valid.status, 303);
         assert.equal(valid.headers.location, '/system/bot-settings?commandDeployInfo=1');
+
+        const orderSecuritySnapshot = orderId => new Promise((resolve, reject) => db.get(`SELECT o.*, w.balance AS wallet_balance, u.balance AS user_balance,
+                (SELECT COUNT(*) FROM wallet_transactions) AS ledger_count,
+                (SELECT COUNT(*) FROM audit_logs) AS audit_count
+            FROM orders o
+            JOIN user_wallets w ON w.user_id = o.boss_id
+            JOIN users u ON u.id = o.boss_id
+            WHERE o.id = ?`, [orderId], (error, row) => error ? reject(error) : resolve(row)));
+        const orderPost = (session, route, body) => createRequest(port, 'POST', route, {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: session.cookie,
+            'X-CSRF-Token': session.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams(body).toString());
+        const beforeNoPricePermission = await orderSecuritySnapshot(101);
+        const directPriceAttemptWithoutPermission = await orderPost(await createSession('cs-orders'), '/management/orders/update/101', {
+            original_price: '125', unit_price: '125', duration: '1', discount: '0', status: 'pending'
+        });
+        assert.equal(directPriceAttemptWithoutPermission.status, 403);
+        assert.deepEqual(await orderSecuritySnapshot(101), beforeNoPricePermission);
+        const orderStaff = [
+            { name: 'cs', session: await createSession('cs-orders') },
+            { name: 'manager with manage_orders alias', session: managerA }
+        ];
+        for (const { name, session } of orderStaff) {
+            const ordersPage = await createRequest(port, 'GET', '/management/orders', {
+                Host: `127.0.0.1:${port}`, Cookie: session.cookie
+            });
+            assert.equal(ordersPage.status, 200, `${name}: ${ordersPage.body}`);
+
+            const beforeNoteEdit = await orderSecuritySnapshot(101);
+            const noteEdit = await orderPost(session, '/management/orders/update/101', { note: `${name} note`, status: 'pending' });
+            assert.equal(noteEdit.status, 302, `${name}: ${noteEdit.headers.location}`);
+            const afterNoteEdit = await orderSecuritySnapshot(101);
+            assert.equal(afterNoteEdit.wallet_balance, beforeNoteEdit.wallet_balance);
+            assert.equal(afterNoteEdit.ledger_count, beforeNoteEdit.ledger_count);
+
+            const beforeCredit = await orderSecuritySnapshot(101);
+            const lowerPrice = await orderPost(session, '/management/orders/update/101', {
+                original_price: '50', unit_price: '50', duration: '1', discount: '0', status: 'pending'
+            });
+            assert.equal(lowerPrice.status, 403, `${name}: ${lowerPrice.headers.location || lowerPrice.body}`);
+            assert.deepEqual(await orderSecuritySnapshot(101), beforeCredit, `${name} price reduction must be side-effect free`);
+
+            const higherPrice = await orderPost(session, '/management/orders/update/101', {
+                original_price: '125', unit_price: '125', duration: '1', discount: '0', status: 'pending', allowPriceAdjustment: 'true'
+            });
+            assert.equal(higherPrice.status, 403, `${name}: ${higherPrice.headers.location || higherPrice.body}`);
+            assert.deepEqual(await orderSecuritySnapshot(101), beforeCredit, `${name} price increase must be side-effect free`);
+
+            const reassignmentWithPrice = await orderPost(session, '/management/orders/update/101', {
+                talent_id: 'talent-a', original_price: '125', unit_price: '125', duration: '1', discount: '0', status: 'pending'
+            });
+            assert.equal(reassignmentWithPrice.status, 403, `${name}: ${reassignmentWithPrice.headers.location || reassignmentWithPrice.body}`);
+            assert.deepEqual(await orderSecuritySnapshot(101), beforeCredit, `${name} reassignment with price change must be side-effect free`);
+
+            for (const [route, body] of [
+                ['/management/orders/update/101', { is_delete: '1' }],
+                ['/management/orders/cancel/101', {}],
+                ['/management/orders/batch-delete', { order_ids: '101' }]
+            ]) {
+                const beforeDeniedRefund = await orderSecuritySnapshot(101);
+                const denied = await orderPost(session, route, body);
+                assert.equal(denied.status, 403, `${name} ${route}: ${denied.headers.location || denied.body}`);
+                assert.deepEqual(await orderSecuritySnapshot(101), beforeDeniedRefund, `${name} ${route} changed financial/order state`);
+            }
+        }
+
+        const csSession = orderStaff[0].session;
+        const reassign = await orderPost(csSession, '/management/orders/update/101', {
+            talent_id: 'talent-a', note: 'cs reassign', status: 'pending'
+        });
+        assert.equal(reassign.status, 302, reassign.headers.location);
+        assert.equal(await new Promise((resolve, reject) => db.get('SELECT talent_id FROM orders WHERE id=101', (error, row) => error ? reject(error) : resolve(row.talent_id))), 'talent-a');
+        assert.equal((await orderSecuritySnapshot(101)).wallet_balance, 100);
+
+        const legacyEndpoint = await orderPost(managerA, '/orders/update/101', { is_delete: '1' });
+        assert.equal(legacyEndpoint.status, 404);
+
+        const aftersalesSession = await createSession('aftersales-orders');
+        const beforeOpenRefund = await orderSecuritySnapshot(606);
+        const aftersalesOpenRefund = await orderPost(aftersalesSession, '/management/orders/cancel/606', {});
+        assert.equal(aftersalesOpenRefund.status, 302);
+        const afterOpenRefund = await orderSecuritySnapshot(606);
+        assert.equal(afterOpenRefund.status, 'cancelled');
+        assert.equal(afterOpenRefund.wallet_balance, beforeOpenRefund.wallet_balance + 45);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_id='606'", (error, row) => error ? reject(error) : resolve(row.amount))), 45);
+
+        const beforeCompletedAfterSales = await orderSecuritySnapshot(607);
+        const deniedCompletedRefund = await orderPost(aftersalesSession, '/management/orders/cancel/607', {});
+        assert.equal(deniedCompletedRefund.status, 302);
+        assert.match(deniedCompletedRefund.headers.location, /error=/);
+        assert.deepEqual(await orderSecuritySnapshot(607), beforeCompletedAfterSales);
+
+        const adminCompletedRefund = await orderPost(ordinaryAdmin, '/management/orders/cancel/607', {});
+        assert.equal(adminCompletedRefund.status, 302);
+        const afterAdminRefund = await orderSecuritySnapshot(607);
+        assert.equal(afterAdminRefund.status, 'cancelled');
+        assert.equal(afterAdminRefund.wallet_balance, beforeCompletedAfterSales.wallet_balance + 35);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_id='607'", (error, row) => error ? reject(error) : resolve(row.amount))), 35);
+
+        const beforeAdminPriceChange = await orderSecuritySnapshot(101);
+        const adminPriceChange = await orderPost(ordinaryAdmin, '/management/orders/update/101', {
+            original_price: '125', unit_price: '125', duration: '1', discount: '0', status: 'pending'
+        });
+        assert.equal(adminPriceChange.status, 302);
+        const afterAdminPriceChange = await orderSecuritySnapshot(101);
+        assert.equal(afterAdminPriceChange.wallet_balance, beforeAdminPriceChange.wallet_balance - 25);
+        assert.equal(afterAdminPriceChange.total_amount, 125);
+        assert.equal(afterAdminPriceChange.ledger_count, beforeAdminPriceChange.ledger_count + 1);
         assert.deepEqual(effects, { login: 0, rest: 0, smtp: 0 });
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));

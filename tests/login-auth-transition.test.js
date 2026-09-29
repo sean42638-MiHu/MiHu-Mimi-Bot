@@ -73,8 +73,8 @@ test('Discord OAuth state and authenticated login transition are one-time, inter
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`);
     await run("INSERT INTO users (id,username,global_name,custom_nickname,avatar,role,studio_id) VALUES ('oauth-fixture','oauth-fixture','OAuth Fixture','OAuth Fixture',NULL,'member',1)");
-    await run('CREATE TABLE roles (id INTEGER PRIMARY KEY, role_key TEXT, name TEXT, permissions TEXT)');
-    await run("INSERT INTO roles VALUES (1,'member','Member','[]')");
+    await run('CREATE TABLE roles (id INTEGER PRIMARY KEY, role_key TEXT, name TEXT, tier_level INTEGER, permissions TEXT)');
+    await run("INSERT INTO roles VALUES (1,'member','Member',10,'[]')");
     await run('CREATE TABLE studios (id INTEGER PRIMARY KEY, name TEXT, owner_user_id TEXT)');
     await run("INSERT INTO studios VALUES (1,'Fixture Studio','someone-else')");
     await run(`CREATE TABLE audit_logs (

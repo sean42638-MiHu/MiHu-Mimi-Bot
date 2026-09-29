@@ -9,6 +9,21 @@ function isPlatformSuperuser(res) {
     return Array.isArray(res.locals.userPerms) && res.locals.userPerms.includes('*');
 }
 
+function requireUpdatePermission(req, res, next) {
+    const permission = req.body && req.body.is_delete === '1' ? 'orders.refund' : 'orders.manage';
+    return checkPerm(permission)(req, res, next);
+}
+
+function canApproveCompletedRefund(res) {
+    return Array.isArray(res.locals.userPerms)
+        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.refund_completed'));
+}
+
+function canAdjustOrderPrice(res) {
+    return Array.isArray(res.locals.userPerms)
+        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.price_adjust'));
+}
+
 /**
  * 📋 1. 我的訂單 (GET /orders/my)
  * 權限定義：僅抓取當前登入會員身為「闆闆」(boss_id = req.user.id) 的消費/下單紀錄
@@ -53,7 +68,7 @@ router.get('/my', ensureAuth, (req, res) => {
  * 🛠️ 2. 訂單管理全站總覽 (GET /management/orders 或 /orders)
  * 權限定義：管理者/客服視角，抓取全站所有訂單
  */
-router.get('/orders', ensureAuth, checkPerm('orders.manage'), (req, res) => {
+router.get('/orders', ensureAuth, checkPerm('orders.view'), (req, res) => {
     const allStudios = isPlatformSuperuser(res);
     const studioId = Number(req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
@@ -96,7 +111,7 @@ router.get('/orders', ensureAuth, checkPerm('orders.manage'), (req, res) => {
 /**
  * ✏️ 3. POST: 處理訂單編輯、折扣計算與刪除 (管理員權限)
  */
-router.post('/orders/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, res) => {
+router.post('/orders/update/:id', ensureAuth, requireUpdatePermission, async (req, res) => {
     try {
         const existingOrder = await getOrder(req.params.id);
         if (!existingOrder) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
@@ -104,13 +119,16 @@ router.post('/orders/update/:id', ensureAuth, checkPerm('orders.manage'), async 
             return res.status(403).send('無權修改其他工作室訂單');
         }
         if (req.body.is_delete === '1') {
-            await cancelOrder(req.params.id, req.user.id, 'legacy-order-route');
+            await cancelOrder(req.params.id, req.user.id, 'legacy-order-route', { allowCompleted: canApproveCompletedRefund(res) });
             return res.redirect('/management/orders?saved=1');
         }
-        await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'legacy-order-route' });
+        await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'legacy-order-route' }, {
+            allowPriceAdjustment: canAdjustOrderPrice(res)
+        });
         syncOrdersJsonFromDb();
         res.redirect('/management/orders?saved=1');
     } catch (err) {
+        if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
         console.error('❌ 更新訂單失敗:', err);
         res.redirect('/management/orders?error=' + encodeURIComponent('更新失敗'));
     }

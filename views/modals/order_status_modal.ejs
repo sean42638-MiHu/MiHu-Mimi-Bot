@@ -68,7 +68,7 @@
                         </div>
                         <div class="col-4">
                             <label class="small text-secondary fw-semibold mb-1">金額 (NTD)</label>
-                            <input type="number" id="editTotalAmount" name="total_amount" class="form-control form-control-glass text-end font-monospace" required>
+                            <input type="number" id="editTotalAmount" name="total_amount" class="form-control form-control-glass text-end font-monospace" <%= typeof hasPerm === "function" && hasPerm("orders.price_adjust") ? "" : "readonly title=\"調整金額需要獨立權限\"" %> required>
                         </div>
                     </div>
 
@@ -109,7 +109,7 @@
 
                 <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center">
                     <div>
-                        <% if ((typeof hasPerm === 'function' && hasPerm('orders.manage')) || (typeof userPerms !== 'undefined' && userPerms.includes('orders.manage'))) { %>
+                        <% if (typeof hasPerm === 'function' && hasPerm('orders.refund')) { %>
                             <button type="button" onclick="handleManualDeleteOrder()" class="btn btn-sm btn-outline-danger rounded-pill px-3">
                                 <i class="fa-solid fa-trash-can me-1"></i>手動刪除訂單
                             </button>

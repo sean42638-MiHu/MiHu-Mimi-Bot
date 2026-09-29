@@ -25,7 +25,7 @@ module.exports = {
         } catch (e) {}
 
         if (!checkDiscordAdminPermission(interaction)) {
-            return interaction.editReply({ content: '🚫 只有 Discord 客服與管理者身分能使用此指令。' });
+            return interaction.editReply({ content: '🚫 只有 Discord 伺服器管理員能使用此指令。' });
         }
 
         const orderNo = interaction.options.getString('order_no').trim();
@@ -65,7 +65,7 @@ module.exports = {
                         discount: effectiveRawDiscount,
                         operatorId: interaction.user.id,
                         source: 'discord-select-command'
-                    });
+                    }, { allowPriceAdjustment: checkDiscordAdminPermission(interaction) });
                 } catch (assignmentError) {
                     return interaction.editReply({ content: `❌ 指派訂單失敗：${assignmentError.message}` });
                 }

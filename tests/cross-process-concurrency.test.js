@@ -121,7 +121,7 @@ test('independent Node processes serialize financial mutations across the same S
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-cross-process-'));
     try {
         const singlePath = path.join(tempDirectory, 'single-refund.sqlite');
-        await createFixture(singlePath, [{ orderNo: 'ORDER-1', amount: 40, status: 'completed', hasPaymentLedger: true }], 60);
+        await createFixture(singlePath, [{ orderNo: 'ORDER-1', amount: 40, status: 'accepted', hasPaymentLedger: true }], 60);
         const singleResults = await Promise.all([launchWorker(singlePath, 'refund'), launchWorker(singlePath, 'refund')]);
         assert.equal(singleResults.filter(result => result === 'SUCCESS').length, 1);
         assert.equal((await inspect(singlePath, "SELECT balance FROM user_wallets WHERE user_id='user-1'")).balance, 100);
@@ -131,8 +131,8 @@ test('independent Node processes serialize financial mutations across the same S
 
         const batchPath = path.join(tempDirectory, 'batch-refund.sqlite');
         await createFixture(batchPath, [
-            { orderNo: 'ORDER-1', amount: 40, status: 'completed', hasPaymentLedger: true },
-            { orderNo: 'ORDER-2', amount: 30, status: 'completed', hasPaymentLedger: true }
+            { orderNo: 'ORDER-1', amount: 40, status: 'accepted', hasPaymentLedger: true },
+            { orderNo: 'ORDER-2', amount: 30, status: 'accepted', hasPaymentLedger: true }
         ], 30);
         const batchResults = await Promise.all([launchWorker(batchPath, 'batch-refund'), launchWorker(batchPath, 'batch-refund')]);
         assert.equal(batchResults.filter(result => result === 'SUCCESS').length, 1);

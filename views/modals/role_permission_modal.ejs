@@ -1,0 +1,91 @@
+<!-- 彈窗 1：檢視身分權限 Modal -->
+<div class="modal fade" id="viewRoleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 850px;">
+        <div class="modal-content modal-content-glass">
+            <div class="modal-header border-0 pb-0 pt-4 px-4">
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                    <span id="viewRoleNameBadge" class="role-pill-badge badge-style-danger fs-6 px-3 py-1">職位</span>
+                    <span id="viewRoleCategoryText" class="small text-secondary fw-normal">階級</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" style="max-height: 75vh; overflow-y: auto;">
+                <div class="p-3 rounded-3 mb-3" style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div class="text-secondary small mb-1"><i class="fa-solid fa-circle-info me-1"></i>職責說明：</div>
+                    <div class="text-white small fw-medium" id="viewRoleDesc">說明內容</div>
+                </div>
+
+                <div class="small text-secondary fw-semibold mb-2 d-flex align-items-center gap-1">
+                    <i class="fa-solid fa-shield-halved text-warning"></i> 允許查看與使用的系統模組：
+                </div>
+
+                <div class="perm-tree-box p-3 rounded-3" id="viewRolePermTreeDisplay" style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(168, 85, 247, 0.25); min-height: 280px; max-height: 50vh; overflow-y: auto;"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0 pb-4 px-4">
+                <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4 fw-bold" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<% if (hasPerm('roles.manage')) { %>
+<%
+    const menuLegacyKeys = ['home', 'home_banner', 'home_wallet_card', 'home_info', 'personal',
+        'profile', 'profile_discord', 'profile_nickname', 'my_wallet', 'my_income', 'my_orders',
+        'manage', 'manage_members', 'manage_staff', 'manage_orders', 'system', 'sys_roles',
+        'sys_vip', 'sys_settings', 'sys_logs', 'sys_commission'];
+    const sensitiveKeys = new Set(['staff.view_sensitive', 'payout.view_sensitive',
+        'member_ledger.view', 'audit_logs.view']);
+    const menuGranular = Object.values(permissionMetadata || {}).filter(item =>
+        item.mode === 'read' && !sensitiveKeys.has(item.key));
+    const actionGranular = Object.values(permissionMetadata || {}).filter(item =>
+        item.mode !== 'read' || sensitiveKeys.has(item.key));
+    const actionLegacy = (legacyPermissionKeys || []).filter(key =>
+        !menuLegacyKeys.includes(key) && !(permissionMetadata || {})[key]);
+%>
+<div class="modal fade admin-modal" id="editRolePermsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl admin-modal-dialog admin-modal-dialog--lg">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <form class="admin-form" action="/system/roles/update-permissions" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
+                <div class="modal-header border-0 pb-0 pt-4 px-4">
+                    <h5 class="modal-title fw-bold text-white"><i class="fa-solid fa-user-shield text-warning me-2"></i>編輯身分權限：<span id="targetRoleName" class="text-info"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body admin-modal-body p-4">
+                    <input type="hidden" id="targetRoleKey" name="role">
+                    <section class="admin-form-section mb-4" aria-labelledby="roleMenuPermissions">
+                        <h6 id="roleMenuPermissions" class="admin-form-section-title">1. 側邊欄選單與模組能見度</h6>
+                        <p class="small text-secondary">關閉項目會移除對應頁面的使用權；舊版總權限若仍開啟，可能涵蓋多個細項。</p>
+                        <div class="admin-permission-grid">
+                            <% menuLegacyKeys.forEach(key => { %>
+                                <label class="admin-permission-item"><input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" name="permissions" value="<%= key %>" id="role_legacy_<%= key %>" <%= (delegatablePermissions || []).includes(key) ? '' : 'disabled' %>><span class="admin-permission-name"><%= key %></span><span class="admin-badge admin-badge-info">舊版選單</span></label>
+                            <% }) %>
+                            <% menuGranular.forEach(permission => { %>
+                                <label class="admin-permission-item"><input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" name="permissions" value="<%= permission.key %>" id="role_granular_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge admin-badge-info">頁面</span></label>
+                            <% }) %>
+                        </div>
+                    </section>
+                    <section class="admin-form-section" aria-labelledby="roleActionPermissions">
+                        <h6 id="roleActionPermissions" class="admin-form-section-title">2. 敏感個資與進階操作權限</h6>
+                        <div class="admin-permission-grid">
+                            <% actionLegacy.forEach(key => { %>
+                                <label class="admin-permission-item"><input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" name="permissions" value="<%= key %>" id="role_legacy_<%= key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(key) ? '' : 'disabled' %>><span class="admin-permission-name"><%= key %></span><span class="admin-badge admin-badge-danger">舊版操作</span></label>
+                            <% }) %>
+                            <% actionGranular.forEach(permission => { %>
+                                <label class="admin-permission-item"><input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" name="permissions" value="<%= permission.key %>" id="role_granular_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : 'admin-badge-purple' %>"><%= permission.risk === 'high' ? '高權限' : '操作' %></span></label>
+                            <% }) %>
+                            <% if (canGrantWildcard) { %>
+                                <label class="admin-permission-item"><input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" name="permissions" value="*" id="permission_wildcard"><span class="admin-permission-name">最高權限萬用授權</span><span class="admin-badge admin-badge-danger">最高權限</span></label>
+                            <% } %>
+                        </div>
+                    </section>
+                </div>
+                <div class="modal-footer admin-modal-footer border-0 pt-0 pb-4 px-4">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-warning rounded-pill px-4 fw-bold text-dark">儲存權限設定</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<% } %>

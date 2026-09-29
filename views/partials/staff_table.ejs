@@ -280,9 +280,9 @@
                                     </button>
                                 <% } %>
 
-                                <a href="/management/staff/sync/<%= s.id %>" class="btn btn-sm btn-outline-info btn-circle-icon" title="從 Discord 刷新資料">
+                                <% if (checkPermission('staff.manage')) { %><a href="/management/staff/sync/<%= s.id %>" class="btn btn-sm btn-outline-info btn-circle-icon" title="從 Discord 刷新資料">
                                     <i class="fa-solid fa-rotate"></i>
-                                </a>
+                                </a><% } %>
                             </div>
                         </td>
                     </tr>

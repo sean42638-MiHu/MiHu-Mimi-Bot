@@ -43,7 +43,7 @@ function ledgerDisplayType(type) {
 }
 
 // 1.0 唯讀會員 Wallet Ledger；此 route 必須位於任何未來 /:id dynamic route 之前。
-router.get('/transactions', ensureAuth, checkPerm('manage_members'), async (req, res) => {
+router.get('/transactions', ensureAuth, checkPerm('member_ledger.view'), async (req, res) => {
     const platformAdmin = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!platformAdmin && (!Number.isInteger(studioId) || studioId <= 0)) {
@@ -117,7 +117,7 @@ router.get('/transactions', ensureAuth, checkPerm('manage_members'), async (req,
 });
 
 // 1.1 渲染「會員管理」頁面 (完全整合 user_wallets 資料庫)
-router.get('/', ensureAuth, checkPerm('manage_members'), (req, res) => {
+router.get('/', ensureAuth, checkPerm('members.view'), (req, res) => {
     const allStudios = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
@@ -261,7 +261,7 @@ router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, re
 });
 
 // 1.3 全體會員 Discord 資料刷新
-router.get('/sync-all', ensureAuth, checkPerm('manage_members'), async (req, res) => {
+router.get('/sync-all', ensureAuth, checkPerm('members.manage'), async (req, res) => {
     res.redirect('/management/members?success=1');
 });
 

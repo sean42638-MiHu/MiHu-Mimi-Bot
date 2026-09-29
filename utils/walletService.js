@@ -71,12 +71,14 @@ function dbGet(sql, params = []) {
     });
 }
 
-async function applyRefundInTransaction(orderIdentifier, operatorId, source) {
+async function applyRefundInTransaction(orderIdentifier, operatorId, source, { allowCompleted = false } = {}) {
     const order = await dbGet('SELECT * FROM orders WHERE id = ? OR order_no = ?', [orderIdentifier, orderIdentifier]);
     if (!order) throw new Error('找不到目標訂單');
-    if (['cancelled', 'refunded'].includes(String(order.status || '').toLowerCase())) {
+    const status = String(order.status || '').toLowerCase();
+    if (['cancelled', 'refunded'].includes(status)) {
         throw new Error(`訂單 ${order.order_no} 已退款或取消，不可重複退款`);
     }
+    if (status === 'completed' && !allowCompleted) throw new Error('已完成訂單退款需由店長審核');
 
     const refundAmount = Math.max(0, Number(order.total_amount || 0));
     const wallet = await dbGet(`
@@ -122,25 +124,27 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source) {
         after: { orderStatus: 'cancelled', balance: after },
         metadata: { refundAmount, source }
     });
+    const blockedStatuses = allowCompleted ? ['cancelled', 'refunded'] : ['completed', 'cancelled', 'refunded'];
+    const statusPlaceholders = blockedStatuses.map(() => '?').join(', ');
     const stateUpdate = await dbRun(
-        `UPDATE orders SET status = 'cancelled', end_time = COALESCE(end_time, DATETIME('now', 'localtime')) WHERE id = ? AND status NOT IN ('cancelled', 'refunded')`,
-        [order.id]
+        `UPDATE orders SET status = 'cancelled', end_time = COALESCE(end_time, DATETIME('now', 'localtime')) WHERE id = ? AND status NOT IN (${statusPlaceholders})`,
+        [order.id, ...blockedStatuses]
     );
     if (stateUpdate.changes !== 1) throw new Error(`訂單 ${order.order_no} 狀態已變更，退款已取消`);
     return { order, refundAmount, balanceBefore: before, balanceAfter: after };
 }
 
-async function refundOrder(orderIdentifier, operatorId = null, source = 'management') {
-    return refundOrders([orderIdentifier], operatorId, source).then(results => results[0]);
+async function refundOrder(orderIdentifier, operatorId = null, source = 'management', options = {}) {
+    return refundOrders([orderIdentifier], operatorId, source, options).then(results => results[0]);
 }
 
-function refundOrders(orderIdentifiers, operatorId = null, source = 'management') {
+function refundOrders(orderIdentifiers, operatorId = null, source = 'management', options = {}) {
     return withTransactionGate(async () => {
         await dbRun('BEGIN IMMEDIATE');
         try {
             const results = [];
             for (const orderIdentifier of orderIdentifiers) {
-                results.push(await applyRefundInTransaction(orderIdentifier, operatorId, source));
+                results.push(await applyRefundInTransaction(orderIdentifier, operatorId, source, options));
             }
             await dbRun('COMMIT');
             return results;

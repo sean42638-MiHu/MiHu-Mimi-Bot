@@ -16,6 +16,7 @@ const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExec
 const { getGuildConfigurationStatus } = require('../utils/developmentRuntime');
 const { deployDiscordCommands } = require('../utils/discordDeploymentService');
 const { PERMISSION_METADATA } = require('../config/permissions');
+const { KNOWN_LEGACY_PERMISSIONS, LEGACY_IMPLICATIONS } = require('../utils/permissionResolver');
 const {
     authorizeRoleCreation, authorizeRoleMutation, canGrantPermission, canModifyRole, isRoleDelegationError,
     loadActorContext, loadRoleById, loadRoleByKey, permissionDiff, validatePermissionGrant
@@ -433,7 +434,7 @@ router.post('/system/payout-settings', ensureAuth, checkPerm('system_settings.ma
 });
 
 // VIP 設定
-router.get('/system/vip', ensureAuth, checkPerm('sys_vip'), (req, res) => {
+router.get('/system/vip', ensureAuth, checkPerm('vip.view'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
         db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (vErr, tiers) => {
             const normalizedTiers = (tiers || []).map(tier => ({
@@ -447,7 +448,7 @@ router.get('/system/vip', ensureAuth, checkPerm('sys_vip'), (req, res) => {
     });
 });
 
-router.post('/system/vip/update/:level', ensureAuth, checkPerm('sys_vip'), async (req, res) => {
+router.post('/system/vip/update/:level', ensureAuth, checkPerm('vip.manage'), async (req, res) => {
     const level = req.params.level;
     const { spent_threshold, deposit_threshold, color } = req.body;
     let rewards = req.body['rewards[]'] || req.body.rewards || [];
@@ -484,7 +485,7 @@ router.post('/system/vip/update/:level', ensureAuth, checkPerm('sys_vip'), async
     }
 });
 
-router.post('/system/vip/add', ensureAuth, checkPerm('sys_vip'), async (req, res) => {
+router.post('/system/vip/add', ensureAuth, checkPerm('vip.manage'), async (req, res) => {
     const { level, name, spent_threshold, deposit_threshold, initial_reward, color } = req.body;
     const rewards = initial_reward ? [initial_reward.trim()] : [];
     if (color !== undefined && color !== null && String(color).trim() !== '' && !isValidVipColor(color)) {
@@ -514,15 +515,15 @@ router.post('/system/vip/add', ensureAuth, checkPerm('sys_vip'), async (req, res
 });
 
 // 相容舊入口，抽佣管理統一交由獨立 management route 處理。
-router.get('/system/commission', ensureAuth, checkPerm('sys_commission'), (req, res) => {
+router.get('/system/commission', ensureAuth, checkPerm('commission.view'), (req, res) => {
     res.redirect('/management/commission');
 });
 
-router.post('/system/commission/update', ensureAuth, checkPerm('sys_commission'), (req, res) => {
+router.post('/system/commission/update', ensureAuth, checkPerm('commission.manage'), (req, res) => {
     res.redirect('/management/commission');
 });
 
-router.post('/system/commission/services', ensureAuth, checkPerm('sys_commission'), (req, res) => {
+router.post('/system/commission/services', ensureAuth, checkPerm('commission.manage'), (req, res) => {
     res.redirect('/management/commission');
 });
 
@@ -536,10 +537,13 @@ router.get('/system/roles', ensureAuth, checkPerm('roles.view'), async (req, res
             ? '目前使用中的身分無法由自己修改權限'
             : '此身分包含你無權委派的權限'
     }));
-    const delegatablePermissions = Object.keys(PERMISSION_METADATA).filter(permission => canGrantPermission(actor.permissions, permission));
+    const delegatablePermissions = [...Object.keys(PERMISSION_METADATA), ...KNOWN_LEGACY_PERMISSIONS]
+        .filter(permission => canGrantPermission(actor.permissions, permission));
     res.render('roles', {
         user: req.user, activePage: 'roles', roles: rolesData, rolesData, saved: req.query.saved === '1',
         permissionMetadata: PERMISSION_METADATA, delegatablePermissions,
+        legacyPermissionKeys: [...KNOWN_LEGACY_PERMISSIONS],
+        legacyPermissionImplications: LEGACY_IMPLICATIONS,
         canGrantWildcard: actor.permissions.includes('*')
     });
 });
@@ -552,7 +556,7 @@ router.post('/system/roles/update-permissions', ensureAuth, checkPerm('roles.man
             const before = await loadRoleByKey(role, db);
             if (!before) throw Object.assign(new Error('找不到身分組'), { statusCode: 404 });
             const actor = await authorizeRoleMutation(req.user.id, before, db);
-            const permsArray = validatePermissionGrant(actor.permissions, permissions === undefined ? [] : (Array.isArray(permissions) ? permissions : [permissions]));
+            const permsArray = validatePermissionGrant(actor.permissions, permissions === undefined ? [] : (Array.isArray(permissions) ? permissions : [permissions]), { preserveLegacy: true });
             await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE role_key = ?', [JSON.stringify(permsArray), role]);
             await writeAuditLog({
                 operatorId: req.user.id,
@@ -609,7 +613,7 @@ router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('roles.manag
             const before = await loadRoleById(roleId, db);
             if (!before) throw Object.assign(new Error('找不到身分組'), { statusCode: 404 });
             const actor = await authorizeRoleMutation(req.user.id, before, db);
-            const permissions = validatePermissionGrant(actor.permissions, normalizedRequest);
+            const permissions = validatePermissionGrant(actor.permissions, normalizedRequest, { preserveLegacy: true });
             await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [JSON.stringify(permissions), roleId]);
             await writeAuditLog({
                 operatorId: req.user.id,
@@ -640,7 +644,7 @@ router.post('/system/roles/add', ensureAuth, checkPerm('roles.manage'), async (r
     try {
         await runSystemTransaction(async () => {
             const actor = await authorizeRoleCreation(req.user.id, db);
-            const permissions = validatePermissionGrant(actor.permissions, normalizedRequest);
+            const permissions = validatePermissionGrant(actor.permissions, normalizedRequest, { preserveLegacy: true });
             const insert = await runSql('INSERT INTO roles (role_key, name, category, tier_level, color_badge, description, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)',
                 [role_key, name, category, tier_level, badgeMap[category] || 'primary', description, JSON.stringify(permissions)]);
             await writeAuditLog({

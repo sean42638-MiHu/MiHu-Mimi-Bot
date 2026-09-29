@@ -175,7 +175,7 @@
     <%- include('partials/navbar', { activePage: 'staff' }) %>
 
     <div class="content-body admin-page-content">
-        <%- include('partials/admin_page_header', { icon: 'fa-users-gear', title: '員工列表', description: '管理工作室員工與陪玩師身份、分潤抽成及 Discord 工單頻道綁定', actions: '<a href="/management/staff/sync-all" class="btn btn-sm btn-outline-success rounded-pill px-3 py-2 fw-semibold text-nowrap flex-shrink-0"><i class="fa-brands fa-discord me-1"></i>同步員工 DC 資料</a>' }) %>
+        <%- include('partials/admin_page_header', { icon: 'fa-users-gear', title: '員工列表', description: '管理工作室員工與陪玩師身份、分潤抽成及 Discord 工單頻道綁定', actions: hasPerm('staff.manage') ? '<a href="/management/staff/sync-all" class="btn btn-sm btn-outline-success rounded-pill px-3 py-2 fw-semibold text-nowrap flex-shrink-0"><i class="fa-brands fa-discord me-1"></i>同步員工 DC 資料</a>' : '' }) %>
         <div class="staff-page-toolbar d-flex justify-content-end mb-3">
             <div class="search-box-wrap">
                 <i class="fa-solid fa-magnifying-glass search-icon-left"></i>

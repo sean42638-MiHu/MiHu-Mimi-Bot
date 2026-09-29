@@ -32,6 +32,32 @@ function hasLinkedPayment(order) {
     });
 }
 
+function assertNoWalletCredit(walletDelta) {
+    if (walletDelta > 0) throw new Error('訂單降價會增加會員錢包，請使用核准的退款流程');
+}
+
+function priceTermsChanged(order, { duration, unitPrice, rawPrice, discountAmount, finalAmount }) {
+    const previousRawPrice = Number(order.unit_price) > 0
+        ? Number(order.unit_price) * Number(order.duration || 1)
+        : Number(order.total_amount || 0) + Number(order.discount || 0);
+    const values = [
+        [duration, Number(order.duration ?? 1)],
+        [unitPrice, order.unit_price],
+        [rawPrice, previousRawPrice],
+        [discountAmount, order.discount],
+        [finalAmount, order.total_amount]
+    ];
+    return values.some(([next, current]) => Math.abs(Number(next || 0) - Number(current || 0)) > 0.000001);
+}
+
+function requirePriceAdjustment(priceChanged, allowPriceAdjustment) {
+    if (priceChanged && !allowPriceAdjustment) {
+        const error = new Error('調整訂單價格需要 orders.price_adjust 權限');
+        error.code = 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN';
+        throw error;
+    }
+}
+
 function createOrder(input = {}) {
     return withTransactionGate(() => createOrderInternal(input));
 }
@@ -140,11 +166,11 @@ async function createOrderInternal(input = {}) {
     }
 }
 
-function updateOrder(orderIdentifier, input = {}) {
-    return withTransactionGate(() => updateOrderInternal(orderIdentifier, input));
+function updateOrder(orderIdentifier, input = {}, { allowPriceAdjustment = false } = {}) {
+    return withTransactionGate(() => updateOrderInternal(orderIdentifier, input, { allowPriceAdjustment }));
 }
 
-async function updateOrderInternal(orderIdentifier, input = {}) {
+async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdjustment = false } = {}) {
     const order = await getOrder(orderIdentifier);
     if (!order) throw new Error('找不到目標訂單');
     const currentStatus = String(order.status || '').toLowerCase();
@@ -168,6 +194,7 @@ async function updateOrderInternal(orderIdentifier, input = {}) {
         throw new Error('訂單金額、折扣或時長無效');
     }
     const { finalAmount, discountAmount } = calculateDiscount(rawPrice, rawDiscount);
+    requirePriceAdjustment(priceTermsChanged(order, { duration, unitPrice, rawPrice, discountAmount, finalAmount }), allowPriceAdjustment);
     const talentId = input.talent_id !== undefined ? (input.talent_id || null) : order.talent_id;
     const bossId = input.boss_id !== undefined ? input.boss_id : order.boss_id;
     const boss = await new Promise((resolve, reject) => {
@@ -203,6 +230,7 @@ async function updateOrderInternal(orderIdentifier, input = {}) {
     }
     if (String(bossId) !== String(order.boss_id)) throw new Error('更換訂單會員需要人工財務處理');
     const walletDelta = Number(order.total_amount || 0) - finalAmount;
+    assertNoWalletCredit(walletDelta);
     if (walletDelta !== 0 && !(await hasLinkedPayment(order))) {
         throw new Error('找不到可追蹤付款 Ledger，禁止調整歷史訂單金額');
     }
@@ -274,11 +302,11 @@ async function updateOrderInternal(orderIdentifier, input = {}) {
     return getOrder(orderIdentifier);
 }
 
-function assignOrder(orderIdentifier, input = {}) {
-    return withTransactionGate(() => assignOrderInternal(orderIdentifier, input));
+function assignOrder(orderIdentifier, input = {}, { allowPriceAdjustment = false } = {}) {
+    return withTransactionGate(() => assignOrderInternal(orderIdentifier, input, { allowPriceAdjustment }));
 }
 
-async function assignOrderInternal(orderIdentifier, input = {}) {
+async function assignOrderInternal(orderIdentifier, input = {}, { allowPriceAdjustment = false } = {}) {
     const talentId = input.talentId;
     if (!talentId) throw new Error('缺少指派陪玩師');
 
@@ -305,12 +333,21 @@ async function assignOrderInternal(orderIdentifier, input = {}) {
             throw new Error('訂單金額或折扣無效');
         }
         const { finalAmount, discountAmount, discountText } = calculateDiscount(rawPrice, discountInput);
+        const duration = Number(order.duration || 1);
+        requirePriceAdjustment(priceTermsChanged(order, {
+            duration,
+            unitPrice: duration > 0 ? rawPrice / duration : rawPrice,
+            rawPrice,
+            discountAmount,
+            finalAmount
+        }), allowPriceAdjustment);
         const serviceId = await resolveServiceId(studioId, order.game, order.category || '陪玩單');
         const personalRate = await getPersonalTalentShareRate(talentId);
         const commission = await calculateCommissionByCategory(
             order.category || '陪玩單', finalAmount, rawPrice, personalRate, { studioId, serviceId }
         );
         const walletDelta = Number(order.total_amount || 0) - finalAmount;
+        assertNoWalletCredit(walletDelta);
 
         if (walletDelta !== 0) {
             if (!(await hasLinkedPayment(order))) {
@@ -337,7 +374,7 @@ async function assignOrderInternal(orderIdentifier, input = {}) {
         `, [
             talentId, talentId, studioId, serviceId, commission.talentShareRate,
             commission.platformCommission, commission.talentNetEarning,
-            rawPrice, discountAmount, finalAmount, order.id
+            duration > 0 ? rawPrice / duration : rawPrice, discountAmount, finalAmount, order.id
         ]);
         if (result.changes !== 1) throw new Error('訂單狀態已變更，指派已取消');
         await writeAuditLog({
@@ -466,8 +503,8 @@ async function completeOrderInternal(orderIdentifier, operatorId = null, talentM
     return getOrder(orderIdentifier);
 }
 
-async function cancelOrder(orderIdentifier, operatorId, source = 'management') {
-    return refundOrder(orderIdentifier, operatorId, source);
+async function cancelOrder(orderIdentifier, operatorId, source = 'management', options = {}) {
+    return refundOrder(orderIdentifier, operatorId, source, options);
 }
 
 module.exports = { createOrder, getOrder, updateOrder, assignOrder, startOrder, completeOrder, cancelOrder };

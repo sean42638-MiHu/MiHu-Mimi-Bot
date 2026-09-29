@@ -12,13 +12,14 @@
       "category": "最高權限",
       "tier_level": 100,
       "color_badge": "danger",
-      "description": "店長兼財務：營運管理與完整提款作業（查看、敏感資料、匯出、核銷、駁回）",
+      "description": "店長兼財務：最高權限、財務作業，以及核准完成訂單退款",
       "permissions": [
         "home", "personal", "profile", "my_wallet", "my_income", "my_orders",
         "manage", "manage_members", "manage_staff", "manage_orders",
         "system", "sys_vip", "sys_roles", "sys_settings",
         "member_adjust_balance", "member_adjust_vip",
         "staff_view_payroll", "staff_edit_role_commission", "orders_edit_and_reassign",
+        "orders.view", "orders.manage", "orders.price_adjust", "orders.refund", "orders.refund_completed",
         "payout.view", "payout.view_sensitive", "payout.export", "payout.mark_paid", "payout.reject"
       ]
     },
@@ -28,10 +29,10 @@
       "category": "主管職位",
       "tier_level": 80,
       "color_badge": "warning",
-      "description": "專責處理顧客售後客訴、爭議訂單仲裁、退款稽核與客服運作監管",
+      "description": "處理售後客訴與未完成訂單全額退款，不含會員餘額、VIP 或角色調整",
       "permissions": [
         "home", "personal", "profile", "my_wallet", "my_income", "my_orders",
-        "manage_members", "manage_staff", "manage_orders", "member_adjust_balance", "member_adjust_vip"
+        "orders.view", "orders.manage", "orders.refund"
       ]
     },
     {
@@ -40,10 +41,10 @@
       "category": "主管職位",
       "tier_level": 75,
       "color_badge": "warning",
-      "description": "督導日常派單運作、管理客服與陪陪人員、處理售後爭議與訂單改派",
+      "description": "督導客服與派單，可查詢及處理訂單，不含退款或會員帳務調整",
       "permissions": [
         "home", "personal", "profile", "my_wallet", "my_income", "my_orders",
-        "manage", "manage_members", "manage_staff", "manage_orders", "member_adjust_balance", "orders_edit_and_reassign"
+        "manage", "manage_staff", "orders.view", "orders.manage", "orders_edit_and_reassign"
       ]
     },
     {
@@ -52,10 +53,10 @@
       "category": "客服職位",
       "tier_level": 50,
       "color_badge": "info",
-      "description": "負責 Discord 前線派單、接單改派、處理玩家諮詢與訂單狀態維護",
+      "description": "負責前線派單、改派與訂單狀態維護，不含退款或會員帳務調整",
       "permissions": [
         "home", "personal", "profile", "my_wallet", "my_orders",
-        "manage_members", "manage_staff", "manage_orders", "orders_edit_and_reassign"
+        "orders.view", "orders.manage", "orders_edit_and_reassign"
       ]
     },
     {

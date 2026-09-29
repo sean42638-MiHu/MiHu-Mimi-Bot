@@ -8,7 +8,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('Roles, Staff and Payroll use shared data-state and component primitives', () => {
     const css = read('public/css/admin-components.css');
-    const roles = read('views/roles.ejs');
+    const roles = ['views/roles.ejs', 'views/partials/roles_table.ejs'].map(read).join('\n');
     const staff = read('views/partials/staff_table.ejs');
     const payroll = read('views/partials/payroll_table.ejs');
     for (const selector of ['admin-empty-state', 'admin-section-title', 'admin-table', 'admin-badge-success', 'admin-badge-warning', 'admin-badge-danger', 'admin-money']) {
@@ -39,7 +39,7 @@ test('Phase 3 data states distinguish SSR empty from filtered empty', () => {
 });
 
 test('Roles and Staff display hostile fixture values through escaped EJS output', () => {
-    const roles = read('views/roles.ejs');
+    const roles = read('views/partials/roles_table.ejs');
     const staff = read('views/partials/staff_table.ejs');
     assert.match(roles, /<%= r\.name %>/);
     assert.match(roles, /<%= r\.description/);

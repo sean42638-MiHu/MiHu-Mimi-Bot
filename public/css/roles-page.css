@@ -1,0 +1,149 @@
+        :root {
+            --bg-color: #0b0914;
+        }
+        .mihu-table tbody tr.role-row {
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .mihu-table tbody tr.role-row:hover {
+            background: rgba(168, 85, 247, 0.08);
+        }
+        .mihu-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .category-text-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #94a3b8;
+            white-space: nowrap;
+        }
+        .category-dot {
+            width: 7px;
+            color: #7dd3fc;
+        }
+        .badge-style-primary {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(109, 40, 217, 0.3));
+            border: 1px solid rgba(168, 85, 247, 0.5);
+            color: #e9d5ff;
+        }
+        .badge-style-secondary {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cbd5e1;
+        }
+
+        .action-btns-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .action-btn-clean {
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.82rem;
+            padding: 5px 12px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+
+        .perm-tree-box {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 16px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .perm-tree-box::-webkit-scrollbar { width: 6px; }
+        .perm-tree-box::-webkit-scrollbar-thumb {
+            background: rgba(168, 85, 247, 0.4);
+            border-radius: 6px;
+        }
+
+        .form-check-input {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            cursor: pointer;
+            margin-right: 8px;
+        }
+        .form-check-input:checked {
+            background-color: #9333ea;
+            border-color: #c084fc;
+        }
+
+        .modal-content-glass {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(168, 85, 247, 0.35);
+            border-radius: 20px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(168, 85, 247, 0.25);
+            backdrop-filter: blur(25px);
+            color: #fff;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-body { overflow-y: auto; }
+
+        .form-control-glass {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.14) !important;
+            color: #ffffff !important;
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 0.92rem;
+        }
+        .form-control-glass:focus {
+            background-color: #171326 !important;
+            color: #ffffff !important;
+            border-color: #c084fc !important;
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.3) !important;
+            outline: none !important;
+        }
+        .form-control-glass::placeholder { color: #64748b !important; }
+
+        input.form-control-glass:-webkit-autofill,
+        input.form-control-glass:-webkit-autofill:hover,
+        input.form-control-glass:-webkit-autofill:focus {
+            -webkit-text-fill-color: #ffffff !important;
+            -webkit-box-shadow: 0 0 0px 1000px #171326 inset !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+
+        select.form-control-glass option {
+            background-color: #171326 !important;
+            color: #ffffff !important;
+            padding: 8px 12px;
+        }
+
+/* Keep the role page aligned with other admin pages. */
+.roles-page.admin-page-content { padding: 20px 36px 32px 36px; background: #0b0914; }
+.roles-scroll-container { max-height: 380px; overflow-y: auto; scrollbar-color: #9333ea #171326; scrollbar-width: thin; }
+.roles-scroll-container::-webkit-scrollbar { width: 8px; height: 8px; }
+.roles-scroll-container::-webkit-scrollbar-track { background: #171326; border-radius: 8px; }
+.roles-scroll-container::-webkit-scrollbar-thumb { background: #9333ea; border-radius: 8px; }
+.roles-scroll-container .mihu-table thead th { position: sticky; top: 0; z-index: 2; background: #1b1630; }
+.roles-scroll-container .mihu-table tbody tr { height: 66px; }
+#editRolePermsModal .admin-permission-item .form-switch-input { appearance: none; width: 2.25rem; height: 1.25rem; border: 1px solid #6b5a84; border-radius: 1rem; background: #403556; background-image: none !important; position: relative; flex: 0 0 auto; }
+#editRolePermsModal .admin-permission-item .form-switch-input:checked { background: #9333ea; border-color: #c084fc; box-shadow: 0 0 12px rgba(168, 85, 247, .45); }
+#editRolePermsModal .admin-permission-item .form-switch-input:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 767px) { .roles-page.admin-page-content { padding: 20px 16px 32px; } }
+/* Role labels keep the existing cyber palette. */
+.role-pill-badge.badge-style-danger { background: rgba(239,68,68,.22); border: 1px solid rgba(248,113,113,.6); color: #fecaca; }
+.role-pill-badge.badge-style-warning { background: rgba(234,179,8,.2); border: 1px solid rgba(250,204,21,.58); color: #fef08a; }
+.role-pill-badge.badge-style-info { background: rgba(14,165,233,.2); border: 1px solid rgba(56,189,248,.6); color: #bae6fd; }
+.role-pill-badge.badge-style-secondary { background: rgba(148,163,184,.13); border: 1px solid rgba(148,163,184,.35); color: #cbd5e1; }
+.role-pill-badge.role-pill--talent { background: rgba(14,165,233,.2); border: 1px solid rgba(56,189,248,.6); color: #bae6fd; }
+.role-pill-badge.role-pill--cfo { background: rgba(168,85,247,.25); border: 1px solid rgba(192,132,252,.6); color: #e9d5ff; }
+.roles-scroll-container tr[data-rolekey="talent"] .role-pill-badge,
+#viewRoleNameBadge[data-rolekey="talent"] { background: rgba(14,165,233,.2); border: 1px solid rgba(56,189,248,.6); color: #bae6fd; }
+.roles-scroll-container tr[data-rolekey="cfo"] .role-pill-badge,
+#viewRoleNameBadge[data-rolekey="cfo"] { background: rgba(168,85,247,.25); border: 1px solid rgba(192,132,252,.6); color: #e9d5ff; }
+#editRolePermsModal .admin-permission-item .form-switch-input::after { content: ''; display: block; width: .9rem; height: .9rem; border-radius: 50%; background: #fff; position: absolute; top: .13rem; left: .15rem; transition: transform .15s ease; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+#editRolePermsModal .admin-permission-item .form-switch-input:checked::after { transform: translateX(1rem); }
+#editRolePermsModal .admin-permission-item .form-switch-input:focus-visible { outline: 2px solid #e9d5ff; outline-offset: 3px; }

@@ -19,10 +19,25 @@ function canManageOrderStudio(req, res, studioId) {
         && actorStudioId === resourceStudioId;
 }
 
+function requireUpdatePermission(req, res, next) {
+    const permission = req.body && req.body.is_delete === '1' ? 'orders.refund' : 'orders.manage';
+    return checkPerm(permission)(req, res, next);
+}
+
+function canApproveCompletedRefund(res) {
+    return Array.isArray(res.locals.userPerms)
+        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.refund_completed'));
+}
+
+function canAdjustOrderPrice(res) {
+    return Array.isArray(res.locals.userPerms)
+        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.price_adjust'));
+}
+
 // =========================================================================
 // 1. 訂單管理主頁面 (對應完整網址 /management/orders)
 // =========================================================================
-router.get('/', ensureAuth, checkPerm('orders.manage'), (req, res) => {
+router.get('/', ensureAuth, checkPerm('orders.view'), (req, res) => {
     const allStudios = isPlatformSuperuser(res);
     const actorStudioId = Number(req.user && req.user.studio_id);
     if (!allStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
@@ -77,7 +92,7 @@ router.get('/', ensureAuth, checkPerm('orders.manage'), (req, res) => {
 // =========================================================================
 // 2. 處理訂單更新/單筆刪除 (對應 /management/orders/update/:id)
 // =========================================================================
-router.post('/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, res) => {
+router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res) => {
     try {
         const order = await getOrder(req.params.id);
         if (req.body.is_delete === '1') {
@@ -85,7 +100,7 @@ router.post('/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, r
             if (!canManageOrderStudio(req, res, order.studio_id)) {
                 return res.status(403).send('無權修改其他工作室訂單');
             }
-            await refundOrder(order.id, req.user.id, '後台');
+            await refundOrder(order.id, req.user.id, '後台', { allowCompleted: canApproveCompletedRefund(res) });
             try {
                 syncOrdersJsonFromDb();
                 if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
@@ -95,7 +110,9 @@ router.post('/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, r
         }
         if (!order) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權修改其他工作室訂單');
-        await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'management-order-route' });
+        await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'management-order-route' }, {
+            allowPriceAdjustment: canAdjustOrderPrice(res)
+        });
 
         try {
             syncOrdersJsonFromDb();
@@ -104,6 +121,7 @@ router.post('/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, r
 
         res.redirect('/management/orders?saved=1');
     } catch (err) {
+        if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
         console.error('❌ 更新訂單失敗:', err);
         res.redirect('/management/orders?error=' + encodeURIComponent('更新失敗'));
     }
@@ -112,7 +130,7 @@ router.post('/update/:id', ensureAuth, checkPerm('orders.manage'), async (req, r
 // =========================================================================
 // 🚀 3. 專用訂單批量刪除 API (對應 /management/orders/batch-delete)
 // =========================================================================
-router.post('/batch-delete', ensureAuth, checkPerm('orders.manage'), async (req, res) => {
+router.post('/batch-delete', ensureAuth, checkPerm('orders.refund'), async (req, res) => {
     try {
         let orderIds = req.body.order_ids;
         if (!orderIds) {
@@ -133,7 +151,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('orders.manage'), async (req,
             if (selectedOrders.some(order => !canManageOrderStudio(req, res, order.studio_id))) {
             return res.status(403).send('無權刪除其他工作室訂單');
         }
-        await refundOrders(selectedOrders.map(order => order.id), req.user.id, '後台批次作廢');
+        await refundOrders(selectedOrders.map(order => order.id), req.user.id, '後台批次作廢', { allowCompleted: canApproveCompletedRefund(res) });
 
         try {
             syncOrdersJsonFromDb();
@@ -151,7 +169,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('orders.manage'), async (req,
 // =========================================================================
 // 4. 單筆作廢退款 API (對應 /management/orders/cancel/:id)
 // =========================================================================
-router.post('/cancel/:id', ensureAuth, checkPerm('orders.manage'), (req, res) => {
+router.post('/cancel/:id', ensureAuth, checkPerm('orders.refund'), (req, res) => {
     const orderId = req.params.id;
 
     db.get('SELECT * FROM orders WHERE id = ? OR order_no = ?', [orderId, orderId], (err, order) => {
@@ -160,7 +178,7 @@ router.post('/cancel/:id', ensureAuth, checkPerm('orders.manage'), (req, res) =>
         }
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權取消其他工作室訂單');
 
-        refundOrder(order.id, req.user.id, '後台作廢').then(result => {
+        refundOrder(order.id, req.user.id, '後台作廢', { allowCompleted: canApproveCompletedRefund(res) }).then(result => {
             try { syncOrdersJsonFromDb(); } catch (e) {}
             res.redirect('/management/orders?successMsg=' + encodeURIComponent(`訂單 ${order.order_no} 已成功退款 $${result.refundAmount} NTD 並標記取消！`));
         }).catch((rErr) => {

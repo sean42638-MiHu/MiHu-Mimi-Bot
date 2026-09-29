@@ -10,9 +10,9 @@
     };
 
     const hasPersonalSection = hasPerm('personal') || hasPerm('profile') || hasPerm('my_wallet') || hasPerm('my_income') || hasPerm('my_orders');
-    const hasManageSection = hasPerm('manage') || hasPerm('manage_members') || hasPerm('staff.view') || hasPerm('manage_staff') || hasPerm('orders.manage') || hasPerm('manage_orders') || hasPerm('analytics.view');
-    const canManageCommissionPage = hasPerm('sys_commission') || (typeof canManageStudioCommission !== 'undefined' && canManageStudioCommission);
-    const hasSystemSection = hasPerm('system') || canManageCommissionPage || hasPerm('sys_vip') || hasPerm('roles.view') || hasPerm('sys_roles') || hasPerm('sys_settings') || hasPerm('sys_logs') || hasPerm('audit_logs.view') || hasPerm('system_settings.view') || hasPerm('discord_control.view') || hasPerm('system_health.view');
+    const hasManageSection = hasPerm('analytics.view') || hasPerm('members.view') || hasPerm('staff.view') || hasPerm('payroll.view') || hasPerm('payout.view') || hasPerm('orders.view');
+    const canManageCommissionPage = hasPerm('commission.view');
+    const hasSystemSection = canManageCommissionPage || hasPerm('vip.view') || hasPerm('roles.view') || hasPerm('audit_logs.view') || hasPerm('system_settings.view') || hasPerm('discord_control.view') || hasPerm('system_health.view');
 %>
 
 <link rel="stylesheet" href="/css/vip-badge.css">
@@ -201,7 +201,7 @@
         <% if (hasManageSection) { %>
             <div class="menu-label">管理</div>
 
-            <% if (hasPerm('manage') || hasPerm('orders.manage') || hasPerm('manage_orders')) { %>
+            <% if (hasPerm('analytics.view')) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseOperation" class="menu-item d-flex justify-content-between align-items-center" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="collapseOperation">
                         <div class="d-flex align-items-center gap-2">
@@ -221,7 +221,7 @@
                 </div>
             <% } %>
 
-            <% if (hasPerm('manage_members')) { %>
+            <% if (hasPerm('members.view')) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseMembers" class="menu-item d-flex justify-content-between align-items-center <%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'true' : 'false' %>" aria-controls="collapseMembers">
                         <div class="d-flex align-items-center gap-2">
@@ -236,34 +236,34 @@
                                 <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
                                 <span>會員名單</span>
                             </a>
-                            <a href="/management/members/transactions" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'member_transactions' ? 'active-staff' : '' %>">
+                            <% if (hasPerm('member_ledger.view')) { %><a href="/management/members/transactions" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'member_transactions' ? 'active-staff' : '' %>">
                                 <i class="fa-solid fa-wallet" style="color: #22d3ee;"></i>
                                 <span>會員資金明細</span>
-                            </a>
+                            </a><% } %>
                         </div>
                     </div>
                 </div>
             <% } %>
 
-            <% if (hasPerm('staff.view') || hasPerm('manage_staff') || hasPerm('staff_view_payroll') || hasPerm('payout.view')) { %>
+            <% if (hasPerm('staff.view') || hasPerm('payroll.view') || hasPerm('payout.view')) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseStaff" class="menu-item d-flex justify-content-between align-items-center <%= typeof activePage !== 'undefined' && (activePage === 'staff' || activePage === 'payroll') ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= typeof activePage !== 'undefined' && (activePage === 'staff' || activePage === 'payroll') ? 'true' : 'false' %>" aria-controls="collapseStaff">
                         <div class="d-flex align-items-center gap-2">
                             <i class="fa-solid fa-id-badge" style="color: #10b981;"></i>
-                            <span class="text-white fw-semibold"><%= hasPerm('staff.view') || hasPerm('manage_staff') ? '員工管理' : '薪資管理' %></span>
+                            <span class="text-white fw-semibold"><%= hasPerm('staff.view') ? '員工管理' : '薪資管理' %></span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
                     </a>
                     <div class="collapse <%= typeof activePage !== 'undefined' && (activePage === 'staff' || activePage === 'payroll') ? 'show' : '' %>" id="collapseStaff">
                         <div class="sidebar-submenu-items">
-                            <% if (hasPerm('staff.view') || hasPerm('manage_staff')) { %>
+                            <% if (hasPerm('staff.view')) { %>
                                 <a href="/management/staff" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'staff' ? 'active-staff' : '' %>">
                                     <i class="fa-solid fa-users-gear" style="color: #10b981;"></i>
                                     <span>員工列表</span>
                                 </a>
                             <% } %>
                             <!-- 🚀 正式開放進入薪轉管理頁面 -->
-                            <% if (hasPerm('staff_view_payroll') || hasPerm('payout.view')) { %>
+                            <% if (hasPerm('payroll.view') || hasPerm('payout.view')) { %>
                                 <a href="/management/payroll" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'payroll' ? 'active-staff' : '' %>">
                                     <i class="fa-solid fa-money-check-dollar" style="color: #fde047;"></i>
                                     <span>薪轉管理</span>
@@ -274,7 +274,7 @@
                 </div>
             <% } %>
 
-            <% if (hasPerm('orders.manage') || hasPerm('manage_orders')) { %>
+            <% if (hasPerm('orders.view')) { %>
                 <a href="/management/orders" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'orders' ? 'active' : '' %>">
                     <i class="fa-solid fa-list-check" style="color: #ec4899;"></i>
                     <span class="fw-semibold">訂單管理</span>
@@ -299,7 +299,7 @@
                 </a>
             <% } %>
 
-            <% if (hasPerm('sys_vip')) { %>
+            <% if (hasPerm('vip.view')) { %>
                 <a href="/system/vip" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'vip' ? 'active' : '' %>">
                     <i class="fa-solid fa-crown" style="color: #fde047;"></i>
                     <span class="fw-semibold">VIP設定</span>

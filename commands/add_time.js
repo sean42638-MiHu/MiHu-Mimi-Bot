@@ -30,7 +30,7 @@ module.exports = {
         } catch (e) {}
 
         if (!checkDiscordAdminPermission(interaction)) {
-            return interaction.editReply({ content: '🚫 只有 Discord 客服與管理者身分能使用此加時指令。' });
+            return interaction.editReply({ content: '🚫 只有 Discord 伺服器管理員能使用此加時指令。' });
         }
 
         const orderNo = interaction.options.getString('order_no').trim();
@@ -65,7 +65,7 @@ module.exports = {
                     status: order.status,
                     operatorId: interaction.user.id,
                     source: 'discord-add-time-command'
-                });
+                }, { allowPriceAdjustment: checkDiscordAdminPermission(interaction) });
             } catch (updateError) {
                 return interaction.editReply({ content: `❌ 加時更新訂單資料失敗：${updateError.message}` });
             }
