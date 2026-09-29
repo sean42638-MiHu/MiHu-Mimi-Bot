@@ -7,7 +7,7 @@
     const levelText = String(rawLevel ?? '').trim();
     const levelMatch = levelText.match(/^(?:VIP\s*)?(\d+)$/i);
     const parsedLevel = levelMatch ? Number(levelMatch[1]) : Number(levelText);
-    const numericVipLevel = Number.isSafeInteger(parsedLevel) && parsedLevel >= 1 ? parsedLevel : 1;
+    const numericVipLevel = Number.isSafeInteger(parsedLevel) && parsedLevel >= 0 ? parsedLevel : 1;
     const rawName = String(sourceVipInfo.name ?? '').trim();
     const vipName = rawName && rawName.toLowerCase() !== 'null' ? rawName : `VIP ${numericVipLevel}`;
     const rawColor = String(sourceVipInfo.color ?? '').trim();

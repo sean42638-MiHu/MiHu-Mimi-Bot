@@ -22,7 +22,7 @@ function parseVipLevel(value, fallback = 1) {
     const text = String(value ?? '').trim();
     const match = text.match(/^(?:VIP\s*)?(\d+)$/i);
     const level = match ? Number(match[1]) : Number(value);
-    return Number.isSafeInteger(level) && level > 0 ? level : fallback;
+    return Number.isSafeInteger(level) && level >= 0 ? level : fallback;
 }
 
 function resolveVipTheme(level) {
@@ -35,7 +35,7 @@ function resolveVipTheme(level) {
 function resolveVipVisual(level) {
     const numericLevel = parseVipLevel(level);
     if (numericLevel <= 3) {
-        const progress = numericLevel - 1;
+        const progress = Math.max(numericLevel - 1, 0);
         return {
             glowStrength: 0.1 + progress * 0.065,
             borderAlpha: 0.48 + progress * 0.11,
