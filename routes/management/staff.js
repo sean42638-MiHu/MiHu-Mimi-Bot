@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../database');
-const { ensureAuth, checkPerm } = require('../../middleware/auth');
+const { denyPermission, ensureAuth, checkPerm } = require('../../middleware/auth');
 const { normalizeTalentShareRate } = require('../../utils/commissionHelper');
 const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
@@ -12,6 +12,16 @@ const { listRoles, listStaffDirectory } = require('../../services/staffDirectory
 const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
+
+function hasOwn(body, key) {
+    return Boolean(body && Object.prototype.hasOwnProperty.call(body, key));
+}
+
+function normalizeTalentStatusInput(value, fallback = 'idle') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return fallback;
+    return ['idle', 'busy', 'leave'].includes(normalized) ? normalized : fallback;
+}
 
 // 2.1 渲染「員工列表」頁面 (對應 /management/staff)
 router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, next) => {
@@ -61,7 +71,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, nex
 // 2.2 💼 變更員工職位與設定 (對應 /management/staff/update/:id)
 router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (req, res) => {
     const targetStaffId = req.params.id;
-    const { role, status, commission_rate, staff_channel_id } = req.body;
+    const body = req.body || {};
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
     const isPlatformSuperuser = hasResolvedPermission(userPerms, '*');
     const canManageStaff = hasResolvedPermission(userPerms, 'action_staff_manage');
@@ -78,17 +88,34 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
         return res.status(403).send('無權管理其他工作室員工');
     }
 
+    let assignedRole = null;
+    const commissionInputProvided = hasOwn(body, 'commission_rate');
+    const rejectUnauthorizedCommission = () => denyPermission(req, res, ['action_staff_commission'], {
+        kind: 'action',
+        feature: '員工分潤設定'
+    });
     try {
-        const before = await dbGet(`
-            SELECT u.role, u.status, u.commission_rate, u.staff_channel_id,
-                t.status AS talent_status, t.commission_rate AS talent_commission_rate,
-                t.staff_channel_id AS talent_staff_channel_id
-            FROM users u LEFT JOIN talents t ON t.user_id = u.id WHERE u.id = ?
-        `, [targetStaffId]);
         await withTransactionGate(async () => {
             await dbRun('BEGIN IMMEDIATE');
             try {
-                const newRole = String(role || before.role || 'staff').trim();
+                if (commissionInputProvided && !canEditCommission) {
+                    const unauthorizedError = new Error('PERMISSION_DENIED');
+                    unauthorizedError.name = 'PermissionDeniedError';
+                    throw unauthorizedError;
+                }
+                const before = await dbGet(`
+                    SELECT u.role, u.username, u.global_name, u.custom_nickname,
+                        t.user_id AS talent_user_id, t.status AS talent_status,
+                        t.commission_rate AS talent_commission_rate,
+                        t.staff_channel_id AS talent_staff_channel_id
+                    FROM users u LEFT JOIN talents t ON t.user_id = u.id WHERE u.id = ?
+                `, [targetStaffId]);
+                const roleInputProvided = hasOwn(body, 'role');
+                const statusInputProvided = hasOwn(body, 'status');
+                const channelInputProvided = hasOwn(body, 'staff_channel_id');
+                const requestedRole = roleInputProvided ? String(body.role || '').trim() : '';
+                const newRole = requestedRole || before.role || 'staff';
+                assignedRole = newRole;
                 if (newRole !== before.role) {
                     await authorizeRoleAssignment(req.user.id, newRole, 'action_staff_manage', db);
                 } else {
@@ -97,22 +124,63 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
                         throw Object.assign(new Error('無權管理員工'), { name: 'RoleDelegationError', statusCode: 403 });
                     }
                 }
-                const normalizedRate = canEditCommission ? normalizeTalentShareRate(commission_rate) : null;
-                const parsedRate = canEditCommission && normalizedRate > 0 ? normalizedRate : null;
-                const updateUserSql = canEditCommission
-                    ? 'UPDATE users SET role = ?, status = ?, commission_rate = ?, staff_channel_id = ? WHERE id = ?'
-                    : 'UPDATE users SET role = ?, status = ?, staff_channel_id = ? WHERE id = ?';
-                const updateUserParams = canEditCommission
-                    ? [newRole, status || 'idle', parsedRate, staff_channel_id || null, targetStaffId]
-                    : [newRole, status || 'idle', staff_channel_id || null, targetStaffId];
-                await dbRun(updateUserSql, updateUserParams);
-                const updateTalentSql = canEditCommission
-                    ? 'UPDATE talents SET status = ?, commission_rate = ?, staff_channel_id = ? WHERE user_id = ?'
-                    : 'UPDATE talents SET status = ?, staff_channel_id = ? WHERE user_id = ?';
-                const updateTalentParams = canEditCommission
-                    ? [status || 'idle', parsedRate, staff_channel_id || null, targetStaffId]
-                    : [status || 'idle', staff_channel_id || null, targetStaffId];
-                await dbRun(updateTalentSql, updateTalentParams);
+
+                if (newRole !== before.role) {
+                    await dbRun('UPDATE users SET role = ? WHERE id = ?', [newRole, targetStaffId]);
+                }
+
+                const talentUpdates = [];
+                const talentParams = [];
+                if (statusInputProvided) {
+                    talentUpdates.push('status = ?');
+                    talentParams.push(normalizeTalentStatusInput(body.status, before.talent_status || 'idle'));
+                }
+                if (channelInputProvided) {
+                    const rawChannel = String(body.staff_channel_id || '').trim();
+                    talentUpdates.push('staff_channel_id = ?');
+                    talentParams.push(rawChannel === '' ? null : rawChannel);
+                }
+                if (commissionInputProvided && canEditCommission) {
+                    const normalizedRate = normalizeTalentShareRate(body.commission_rate);
+                    talentUpdates.push('commission_rate = ?');
+                    talentParams.push(normalizedRate > 0 ? normalizedRate : null);
+                }
+
+                const hasExistingTalent = Boolean(before.talent_user_id);
+                const shouldCreateTalentProfile = !hasExistingTalent && (
+                    statusInputProvided || channelInputProvided || (commissionInputProvided && canEditCommission)
+                );
+
+                if (hasExistingTalent && talentUpdates.length > 0) {
+                    talentParams.push(targetStaffId);
+                    await dbRun(`UPDATE talents SET ${talentUpdates.join(', ')} WHERE user_id = ?`, talentParams);
+                } else if (shouldCreateTalentProfile) {
+                    const talentNickname = String(before.custom_nickname || before.global_name || before.username || targetStaffId).trim();
+                    const initialStatus = statusInputProvided
+                        ? normalizeTalentStatusInput(body.status, 'idle')
+                        : 'idle';
+                    const initialChannel = channelInputProvided
+                        ? (String(body.staff_channel_id || '').trim() || null)
+                        : null;
+                    const normalizedRate = commissionInputProvided && canEditCommission
+                        ? normalizeTalentShareRate(body.commission_rate)
+                        : null;
+                    const initialRate = normalizedRate > 0 ? normalizedRate : null;
+                    await dbRun(
+                        `INSERT INTO talents (user_id, nickname, status, commission_rate, staff_channel_id, skill_permissions)
+                        VALUES (?, ?, ?, ?, ?, '[]')`,
+                        [targetStaffId, talentNickname, initialStatus, initialRate, initialChannel]
+                    );
+                }
+
+                const after = await dbGet(`
+                    SELECT u.role,
+                        t.status AS talent_status,
+                        t.commission_rate AS talent_commission_rate,
+                        t.staff_channel_id AS talent_staff_channel_id
+                    FROM users u LEFT JOIN talents t ON t.user_id = u.id WHERE u.id = ?
+                `, [targetStaffId]);
+
                 await writeAuditLog({
                     operatorId: req.user.id,
                     studioId: targetUser.studio_id ?? null,
@@ -121,17 +189,15 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
                     targetId: targetStaffId,
                     before: before && {
                         role: before.role,
-                        status: before.status,
-                        commission_rate: before.commission_rate,
                         talent_status: before.talent_status,
                         talent_commission_rate: before.talent_commission_rate,
-                        staff_channel_configured: Boolean(before.staff_channel_id || before.talent_staff_channel_id)
+                        staff_channel_configured: Boolean(before.talent_staff_channel_id)
                     },
                     after: {
-                        role: newRole,
-                        status: status || 'idle',
-                        commission_rate: canEditCommission ? parsedRate : (before && before.commission_rate),
-                        staff_channel_configured: Boolean(staff_channel_id)
+                        role: after && after.role,
+                        talent_status: after && after.talent_status,
+                        talent_commission_rate: after && after.talent_commission_rate,
+                        staff_channel_configured: Boolean(after && after.talent_staff_channel_id)
                     },
                     metadata: { source: 'management-staff-route' }
                 });
@@ -153,7 +219,7 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
                 throw error;
             }
         });
-        if (req.user && req.user.id === targetStaffId) req.user.role = newRole;
+        if (req.user && req.user.id === targetStaffId && assignedRole) req.user.role = assignedRole;
         try {
             const { syncUsersJsonFromDb, syncTalentsJsonFromDb } = require('../../utils/dataSync');
             syncUsersJsonFromDb();
@@ -161,6 +227,8 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
         } catch (e) {}
         return res.redirect('/management/staff?success=1');
     } catch (error) {
+        if (error && error.name === 'PermissionDeniedError') return rejectUnauthorizedCommission();
+        if (error && Number(error.statusCode) === 403) return res.status(403).send(error.message || '無權管理員工');
         if (isRoleDelegationError(error)) return res.status(403).send(error.message);
         return res.redirect('/management/staff?error=' + encodeURIComponent('員工更新失敗'));
     }

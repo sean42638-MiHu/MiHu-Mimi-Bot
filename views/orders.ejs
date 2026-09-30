@@ -155,6 +155,7 @@
                 <% if (canBatchDeleteOrders) { %>
                     <!-- 🚀 店長專用表單：點擊時以原生 Form 提交，不使用抓取 json -->
                     <form id="batchDeleteForm" action="/management/orders/batch-delete" method="POST" style="margin: 0;">
+                        <input type="hidden" name="_csrf" id="batchDeleteCsrfToken" value="<%= csrfToken %>">
                         <div id="batchInputsContainer"></div>
                         <button type="button" class="btn-batch-delete" id="btnBatchDelete" style="display: none;">
                             <i class="fa-solid fa-trash-can"></i>
@@ -348,7 +349,7 @@
         });
 
         if (batchBtn && batchForm) {
-            batchBtn.addEventListener('click', () => {
+            batchBtn.addEventListener('click', async () => {
                 const checkedBoxes = document.querySelectorAll('.order-checkbox:checked');
                 if (checkedBoxes.length === 0) return;
 
@@ -356,19 +357,69 @@
                     return;
                 }
 
-                // 動態產生 hidden input 提交給後端
-                if (inputsContainer) {
-                    inputsContainer.innerHTML = '';
-                    checkedBoxes.forEach(cb => {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'order_ids';
-                        input.value = cb.value;
-                        inputsContainer.appendChild(input);
-                    });
+                const csrfInput = document.getElementById('batchDeleteCsrfToken');
+                const csrfToken = csrfInput ? String(csrfInput.value || '').trim() : '';
+                if (!csrfToken) {
+                    if (window.MiHuFeedback && typeof window.MiHuFeedback.error === 'function') {
+                        window.MiHuFeedback.error('操作憑證已失效，請重新整理頁面後再試一次。');
+                    } else {
+                        alert('操作憑證已失效，請重新整理頁面後再試一次。');
+                    }
+                    return;
                 }
 
-                batchForm.submit();
+                const requestBody = new URLSearchParams();
+                requestBody.set('_csrf', csrfToken);
+                checkedBoxes.forEach(cb => requestBody.append('order_ids', cb.value));
+
+                batchBtn.disabled = true;
+                try {
+                    const response = await fetch(batchForm.action, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            Accept: 'application/json'
+                        },
+                        body: requestBody.toString(),
+                        credentials: 'same-origin'
+                    });
+
+                    let payload = null;
+                    try {
+                        payload = await response.json();
+                    } catch (parseError) {
+                        payload = null;
+                    }
+
+                    if (!response.ok || !payload || payload.success !== true) {
+                        const errMsg = payload && payload.error ? String(payload.error) : '批量刪除失敗，請稍後再試。';
+                        if (response.status === 403 && /csrf/i.test(errMsg)) {
+                            const csrfExpiredMessage = '工作階段或安全憑證已失效，請重新整理頁面後再試一次。';
+                            if (window.MiHuFeedback && typeof window.MiHuFeedback.error === 'function') {
+                                window.MiHuFeedback.error(csrfExpiredMessage);
+                            } else {
+                                alert(csrfExpiredMessage);
+                            }
+                            return;
+                        }
+                        if (window.MiHuFeedback && typeof window.MiHuFeedback.error === 'function') {
+                            window.MiHuFeedback.error(errMsg);
+                        } else {
+                            alert(errMsg);
+                        }
+                        return;
+                    }
+
+                    window.location.assign(payload.redirect || '/management/orders');
+                } catch (error) {
+                    if (window.MiHuFeedback && typeof window.MiHuFeedback.error === 'function') {
+                        window.MiHuFeedback.error('網路異常，請稍後再試。');
+                    } else {
+                        alert('網路異常，請稍後再試。');
+                    }
+                } finally {
+                    batchBtn.disabled = false;
+                }
             });
         }
     });

@@ -16,11 +16,11 @@ test('staff directory includes staff roles and a member-stored platform principa
     try {
         await run(db, `CREATE TABLE users (
             id TEXT PRIMARY KEY, username TEXT, global_name TEXT, custom_nickname TEXT, avatar TEXT, role TEXT, studio_id INTEGER,
-            status TEXT, birthday TEXT, gender TEXT, mbti TEXT, commission_rate REAL, staff_channel_id TEXT, created_at TEXT,
+            birthday TEXT, gender TEXT, mbti TEXT, created_at TEXT,
             real_name TEXT, bank_name TEXT, bank_code TEXT, bank_branch TEXT, bank_account TEXT
         )`);
         await run(db, 'CREATE TABLE roles (id INTEGER PRIMARY KEY, role_key TEXT, name TEXT, tier_level INTEGER, color_badge TEXT)');
-        await run(db, 'CREATE TABLE talents (id INTEGER PRIMARY KEY, user_id TEXT, commission_rate REAL)');
+        await run(db, 'CREATE TABLE talents (id INTEGER PRIMARY KEY, user_id TEXT UNIQUE, staff_channel_id TEXT, commission_rate REAL, status TEXT, skill_permissions TEXT)');
         await run(db, 'CREATE TABLE orders (id INTEGER PRIMARY KEY, staff_id TEXT, player_id TEXT, studio_id INTEGER, status TEXT, total_amount REAL)');
         await run(db, `INSERT INTO roles VALUES
             (1,'member','會員',10,'secondary'),(2,'admin','店長',60,'danger'),
@@ -32,6 +32,9 @@ test('staff directory includes staff roles and a member-stored platform principa
             ('custom-worker','custom','custom_staff',1,'2026-01-03','custom-secret'),
             ('same-tier-worker','same-tier','same_tier',1,'2026-01-04','same-tier-secret'),
             ('other-studio-admin','other-admin','admin',2,'2026-01-05','other-secret')`);
+        await run(db, `INSERT INTO talents (user_id, staff_channel_id, commission_rate, status, skill_permissions) VALUES
+            ('custom-worker', 'channel-123', 0.8, 'busy', '[]'),
+            ('same-tier-worker', NULL, NULL, 'leave', '[]')`);
 
         const roles = await listRoles(db);
         assert.deepEqual(roles.map(role => role.id), [3, 4, 2, 1]);
@@ -46,7 +49,14 @@ test('staff directory includes staff roles and a member-stored platform principa
         assert.equal(platform.role_name, '會員');
         assert.equal(platform.is_platform_superuser, 1);
         assert.equal(platform.bank_account, null);
-        assert.equal(result.rows.find(row => row.id === 'admin-no-talent').talent_commission_rate, null);
+        const noTalentAdmin = result.rows.find(row => row.id === 'admin-no-talent');
+        assert.equal(noTalentAdmin.talent_commission_rate, null);
+        assert.equal(noTalentAdmin.status, 'idle');
+        assert.equal(noTalentAdmin.staff_channel_id, null);
+        const customWorker = result.rows.find(row => row.id === 'custom-worker');
+        assert.equal(customWorker.talent_commission_rate, 0.8);
+        assert.equal(customWorker.status, 'busy');
+        assert.equal(customWorker.staff_channel_id, 'channel-123');
         assert.equal(result.rows.find(row => row.id === 'custom-worker').role_name, '自訂工作人員');
 
         await run(db, 'DROP TABLE orders');

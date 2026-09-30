@@ -27,8 +27,13 @@ async function listStaffDirectory({ db, studioId, allStudios = false, includeSen
     const params = [String(platformSuperuserId), ...(allStudios ? [] : [studioId])];
     const baseColumns = `
         u.id, u.username, u.global_name, u.custom_nickname, u.avatar, u.role, u.studio_id,
-        u.status, u.birthday, u.gender, u.mbti, u.commission_rate, u.staff_channel_id, u.created_at,
-        ${sensitiveColumns}, t.commission_rate AS talent_commission_rate,
+        u.birthday, u.gender, u.mbti, u.created_at,
+        COALESCE(t.status, 'idle') AS status,
+        t.status AS talent_status,
+        t.commission_rate AS talent_commission_rate,
+        t.commission_rate AS commission_rate,
+        t.staff_channel_id AS staff_channel_id,
+        ${sensitiveColumns},
         r.name AS role_name, r.tier_level AS role_tier_level, r.color_badge AS role_color_badge,
         CASE WHEN u.id = ? THEN 1 ELSE 0 END AS is_platform_superuser
     `;

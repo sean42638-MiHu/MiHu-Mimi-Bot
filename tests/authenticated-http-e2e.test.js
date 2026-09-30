@@ -75,7 +75,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         email TEXT, email_verified INTEGER DEFAULT 0, email_verified_at TEXT,
         role TEXT, balance REAL DEFAULT 0, bonus_balance REAL DEFAULT 0, manual_spent REAL DEFAULT 0,
         manual_deposited REAL DEFAULT 0, vip_level INTEGER DEFAULT 0, studio_id INTEGER,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP, status TEXT, commission_rate REAL, staff_channel_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         real_name TEXT, bank_name TEXT, bank_code TEXT, bank_branch TEXT, bank_account TEXT,
         birthday TEXT, gender TEXT, age INTEGER, mbti TEXT
     )`);
@@ -176,7 +176,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run("INSERT INTO orders (id,order_no,talent_id,category,duration,unit_price,total_amount,talent_earning,status,created_at,studio_id) VALUES (505,'EARN-STAFF','staff-a','陪玩單',1,500,500,500,'completed',CURRENT_TIMESTAMP,1)");
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,discount,total_amount,status,created_at,studio_id)
         VALUES (606,'ORDER-REFUND-OPEN','member-a','陪玩單','game','standard',1,'h',45,0,45,'accepted',CURRENT_TIMESTAMP,1),
-               (607,'ORDER-REFUND-DONE','member-a','陪玩單','game','standard',1,'h',35,0,35,'completed',CURRENT_TIMESTAMP,1)`);
+               (607,'ORDER-REFUND-DONE','member-a','陪玩單','game','standard',1,'h',35,0,35,'completed',CURRENT_TIMESTAMP,1),
+               (608,'CSRF-BATCH-608','admin-a','陪玩單','game','standard',1,'h',25,0,25,'accepted',CURRENT_TIMESTAMP,1)`);
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
@@ -567,12 +568,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.doesNotMatch(assignmentStaffPage.body, /option value="settings_target"|option value="protected_deployer"/);
         assert.doesNotMatch(assignmentStaffPage.body, /7777888899990000|enc:v1:/);
         const staffRoleBefore = await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role)));
+        const deniedTalentBefore = await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row || null)));
         const deniedStaffAssignment = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
             'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'role=settings_target&status=busy');
         assert.equal(deniedStaffAssignment.status, 403, deniedStaffAssignment.headers.location || deniedStaffAssignment.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), staffRoleBefore);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row || null))), deniedTalentBefore);
 
         const memberRoleBefore = await new Promise((resolve, reject) => db.get("SELECT role, vip_level FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row)));
         const deniedMemberAssignment = await createRequest(port, 'POST', '/management/members/update-vip/member-a', {
@@ -592,17 +595,95 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const restoreUsersSync = replaceMethod(dataSync, 'syncUsersJsonFromDb', () => () => {});
         const restoreTalentsSync = replaceMethod(dataSync, 'syncTalentsJsonFromDb', () => () => {});
         let allowedStaffAssignment;
+        const talentCountBeforeRoleOnlyUpdate = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(Number(row.count || 0))));
         try {
             allowedStaffAssignment = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
                 Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
                 'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
-            }, 'role=delegatable_target&status=busy');
+            }, 'role=delegatable_target');
         } finally {
             restoreUsersSync();
             restoreTalentsSync();
         }
         assert.equal(allowedStaffAssignment.status, 302, allowedStaffAssignment.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'delegatable_target');
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(Number(row.count || 0)))), talentCountBeforeRoleOnlyUpdate);
+
+        const unauthorizedCreateAuditBefore = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs", (error, row) => error ? reject(error) : resolve(Number(row.count || 0))));
+        const unauthorizedCommissionCreate = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
+            'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'commission_rate=0.55');
+        assert.equal(unauthorizedCommissionCreate.status, 403, unauthorizedCommissionCreate.headers.location || unauthorizedCommissionCreate.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'delegatable_target');
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(Number(row.count || 0)))), talentCountBeforeRoleOnlyUpdate);
+        const unauthorizedCreateAuditAfter = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs", (error, row) => error ? reject(error) : resolve(Number(row.count || 0))));
+        assert.equal(unauthorizedCreateAuditAfter, unauthorizedCreateAuditBefore);
+
+        await new Promise((resolve, reject) => db.run(
+            "INSERT INTO talents (user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions) VALUES ('assignment-target', 'Assignment Target', 'chan-old', 0.64, 'busy', '[]')",
+            error => error ? reject(error) : resolve()
+        ));
+        const seededTalent = await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row)));
+
+        const roleOnlyWithExistingTalent = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'role=staff');
+        assert.equal(roleOnlyWithExistingTalent.status, 302, roleOnlyWithExistingTalent.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'staff');
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row))), seededTalent);
+
+        const explicitTalentUpdate = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'status=leave&commission_rate=0.75&staff_channel_id=chan-new');
+        assert.equal(explicitTalentUpdate.status, 302, explicitTalentUpdate.body);
+        const afterExplicitTalentUpdate = await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row)));
+        assert.equal(afterExplicitTalentUpdate.status, 'leave');
+        assert.equal(afterExplicitTalentUpdate.commission_rate, 0.75);
+        assert.equal(afterExplicitTalentUpdate.staff_channel_id, 'chan-new');
+
+        const unauthorizedEditAuditBefore = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs", (error, row) => error ? reject(error) : resolve(Number(row.count || 0))));
+        const unauthorizedCommissionEdit = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
+            'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'commission_rate=0.2');
+        assert.equal(unauthorizedCommissionEdit.status, 403, unauthorizedCommissionEdit.headers.location || unauthorizedCommissionEdit.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'staff');
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row))), afterExplicitTalentUpdate);
+        const unauthorizedEditAuditAfter = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs", (error, row) => error ? reject(error) : resolve(Number(row.count || 0))));
+        assert.equal(unauthorizedEditAuditAfter, unauthorizedEditAuditBefore);
+
+        const explicitTalentClear = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'commission_rate=&staff_channel_id=');
+        assert.equal(explicitTalentClear.status, 302, explicitTalentClear.body);
+        const afterExplicitTalentClear = await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row)));
+        assert.equal(afterExplicitTalentClear.status, 'leave');
+        assert.equal(afterExplicitTalentClear.commission_rate, null);
+        assert.equal(afterExplicitTalentClear.staff_channel_id, null);
+
+        const beforeRejectedSnapshot = {
+            role: await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))),
+            talent: await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row)))
+        };
+        const beforeRejectedAuditCount = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs", (error, row) => error ? reject(error) : resolve(Number(row.count || 0))));
+        const rejectedMutation = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
+            'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'role=settings_target&status=busy&commission_rate=0.2&staff_channel_id=chan-denied');
+        assert.equal(rejectedMutation.status, 403, rejectedMutation.headers.location || rejectedMutation.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), beforeRejectedSnapshot.role);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row))), beforeRejectedSnapshot.talent);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs", (error, row) => error ? reject(error) : resolve(Number(row.count || 0)))), beforeRejectedAuditCount);
+
+        const returnToDelegatableRole = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'role=delegatable_target');
+        assert.equal(returnToDelegatableRole.status, 302, returnToDelegatableRole.body);
         const missingCsrfSettings = await createRequest(port, 'POST', '/system/settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -941,6 +1022,31 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(unimplementedMemberSync.status, 501);
         assert.match(unimplementedMemberSync.body, /尚未實作/);
 
+        const refundSession = await createSession('aftersales-orders');
+        const beforeBatchDeleteOrder = await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row)));
+        const missingBatchDeleteCsrf = await createRequest(port, 'POST', '/management/orders/batch-delete', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
+            Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'order_ids=608');
+        assert.equal(missingBatchDeleteCsrf.status, 403);
+        assert.match(missingBatchDeleteCsrf.body, /Invalid CSRF token/);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row))), beforeBatchDeleteOrder);
+        const invalidBatchDeleteCsrf = await createRequest(port, 'POST', '/management/orders/batch-delete', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': 'invalid-token', 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'order_ids=608');
+        assert.equal(invalidBatchDeleteCsrf.status, 403);
+        assert.match(invalidBatchDeleteCsrf.body, /Invalid CSRF token/);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row))), beforeBatchDeleteOrder);
+        const validBatchDelete = await createRequest(port, 'POST', '/management/orders/batch-delete', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': refundSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'order_ids=608');
+        assert.equal(validBatchDelete.status, 200, validBatchDelete.body);
+        const validBatchDeletePayload = JSON.parse(validBatchDelete.body);
+        assert.equal(validBatchDeletePayload.success, true);
+        assert.match(validBatchDeletePayload.redirect, /^\/management\/orders\?successMsg=/);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row.status))), 'cancelled');
         const beforeCrossStudio = await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 202", (error, row) => error ? reject(error) : resolve(row)));
         const beforeLedger = await new Promise((resolve, reject) => db.get('SELECT COUNT(*) AS count FROM wallet_transactions', (error, row) => error ? reject(error) : resolve(row.count)));
         const beforeAudit = await new Promise((resolve, reject) => db.get('SELECT COUNT(*) AS count FROM audit_logs', (error, row) => error ? reject(error) : resolve(row.count)));

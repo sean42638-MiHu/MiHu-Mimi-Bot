@@ -46,6 +46,11 @@ function hasOwn(body, key) {
     return Boolean(body && Object.prototype.hasOwnProperty.call(body, key));
 }
 
+function wantsJson(req) {
+    const accept = String(req.get('accept') || '').toLowerCase();
+    return accept.includes('application/json') || accept.includes('text/json') || req.xhr === true;
+}
+
 function isReassignmentRequest(body, order) {
     if (!body) return false;
     const currentTalent = normalizeAssignee(order && order.talent_id);
@@ -162,6 +167,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_refund'), async
     try {
         let orderIds = req.body.order_ids;
         if (!orderIds) {
+            if (wantsJson(req)) return res.status(400).json({ success: false, error: '⚠️ 請至少勾選一筆訂單！' });
             return res.redirect('/management/orders?error=' + encodeURIComponent('⚠️ 請至少勾選一筆訂單！'));
         }
 
@@ -174,9 +180,11 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_refund'), async
             db.all(`SELECT id, status, studio_id FROM orders WHERE id IN (${placeholders}) OR order_no IN (${placeholders})`, [...orderIds, ...orderIds], (err, rows) => err ? reject(err) : resolve(rows || []));
         });
         if (selectedOrders.length !== orderIds.length) {
+            if (wantsJson(req)) return res.status(404).json({ success: false, error: '部分訂單不存在，批次操作已取消' });
             return res.redirect('/management/orders?error=' + encodeURIComponent('部分訂單不存在，批次操作已取消'));
         }
-            if (selectedOrders.some(order => !canManageOrderStudio(req, res, order.studio_id))) {
+        if (selectedOrders.some(order => !canManageOrderStudio(req, res, order.studio_id))) {
+            if (wantsJson(req)) return res.status(403).json({ success: false, error: '無權刪除其他工作室訂單' });
             return res.status(403).send('無權刪除其他工作室訂單');
         }
         await refundOrders(selectedOrders.map(order => order.id), req.user.id, '後台批次作廢', { allowCompleted: canApproveCompletedRefund(res) });
@@ -186,10 +194,14 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_refund'), async
             if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
         } catch (e) {}
 
-        res.redirect('/management/orders?successMsg=' + encodeURIComponent(`✅ 成功批量退款並標記取消 ${orderIds.length} 筆訂單！`));
+        const successMsg = `✅ 成功批量退款並標記取消 ${orderIds.length} 筆訂單！`;
+        const redirectUrl = '/management/orders?successMsg=' + encodeURIComponent(successMsg);
+        if (wantsJson(req)) return res.json({ success: true, redirect: redirectUrl, successMsg });
+        res.redirect(redirectUrl);
 
     } catch (err) {
         console.error('❌ 批量刪除訂單出錯:', err);
+        if (wantsJson(req)) return res.status(500).json({ success: false, error: '批量刪除失敗：' + err.message });
         res.redirect('/management/orders?error=' + encodeURIComponent('批量刪除失敗：' + err.message));
     }
 });
