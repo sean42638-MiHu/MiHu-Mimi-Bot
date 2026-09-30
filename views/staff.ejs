@@ -206,8 +206,133 @@
     document.addEventListener('DOMContentLoaded', () => {
         const staffDetailModal = new bootstrap.Modal(document.getElementById('staffDetailModal'));
         const staffEditModal = new bootstrap.Modal(document.getElementById('staffEditModal'));
+        const staffDetailModalElement = document.getElementById('staffDetailModal');
+        const unlockSensitiveDataBtn = document.getElementById('unlockSensitiveDataBtn');
+        const sensitiveUnlockStatus = document.getElementById('sensitiveUnlockStatus');
+        let currentDetailStaff = null;
+        let sensitiveRequestController = null;
+        let sensitiveRequestId = 0;
+        let detailViewGeneration = 0;
+        let detailViewActive = false;
+
+        function getCsrfTokenFromCookie() {
+            const cookie = String(document.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith('csrf_token='));
+            return cookie ? decodeURIComponent(cookie.slice('csrf_token='.length)) : '';
+        }
+
+        function maskSensitiveFields() {
+            const realNameEl = document.getElementById('detailRealName');
+            if (!realNameEl) return;
+            realNameEl.textContent = '限制查看';
+            document.getElementById('detailBankName').textContent = '限制查看';
+            document.getElementById('detailBankCode').textContent = '限制查看';
+            document.getElementById('detailBankBranch').textContent = '限制查看';
+            document.getElementById('detailBankAccount').textContent = '限制查看';
+        }
+
+        function isCurrentDetailView(staffId, generation) {
+            return Boolean(
+                detailViewActive
+                && staffDetailModalElement
+                && staffDetailModalElement.classList.contains('show')
+                && currentDetailStaff
+                && currentDetailStaff.id === staffId
+                && detailViewGeneration === generation
+            );
+        }
+
+        function resetSensitiveView(options = {}) {
+            const { invalidate = false, clearTarget = false } = options;
+            if (invalidate) detailViewGeneration += 1;
+            if (sensitiveRequestController) {
+                sensitiveRequestController.abort();
+                sensitiveRequestController = null;
+            }
+            sensitiveRequestId += 1;
+            maskSensitiveFields();
+            if (unlockSensitiveDataBtn) {
+                unlockSensitiveDataBtn.disabled = false;
+                unlockSensitiveDataBtn.hidden = false;
+            }
+            if (sensitiveUnlockStatus) {
+                sensitiveUnlockStatus.textContent = '尚未解鎖';
+                sensitiveUnlockStatus.classList.remove('text-success');
+                sensitiveUnlockStatus.classList.add('text-secondary');
+            }
+            if (clearTarget) currentDetailStaff = null;
+        }
+
+        async function unlockSensitiveData() {
+            if (!currentDetailStaff || !unlockSensitiveDataBtn) return;
+            const staffId = currentDetailStaff.id;
+            const generation = detailViewGeneration;
+            const displayName = currentDetailStaff.displayName || currentDetailStaff.username || String(staffId);
+            const confirmMessage = `即將查看員工${displayName}的本名與薪轉帳戶資料。本次查看將記錄於系統日誌。`;
+            const confirmed = await (window.AdminFeedback && typeof window.AdminFeedback.confirm === 'function'
+                ? window.AdminFeedback.confirm({
+                    title: '查看敏感資料確認',
+                    message: confirmMessage,
+                    confirmText: '確認查看',
+                    cancelText: '取消',
+                    variant: 'warning'
+                })
+                : Promise.resolve(window.confirm(confirmMessage)));
+            if (!isCurrentDetailView(staffId, generation)) return;
+            if (!confirmed) return;
+
+            const requestId = ++sensitiveRequestId;
+            if (sensitiveRequestController) sensitiveRequestController.abort();
+            sensitiveRequestController = new AbortController();
+            unlockSensitiveDataBtn.disabled = true;
+            if (sensitiveUnlockStatus) sensitiveUnlockStatus.textContent = '資料解鎖中...';
+
+            try {
+                const response = await fetch(`/management/staff/${encodeURIComponent(String(staffId))}/sensitive-data`, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': getCsrfTokenFromCookie()
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ confirmSensitiveView: true }),
+                    signal: sensitiveRequestController.signal
+                });
+                const result = await response.json().catch(() => ({}));
+                if (requestId !== sensitiveRequestId || !isCurrentDetailView(staffId, generation)) return;
+
+                if (!response.ok || !result.success || !result.data) {
+                    throw new Error(result.message || '敏感資料載入失敗');
+                }
+
+                document.getElementById('detailRealName').textContent = result.data.realName || '未填寫';
+                document.getElementById('detailBankName').textContent = result.data.bankName || '未填寫';
+                document.getElementById('detailBankCode').textContent = result.data.bankCode || '未填寫';
+                document.getElementById('detailBankBranch').textContent = result.data.bankBranch || '未填寫';
+                document.getElementById('detailBankAccount').textContent = result.data.bankAccount || '未填寫';
+                if (unlockSensitiveDataBtn) unlockSensitiveDataBtn.hidden = true;
+                if (sensitiveUnlockStatus) {
+                    sensitiveUnlockStatus.textContent = '已解鎖（僅限本次檢視）';
+                    sensitiveUnlockStatus.classList.remove('text-secondary');
+                    sensitiveUnlockStatus.classList.add('text-success');
+                }
+            } catch (error) {
+                if (error && error.name === 'AbortError') return;
+                if (!isCurrentDetailView(staffId, generation)) return;
+                maskSensitiveFields();
+                if (sensitiveUnlockStatus) sensitiveUnlockStatus.textContent = '解鎖失敗，請稍後再試';
+            } finally {
+                if (requestId === sensitiveRequestId && isCurrentDetailView(staffId, generation) && unlockSensitiveDataBtn) {
+                    unlockSensitiveDataBtn.disabled = false;
+                }
+            }
+        }
 
         function showStaffDetail(data) {
+            detailViewGeneration += 1;
+            detailViewActive = true;
+            currentDetailStaff = data;
+            resetSensitiveView();
             document.getElementById('detailAvatar').src = data.avatar;
             document.getElementById('detailDisplayName').textContent = data.displayName;
             document.getElementById('detailRoleBadge').textContent = data.roleName;
@@ -225,15 +350,7 @@
             document.getElementById('detailGender').textContent = data.gender;
             document.getElementById('detailMbti').textContent = data.mbti;
             document.getElementById('detailChannel').textContent = data.staffChannelId || '未綁定';
-
-            const realNameEl = document.getElementById('detailRealName');
-            if (realNameEl) {
-                realNameEl.textContent = '限制查看';
-                document.getElementById('detailBankName').textContent = '限制查看';
-                document.getElementById('detailBankCode').textContent = '限制查看';
-                document.getElementById('detailBankBranch').textContent = '限制查看';
-                document.getElementById('detailBankAccount').textContent = '限制查看';
-            }
+            maskSensitiveFields();
 
             staffDetailModal.show();
         }
@@ -297,6 +414,28 @@
 
             document.getElementById('clearStaffFilterState')?.addEventListener('click', () => clearBtn.click());
         }
+
+        if (unlockSensitiveDataBtn) {
+            unlockSensitiveDataBtn.addEventListener('click', event => {
+                event.preventDefault();
+                unlockSensitiveData();
+            });
+        }
+
+        if (staffDetailModalElement) {
+            staffDetailModalElement.addEventListener('hide.bs.modal', () => {
+                detailViewActive = false;
+                resetSensitiveView({ invalidate: true });
+            });
+            staffDetailModalElement.addEventListener('hidden.bs.modal', () => {
+                resetSensitiveView({ clearTarget: true });
+            });
+        }
+
+        window.addEventListener('pagehide', () => {
+            detailViewActive = false;
+            resetSensitiveView({ invalidate: true, clearTarget: true });
+        });
 
         rows.forEach(row => {
             const data = JSON.parse(row.getAttribute('data-staff'));

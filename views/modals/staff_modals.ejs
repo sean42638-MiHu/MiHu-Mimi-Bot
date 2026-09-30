@@ -66,7 +66,9 @@
                 </div>
 
                 <% 
-                    const canViewPayroll = typeof hasPerm === 'function' ? hasPerm('action_payout_sensitive') : false;
+                    const canViewPayroll = typeof canViewSensitive !== 'undefined'
+                        ? Boolean(canViewSensitive)
+                        : (typeof hasPerm === 'function' ? hasPerm('action_staff_sensitive') : false);
                 %>
 
                 <% if (canViewPayroll) { %>
@@ -78,23 +80,23 @@
                         <div class="row g-2 small">
                             <div class="col-6">
                                 <span class="text-secondary">本名：</span>
-                                <span class="text-white fw-bold" id="detailRealName">未填寫</span>
+                                <span class="text-white fw-bold" id="detailRealName">限制查看</span>
                             </div>
                             <div class="col-6">
                                 <span class="text-secondary">銀行名稱：</span>
-                                <span class="text-white fw-bold" id="detailBankName">未填寫</span>
+                                <span class="text-white fw-bold" id="detailBankName">限制查看</span>
                             </div>
                             <div class="col-6">
                                 <span class="text-secondary">機構代碼：</span>
-                                <span class="text-white font-monospace" id="detailBankCode">未填寫</span>
+                                <span class="text-white font-monospace" id="detailBankCode">限制查看</span>
                             </div>
                             <div class="col-6">
                                 <span class="text-secondary">分行名稱：</span>
-                                <span class="text-white" id="detailBankBranch">未填寫</span>
+                                <span class="text-white" id="detailBankBranch">限制查看</span>
                             </div>
                             <div class="col-12 mt-2">
                                 <span class="text-secondary">薪轉帳戶：</span>
-                                <span class="text-warning font-monospace fw-bold fs-6" id="detailBankAccount">未填寫</span>
+                                <span class="text-warning font-monospace fw-bold fs-6" id="detailBankAccount">限制查看</span>
                             </div>
                         </div>
                     </div>
@@ -106,6 +108,14 @@
                 <% } %>
             </div>
             <div class="modal-footer border-0 pt-0">
+                <% if (canViewPayroll) { %>
+                    <div class="me-auto d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-warning rounded-pill px-3" id="unlockSensitiveDataBtn">
+                            <i class="fa-solid fa-eye me-1"></i>解鎖查看敏感資料
+                        </button>
+                        <span class="small text-secondary" id="sensitiveUnlockStatus" aria-live="polite">尚未解鎖</span>
+                    </div>
+                <% } %>
                 <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">關閉</button>
             </div>
         </div>

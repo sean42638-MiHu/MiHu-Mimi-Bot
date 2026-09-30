@@ -37,7 +37,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, nex
     try {
         const [roles, directory] = await Promise.all([
             listRoles(db),
-            listStaffDirectory({ db, studioId: actorStudioId, allStudios: canViewAllStudios, includeSensitive: canViewSensitive })
+            listStaffDirectory({ db, studioId: actorStudioId, allStudios: canViewAllStudios, includeSensitive: false })
         ]);
         if (directory.usedFallback) {
             console.error('員工統計查詢失敗，已使用不含訂單統計的安全查詢:', directory.primaryError.message);
@@ -46,9 +46,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, nex
         const assignableRoles = hasResolvedPermission(userPerms, 'action_staff_manage')
             ? roles.filter(role => canAssignRole(actor, role))
             : [];
-        const staffList = canViewSensitive
-            ? directory.rows.map(row => decryptSensitiveFields(row, payrollSensitiveFields))
-            : directory.rows;
+        const staffList = directory.rows;
 
         res.render('staff', {
             staffList,
@@ -65,6 +63,82 @@ router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, nex
             return res.status(503).send('目前無法安全載入員工薪轉資料');
         }
         return next(error);
+    }
+});
+
+// 2.1.1 二次確認後載入單一員工敏感資料 (對應 /management/staff/:id/sensitive-data)
+router.post('/:id/sensitive-data', ensureAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+
+    const confirmed = req.body && req.body.confirmSensitiveView === true;
+    if (!confirmed) {
+        return res.status(400).json({ success: false, message: '未確認查看敏感資料' });
+    }
+
+    try {
+        const actor = await loadActorContext(req.user.id, db);
+        if (!hasResolvedPermission(actor.permissions, 'action_staff_sensitive')) {
+            return denyPermission(req, res, ['action_staff_sensitive'], {
+                kind: 'action',
+                feature: '員工敏感資料'
+            });
+        }
+
+        const actorRecord = await dbGet('SELECT id, studio_id FROM users WHERE id = ?', [req.user.id]);
+        if (!actorRecord) return res.status(403).json({ success: false, message: '找不到操作者身分' });
+
+        const targetStaff = await dbGet(`
+            SELECT id, studio_id, username, global_name, custom_nickname,
+                real_name, bank_name, bank_code, bank_branch, bank_account
+            FROM users
+            WHERE id = ?
+        `, [req.params.id]);
+        if (!targetStaff) return res.status(404).json({ success: false, message: '找不到員工資料' });
+
+        const canViewAllStudios = hasResolvedPermission(actor.permissions, '*');
+        const actorStudioId = Number(actorRecord.studio_id);
+        const targetStudioId = Number(targetStaff.studio_id);
+        if (!canViewAllStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0
+            || !Number.isInteger(targetStudioId) || targetStudioId !== actorStudioId)) {
+            return denyPermission(req, res, ['action_staff_sensitive'], {
+                kind: 'action',
+                feature: '員工敏感資料'
+            });
+        }
+
+        const decrypted = decryptSensitiveFields(targetStaff, payrollSensitiveFields);
+
+        await writeAuditLog({
+            operatorId: actor.id,
+            studioId: targetStaff.studio_id ?? null,
+            action: 'sensitive_data_view',
+            targetType: 'user',
+            targetId: targetStaff.id,
+            metadata: {
+                source: 'management-staff-sensitive-data',
+                target_studio_id: targetStaff.studio_id ?? null
+            }
+        });
+
+        return res.json({
+            success: true,
+            data: {
+                staffId: targetStaff.id,
+                displayName: String(targetStaff.custom_nickname || targetStaff.global_name || targetStaff.username || targetStaff.id),
+                realName: decrypted.real_name || '未填寫',
+                bankName: decrypted.bank_name || '未填寫',
+                bankCode: decrypted.bank_code || '未填寫',
+                bankBranch: decrypted.bank_branch || '未填寫',
+                bankAccount: decrypted.bank_account || '未填寫'
+            }
+        });
+    } catch (error) {
+        if (/decrypt|cipher|authentic/i.test(String(error && error.message))) {
+            return res.status(503).json({ success: false, message: '目前無法安全載入員工薪轉資料' });
+        }
+        console.error('員工敏感資料載入失敗:', error.message);
+        return res.status(503).json({ success: false, message: '目前無法載入員工敏感資料' });
     }
 });
 

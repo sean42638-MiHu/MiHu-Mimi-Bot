@@ -906,7 +906,91 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(sensitiveStaffPage.status, 200, sensitiveStaffPage.body);
         assert.match(sensitiveStaffPage.body, /個人隱私資料/);
         assert.match(sensitiveStaffPage.body, /敏感資料/);
+        assert.match(sensitiveStaffPage.body, /解鎖查看敏感資料/);
         assert.doesNotMatch(sensitiveStaffPage.body, /7777888899990000/);
+
+        const sensitiveAuditCountBefore = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count)));
+        const deniedWithoutConfirmation = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: false }));
+        assert.equal(deniedWithoutConfirmation.status, 400, deniedWithoutConfirmation.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count))), sensitiveAuditCountBefore);
+
+        const unlockedSensitive = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(unlockedSensitive.status, 200, unlockedSensitive.body);
+        assert.match(String(unlockedSensitive.headers['cache-control'] || ''), /no-store/);
+        const unlockedPayload = JSON.parse(unlockedSensitive.body);
+        assert.equal(unlockedPayload.success, true);
+        assert.equal(unlockedPayload.data.staffId, 'staff-a');
+        assert.equal(unlockedPayload.data.bankAccount, '7777888899990000');
+        assert.equal(unlockedPayload.data.bankCode, '808');
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count))), sensitiveAuditCountBefore + 1);
+        const latestSensitiveAudit = await new Promise((resolve, reject) => db.get("SELECT operator_id, target_id, studio_id, before_data, after_data, metadata FROM audit_logs WHERE action='sensitive_data_view' ORDER BY id DESC LIMIT 1", (error, row) => error ? reject(error) : resolve(row)));
+        assert.equal(latestSensitiveAudit.operator_id, 'manager-a');
+        assert.equal(latestSensitiveAudit.target_id, 'staff-a');
+        assert.equal(Number(latestSensitiveAudit.studio_id), 1);
+        assert.doesNotMatch(JSON.stringify(latestSensitiveAudit), /7777888899990000|123456789|Test Bank|Member A|Staff A/);
+
+        const managerPermissionSnapshot = await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key = 'manager'", (error, row) => error ? reject(error) : resolve(row.permissions)));
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify([
+            'view_management', 'action_order_management', 'action_member_management', 'action_member_balance',
+            'action_member_role_vip', 'action_staff_management', 'action_system_management',
+            'action_role_management', 'view_payout', 'action_payout_export', 'action_payout_mark_paid', 'action_payout_reject'
+        ]), 'manager'], error => error ? reject(error) : resolve()));
+        const deniedAfterRevocation = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(deniedAfterRevocation.status, 403, deniedAfterRevocation.body);
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [managerPermissionSnapshot, 'manager'], error => error ? reject(error) : resolve()));
+
+        const crossStudioSensitive = await createRequest(port, 'POST', '/management/staff/member-b/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(crossStudioSensitive.status, 403, crossStudioSensitive.body);
+        assert.equal(JSON.parse(crossStudioSensitive.body).reason, 'PERMISSION_DENIED');
+
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify([
+            'view_management', 'action_order_management', 'action_member_management', 'action_member_balance',
+            'action_member_role_vip', 'action_staff_payroll_details', 'action_staff_management', 'action_system_management',
+            'action_role_management', 'view_payout', 'action_payout_sensitive', 'action_payout_export',
+            'action_payout_mark_paid', 'action_payout_reject', 'action_commission_config'
+        ]), 'manager'], error => error ? reject(error) : resolve()));
+        const crossStudioWithCommissionScope = await createRequest(port, 'POST', '/management/staff/member-b/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(crossStudioWithCommissionScope.status, 403, crossStudioWithCommissionScope.body);
+        assert.equal(JSON.parse(crossStudioWithCommissionScope.body).reason, 'PERMISSION_DENIED');
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [managerPermissionSnapshot, 'manager'], error => error ? reject(error) : resolve()));
+
+        const deniedSensitiveByPermission = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: limitedStaffManager.cookie,
+            'X-CSRF-Token': limitedStaffManager.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(deniedSensitiveByPermission.status, 403, deniedSensitiveByPermission.body);
+
+        const invalidCsrfSensitive = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(invalidCsrfSensitive.status, 403, invalidCsrfSensitive.body);
+        assert.match(invalidCsrfSensitive.body, /Invalid CSRF token/);
+
+        await new Promise((resolve, reject) => db.run('ALTER TABLE audit_logs RENAME TO audit_logs_backup', error => error ? reject(error) : resolve()));
+        const deniedWhenAuditFails = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(deniedWhenAuditFails.status, 503, deniedWhenAuditFails.body);
+        assert.doesNotMatch(deniedWhenAuditFails.body, /7777888899990000|123456789|Test Bank|Member A|Staff A/);
+        await new Promise((resolve, reject) => db.run('ALTER TABLE audit_logs_backup RENAME TO audit_logs', error => error ? reject(error) : resolve()));
+
         const foreignPayoutId = await new Promise((resolve, reject) => db.run(`
             INSERT INTO payouts (withdrawal_no,user_id,studio_id,withdrawal_period,amount,status,requested_at)
             VALUES ('WD-FOREIGN','member-b',2,'2099-01',100,'pending',CURRENT_TIMESTAMP)

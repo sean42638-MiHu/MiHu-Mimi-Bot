@@ -33,6 +33,33 @@ test('Staff sensitive data is not emitted through data attributes or DOM search 
     }
 });
 
+test('Staff sensitive unlock uses confirmation intent and one-time in-memory view state', () => {
+    const source = read('views/staff.ejs');
+    const modalSource = read('views/modals/staff_modals.ejs');
+    const detailFn = source.match(/function showStaffDetail\(data\) \{[\s\S]*?staffDetailModal\.show\(\);\s*\}/);
+    assert.ok(detailFn, 'showStaffDetail function should exist');
+    assert.doesNotMatch(detailFn[0], /fetch\(/);
+    assert.match(source, /查看敏感資料確認/);
+    assert.match(source, /確認查看/);
+    assert.match(source, /const generation = detailViewGeneration/);
+    assert.match(source, /if \(!isCurrentDetailView\(staffId, generation\)\) return;/);
+    assert.match(source, /if \(!confirmed\) return;/);
+    assert.match(source, /\/management\/staff\/\$\{encodeURIComponent\(String\(staffId\)\)\}\/sensitive-data/);
+    assert.match(source, /new AbortController\(\)/);
+    assert.match(source, /requestId !== sensitiveRequestId/);
+    assert.match(source, /unlockSensitiveDataBtn\.hidden = true/);
+    assert.match(source, /window\.addEventListener\('pagehide'/);
+    assert.match(source, /hide\.bs\.modal/);
+    assert.match(source, /hidden\.bs\.modal/);
+    assert.match(source, /已解鎖（僅限本次檢視）/);
+    assert.match(source, /if \(!isCurrentDetailView\(staffId, generation\)\) return;\s*\n\s*maskSensitiveFields\(\);/);
+    assert.match(source, /if \(requestId === sensitiveRequestId && isCurrentDetailView\(staffId, generation\) && unlockSensitiveDataBtn\)/);
+    assert.match(modalSource, /modal-footer[\s\S]*unlockSensitiveDataBtn[\s\S]*data-bs-dismiss="modal">關閉/);
+    assert.match(modalSource, /id="detailRealName">限制查看</);
+    assert.match(modalSource, /id="detailBankAccount">限制查看</);
+    assert.doesNotMatch(source, /localStorage|sessionStorage/);
+});
+
 test('special pages remain explicit rather than being silently treated as generic Admin pages', () => {
     assert.match(read('views/commission.ejs'), /commission-page|commission-content/);
     assert.match(read('views/dashboard.ejs'), /dashboard-grid/);
