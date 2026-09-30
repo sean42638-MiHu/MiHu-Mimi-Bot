@@ -155,13 +155,52 @@
         const shouldExpand = isCurrentSection || storedState === 'true' || (storedState === null && collapseElement.classList.contains('show'));
         collapseElement.classList.toggle('show', shouldExpand);
         toggleElement.setAttribute('aria-expanded', String(shouldExpand));
+        let transitionResetTimer = null;
+        let transitionLocked = false;
+
+        const clearTransitionResetTimer = () => {
+            if (transitionResetTimer === null) return;
+            window.clearTimeout(transitionResetTimer);
+            transitionResetTimer = null;
+        };
+
+        const lockTransition = () => {
+            transitionLocked = true;
+            toggleElement.classList.add('is-collapsing');
+            toggleElement.setAttribute('aria-disabled', 'true');
+            clearTransitionResetTimer();
+            transitionResetTimer = window.setTimeout(() => {
+                transitionResetTimer = null;
+                transitionLocked = false;
+                toggleElement.classList.remove('is-collapsing');
+                toggleElement.removeAttribute('aria-disabled');
+            }, 360);
+        };
+
+        const unlockTransition = () => {
+            clearTransitionResetTimer();
+            transitionLocked = false;
+            toggleElement.classList.remove('is-collapsing');
+            toggleElement.removeAttribute('aria-disabled');
+        };
+
+        toggleElement.addEventListener('click', event => {
+            if (!transitionLocked && !collapseElement.classList.contains('collapsing')) return;
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+        });
+
+        collapseElement.addEventListener('show.bs.collapse', lockTransition);
+        collapseElement.addEventListener('hide.bs.collapse', lockTransition);
         collapseElement.dataset.sidebarStateBound = 'true';
         collapseElement.addEventListener('shown.bs.collapse', () => {
+            unlockTransition();
             toggleElement.setAttribute('aria-expanded', 'true');
             writeStoredState(collapseId, true);
             if (scrollRestorePending) restoreScrollPosition({ force: true });
         });
         collapseElement.addEventListener('hidden.bs.collapse', () => {
+            unlockTransition();
             toggleElement.setAttribute('aria-expanded', 'false');
             writeStoredState(collapseId, false);
             if (scrollRestorePending) restoreScrollPosition({ force: true });
