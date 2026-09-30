@@ -193,15 +193,15 @@
                                     <i class="fa-solid fa-circle-info me-1"></i>詳細內容
                                 </button>
 
-                                <% if (typeof hasPerm === 'function' && hasPerm('member_adjust_balance')) { %><button type="button" class="btn btn-sm btn-outline-warning btn-circle-icon btn-balance-trigger" title="帳務調整 (增減點數/金額)">
+                                <% if (typeof hasPerm === 'function' && hasPerm('action_member_balance')) { %><button type="button" class="btn btn-sm btn-outline-warning btn-circle-icon btn-balance-trigger" title="帳務調整 (增減點數/金額)">
                                     <i class="fa-solid fa-coins"></i>
                                 </button><% } %>
 
-                                <% if (typeof hasPerm === 'function' && hasPerm('member_adjust_vip')) { %><button type="button" class="btn btn-sm btn-outline-warning btn-circle-icon btn-vip-trigger" style="color: #fde047; border-color: rgba(253, 224, 71, 0.4);" title="手動調整VIP與身分">
+                                <% if (typeof hasPerm === 'function' && hasPerm('action_member_role_vip')) { %><button type="button" class="btn btn-sm btn-outline-warning btn-circle-icon btn-vip-trigger" style="color: #fde047; border-color: rgba(253, 224, 71, 0.4);" title="手動調整VIP與身分">
                                     <i class="fa-solid fa-crown"></i>
                                 </button><% } %>
 
-                                <% if (typeof hasPerm === 'function' && hasPerm('members.manage')) { %><form method="POST" action="/management/members/sync/<%= m.id %>" class="d-inline">
+                                <% if (typeof hasPerm === 'function' && hasPerm('action_member_manage')) { %><form method="POST" action="/management/members/sync/<%= m.id %>" class="d-inline">
                                     <button type="submit" class="btn btn-sm btn-outline-info btn-circle-icon" title="從 Discord 刷新資料">
                                         <i class="fa-solid fa-rotate"></i>
                                     </button>

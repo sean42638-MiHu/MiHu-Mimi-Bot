@@ -30,24 +30,24 @@ test('admin and 店長 names do not create superuser authority', async () => {
         permissions: '[]'
     }));
     assert.equal(actor.permissions.includes('*'), false);
-    assert.equal(hasResolvedPermission(actor.permissions, 'system_settings.manage'), false);
+    assert.equal(hasResolvedPermission(actor.permissions, 'action_system_config'), false);
     assert.equal(isPlatformSuperuserId('ordinary-admin'), false);
 });
 
 test('granular permissions remain effective without wildcard', () => {
-    const permissions = resolvePermissions(['roles.manage', 'staff.manage']);
-    assert.equal(hasResolvedPermission(permissions, 'roles.manage'), true);
-    assert.equal(hasResolvedPermission(permissions, 'staff.manage'), true);
+    const permissions = resolvePermissions(['action_role_manage', 'action_staff_manage']);
+    assert.equal(hasResolvedPermission(permissions, 'action_role_manage'), true);
+    assert.equal(hasResolvedPermission(permissions, 'action_staff_manage'), true);
     assert.equal(permissions.includes('*'), false);
 });
 
 test('explicit wildcard is the canonical superuser marker', () => {
     const permissions = resolvePermissions(['*']);
     assert.equal(hasResolvedPermission(permissions, '*'), true);
-    assert.equal(hasResolvedPermission(permissions, 'system_settings.manage'), true);
+    assert.equal(hasResolvedPermission(permissions, 'action_system_config'), true);
     assert.equal(permissions.includes('*'), true);
-    assert.equal(permissions.includes('manage_orders'), true);
-    assert.equal(permissions.includes('sys_settings'), true);
+    assert.equal(permissions.includes('action_order_management'), true);
+    assert.equal(permissions.includes('action_system_management'), true);
 });
 
 test('platform break-glass identity resolves to wildcard even without a stored wildcard', async () => {
@@ -62,18 +62,18 @@ test('platform break-glass identity resolves to wildcard even without a stored w
 test('ordinary admin role user does not inherit the platform override', async () => {
     const actor = await loadActorContext('another-admin', actorDatabase({
         role: 'admin',
-        permissions: '["roles.manage"]'
+        permissions: '["action_role_manage"]'
     }));
     assert.equal(actor.permissions.includes('*'), false);
-    assert.equal(actor.permissions.includes('roles.manage'), true);
+    assert.equal(actor.permissions.includes('action_role_manage'), true);
     assert.throws(() => validatePermissionGrant(actor.permissions, ['*']), /只有最高權限使用者/);
 });
 
 test('role editor delegates owned granular permissions but cannot self-grant wildcard', () => {
-    const actor = resolvePermissions(['roles.manage', 'staff.manage']);
-    const created = validatePermissionGrant(actor, ['roles.manage', 'staff.manage']);
-    assert.ok(created.includes('roles.manage'));
-    assert.ok(created.includes('staff.manage'));
+    const actor = resolvePermissions(['action_role_manage', 'action_staff_manage']);
+    const created = validatePermissionGrant(actor, ['action_role_manage', 'action_staff_manage']);
+    assert.ok(created.includes('action_role_manage'));
+    assert.ok(created.includes('action_staff_manage'));
     assert.throws(() => validatePermissionGrant(actor, ['*']), /只有最高權限使用者/);
 });
 
@@ -84,22 +84,22 @@ test('unknown permissions are denied even for wildcard actors', () => {
 });
 
 test('production deployment and sensitive payout permissions remain independent', () => {
-    const settingsActor = resolvePermissions(['sys_settings']);
-    const roleManager = resolvePermissions(['roles.manage']);
-    const staffManager = resolvePermissions(['staff.manage']);
-    const memberViewer = resolvePermissions(['members.view']);
-    const payrollViewer = resolvePermissions(['payroll.view']);
-    assert.equal(settingsActor.includes('discord_commands.deploy_production'), false);
-    assert.equal(roleManager.includes('discord_commands.deploy_production'), false);
-    assert.equal(staffManager.includes('payout.view_sensitive'), false);
-    assert.equal(hasResolvedPermission(memberViewer, 'member_ledger.view'), false);
-    assert.equal(hasResolvedPermission(memberViewer, 'member_adjust_balance'), false);
-    assert.equal(hasResolvedPermission(memberViewer, 'payroll.view'), false);
-    assert.equal(hasResolvedPermission(payrollViewer, 'staff.view_sensitive'), false);
-    assert.equal(hasResolvedPermission(payrollViewer, 'payout.view'), false);
-    assert.equal(resolvePermissions(['staff_view_payroll']).includes('staff.view_sensitive'), true);
-    assert.equal(resolvePermissions(['payout.view_sensitive']).includes('staff.view_sensitive'), false);
-    assert.equal(ALL_GRANULAR_PERMISSIONS.includes('discord_commands.deploy_production'), true);
+    const settingsActor = resolvePermissions(['action_system_management']);
+    const roleManager = resolvePermissions(['action_role_manage']);
+    const staffManager = resolvePermissions(['action_staff_manage']);
+    const memberViewer = resolvePermissions(['view_manage_members']);
+    const payrollViewer = resolvePermissions(['view_staff_payroll']);
+    assert.equal(settingsActor.includes('action_bot_deploy_production'), false);
+    assert.equal(roleManager.includes('action_bot_deploy_production'), false);
+    assert.equal(staffManager.includes('action_payout_sensitive'), false);
+    assert.equal(hasResolvedPermission(memberViewer, 'view_member_ledger'), false);
+    assert.equal(hasResolvedPermission(memberViewer, 'action_member_balance'), false);
+    assert.equal(hasResolvedPermission(memberViewer, 'view_staff_payroll'), false);
+    assert.equal(hasResolvedPermission(payrollViewer, 'action_staff_sensitive'), false);
+    assert.equal(hasResolvedPermission(payrollViewer, 'view_payout'), false);
+    assert.equal(resolvePermissions(['action_staff_payroll_details']).includes('action_staff_sensitive'), true);
+    assert.equal(resolvePermissions(['action_payout_sensitive']).includes('action_staff_sensitive'), false);
+    assert.equal(ALL_GRANULAR_PERMISSIONS.includes('action_bot_deploy_production'), true);
 });
 
 test('break-glass identity is environment-configurable and centralized in the resolver', () => {
@@ -140,12 +140,12 @@ test('runtime authorization code contains no role-name admin shortcut', () => {
 });
 
 test('granular route gates use the order, staff-sensitive and commission permissions', () => {
-    assert.match(read('routes/management/orders.js'), /checkPerm\('orders\.manage'\)/);
+    assert.match(read('routes/management/orders.js'), /checkPerm\('action_order_manage'\)/);
     assert.match(read('routes/orders.js'), /checkPerm\(permission\)/);
-    assert.match(read('routes/management/members.js'), /checkPerm\('members\.manage'\)/);
-    assert.match(read('routes/management/staff.js'), /hasPerm\('staff\.view_sensitive'\)/);
-    assert.match(read('routes/management/staff.js'), /hasResolvedPermission\(userPerms, 'commission\.manage'\)/);
-    assert.match(read('routes/system.js'), /hasResolvedPermission\(userPerms, 'commission\.manage'\)/);
+    assert.match(read('routes/management/members.js'), /checkPerm\('action_member_manage'\)/);
+    assert.match(read('routes/management/staff.js'), /hasPerm\('action_staff_sensitive'\)/);
+    assert.match(read('routes/management/staff.js'), /hasResolvedPermission\(userPerms, 'action_commission_config'\)/);
+    assert.match(read('routes/system.js'), /hasResolvedPermission\(userPerms, 'action_commission_config'\)/);
 });
 
 test('runtime capability checks use the wildcard-aware shared predicate', () => {

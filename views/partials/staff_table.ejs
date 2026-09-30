@@ -175,8 +175,8 @@
                         return perms.includes('*') || perms.includes(node);
                     };
 
-                    const canViewPayroll = checkPermission('staff.view_sensitive') || checkPermission('staff_view_payroll');
-                    const canEditRoleComm = checkPermission('staff_edit_role_commission');
+                    const canViewPayroll = checkPermission('action_staff_sensitive') || checkPermission('action_staff_payroll_details');
+                    const canEditRoleComm = checkPermission('action_staff_commission');
 
                     if (list.length > 0) {
                     list.forEach(s => { 

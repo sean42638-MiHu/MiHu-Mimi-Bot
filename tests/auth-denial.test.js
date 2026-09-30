@@ -24,7 +24,7 @@ function invoke({ method = 'GET', accept = '', contentType = '', permissions = [
         send(body) { result.type = 'text'; result.body = body; return this; },
         redirect(location) { result.type = 'redirect'; result.location = location; return this; }
     };
-    requirePerm('members.view')(req, res, () => { result.nextCalled = true; });
+    requirePerm('view_manage_members')(req, res, () => { result.nextCalled = true; });
     return result;
 }
 

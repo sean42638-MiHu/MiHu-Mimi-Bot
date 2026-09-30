@@ -1,0 +1,210 @@
+{
+  "system_health.view": [
+    "system_health.view"
+  ],
+  "analytics.view": [
+    "analytics.view"
+  ],
+  "audit_logs.view": [
+    "audit_logs.view"
+  ],
+  "system_settings.view": [
+    "system_settings.view"
+  ],
+  "system_settings.manage": [
+    "system_settings.manage",
+    "system_settings.view"
+  ],
+  "discord_control.view": [
+    "discord_control.view"
+  ],
+  "discord_commands.deploy_dev": [
+    "discord_commands.deploy_dev"
+  ],
+  "discord_commands.deploy_production": [
+    "discord_commands.deploy_production"
+  ],
+  "members.view": [
+    "members.view"
+  ],
+  "members.manage": [
+    "members.manage",
+    "members.view"
+  ],
+  "member_ledger.view": [
+    "member_ledger.view"
+  ],
+  "roles.view": [
+    "roles.view"
+  ],
+  "roles.manage": [
+    "roles.manage",
+    "roles.view"
+  ],
+  "staff.view": [
+    "staff.view"
+  ],
+  "staff.manage": [
+    "staff.manage",
+    "staff.view"
+  ],
+  "staff.view_sensitive": [
+    "staff.view_sensitive"
+  ],
+  "vip.view": [
+    "vip.view"
+  ],
+  "vip.manage": [
+    "vip.manage",
+    "vip.view"
+  ],
+  "orders.view": [
+    "orders.view"
+  ],
+  "orders.manage": [
+    "orders.manage",
+    "orders.view"
+  ],
+  "orders.price_adjust": [
+    "orders.price_adjust"
+  ],
+  "orders.refund": [
+    "orders.refund",
+    "orders.view"
+  ],
+  "orders.refund_completed": [
+    "orders.refund_completed"
+  ],
+  "commission.view": [
+    "commission.view"
+  ],
+  "commission.manage": [
+    "commission.manage",
+    "commission.view"
+  ],
+  "payroll.view": [
+    "payroll.view"
+  ],
+  "payroll.manage": [
+    "payroll.manage",
+    "payroll.view"
+  ],
+  "payout.view": [
+    "payout.view"
+  ],
+  "payout.export": [
+    "payout.export",
+    "payout.view"
+  ],
+  "payout.view_sensitive": [
+    "payout.view_sensitive",
+    "payout.view"
+  ],
+  "payout.mark_paid": [
+    "payout.mark_paid"
+  ],
+  "payout.reject": [
+    "payout.reject",
+    "payout.view"
+  ],
+  "home": [
+    "home"
+  ],
+  "home_banner": [
+    "home_banner"
+  ],
+  "home_wallet_card": [
+    "home_wallet_card"
+  ],
+  "home_info": [
+    "home_info"
+  ],
+  "personal": [
+    "personal"
+  ],
+  "profile": [
+    "profile"
+  ],
+  "profile_discord": [
+    "profile_discord"
+  ],
+  "profile_nickname": [
+    "profile_nickname"
+  ],
+  "my_wallet": [
+    "my_wallet"
+  ],
+  "my_income": [
+    "my_income"
+  ],
+  "my_orders": [
+    "my_orders"
+  ],
+  "manage": [
+    "manage"
+  ],
+  "manage_members": [
+    "manage_members",
+    "members.view",
+    "members.manage",
+    "member_ledger.view"
+  ],
+  "member_adjust_balance": [
+    "member_adjust_balance"
+  ],
+  "member_adjust_vip": [
+    "member_adjust_vip"
+  ],
+  "manage_staff": [
+    "manage_staff",
+    "staff.view",
+    "staff.manage"
+  ],
+  "manage_orders": [
+    "manage_orders",
+    "analytics.view",
+    "orders.view",
+    "orders.manage"
+  ],
+  "system": [
+    "system"
+  ],
+  "sys_commission": [
+    "sys_commission",
+    "commission.view",
+    "commission.manage"
+  ],
+  "sys_vip": [
+    "sys_vip",
+    "vip.view",
+    "vip.manage"
+  ],
+  "sys_roles": [
+    "sys_roles",
+    "roles.view",
+    "roles.manage"
+  ],
+  "sys_settings": [
+    "sys_settings",
+    "system_settings.view",
+    "system_settings.manage",
+    "discord_control.view",
+    "audit_logs.view",
+    "system_health.view"
+  ],
+  "sys_logs": [
+    "sys_logs"
+  ],
+  "staff_view_payroll": [
+    "staff_view_payroll",
+    "staff.view",
+    "staff.view_sensitive",
+    "payroll.view"
+  ],
+  "staff_edit_role_commission": [
+    "staff_edit_role_commission"
+  ],
+  "orders_edit_and_reassign": [
+    "orders_edit_and_reassign"
+  ]
+}

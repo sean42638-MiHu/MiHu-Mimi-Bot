@@ -45,11 +45,11 @@ function ledgerDisplayType(type) {
     return known || { label: `其他：${type || '未知'}`, icon: 'fa-circle-question', tone: 'neutral' };
 }
 
-router.get('/role-options', ensureAuth, checkPerm('member_adjust_vip'), async (req, res, next) => {
+router.get('/role-options', ensureAuth, checkPerm('action_member_role_vip'), async (req, res, next) => {
     try {
         const [roles, actor] = await Promise.all([getRolesDataFromDb(), loadActorContext(req.user.id, db)]);
         const assignableRoles = roles
-            .filter(role => canAssignRole(actor, role))
+            .filter(role => canAssignRole(actor, { ...role, permissions: role.rawPermissions ?? role.permissions }))
             .map(({ id, role_key, name, tier_level }) => ({ id, role_key, name, tier_level }));
         return res.json({ success: true, roles: assignableRoles });
     } catch (error) {
@@ -58,11 +58,11 @@ router.get('/role-options', ensureAuth, checkPerm('member_adjust_vip'), async (r
 });
 
 // 1.0 唯讀會員 Wallet Ledger；此 route 必須位於任何未來 /:id dynamic route 之前。
-router.get('/transactions', ensureAuth, checkPerm('member_ledger.view'), async (req, res) => {
+router.get('/transactions', ensureAuth, checkPerm('view_member_ledger'), async (req, res) => {
     const platformAdmin = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!platformAdmin && (!Number.isInteger(studioId) || studioId <= 0)) {
-        return denyPermission(req, res, ['member_ledger.view'], { feature: '會員資金明細' });
+        return denyPermission(req, res, ['view_member_ledger'], { feature: '會員資金明細' });
     }
 
     const requestedType = String(req.query.type || '').trim();
@@ -133,11 +133,11 @@ router.get('/transactions', ensureAuth, checkPerm('member_ledger.view'), async (
 });
 
 // 1.1 渲染「會員管理」頁面 (完全整合 user_wallets 資料庫)
-router.get('/', ensureAuth, checkPerm('members.view'), (req, res, next) => {
+router.get('/', ensureAuth, checkPerm('view_manage_members'), (req, res, next) => {
     const allStudios = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
-        return denyPermission(req, res, ['members.view'], { feature: '會員管理' });
+        return denyPermission(req, res, ['view_manage_members'], { feature: '會員管理' });
     }
     const membersSql = `
         SELECT u.*,
@@ -233,7 +233,7 @@ router.get('/', ensureAuth, checkPerm('members.view'), (req, res, next) => {
 });
 
 // 1.2 單一會員 Discord 資料刷新
-router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, res) => {
+router.post('/sync/:id', ensureAuth, checkPerm('action_member_manage'), async (req, res) => {
     const targetUserId = req.params.id;
     const platformAdmin = hasResolvedPermission(res.locals.userPerms, '*');
     try {
@@ -242,7 +242,7 @@ router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, re
         const actorStudioId = Number(req.user.studio_id);
         const targetStudioId = Number(target.studio_id);
         if (!platformAdmin && (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || actorStudioId !== targetStudioId)) {
-            return denyPermission(req, res, ['members.manage'], { kind: 'action', feature: '同步會員 Discord 資料' });
+            return denyPermission(req, res, ['action_member_manage'], { kind: 'action', feature: '同步會員 Discord 資料' });
         }
         if (process.env.DISCORD_ENABLED !== 'true') return res.status(503).send('Discord integration is disabled');
         const client = req.app.get('discordClient');
@@ -278,12 +278,12 @@ router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, re
 });
 
 // 1.3 全體會員 Discord 資料刷新
-router.get('/sync-all', ensureAuth, checkPerm('members.manage'), async (req, res) => {
+router.get('/sync-all', ensureAuth, checkPerm('action_member_manage'), async (req, res) => {
     res.status(501).send('Discord 會員全體同步尚未實作');
 });
 
 // 1.4 手動更新會員帳務金額 API (整合資金資料庫與防呆空字串)
-router.post('/update-balance/:id', ensureAuth, checkPerm('member_adjust_balance'), async (req, res) => {
+router.post('/update-balance/:id', ensureAuth, checkPerm('action_member_balance'), async (req, res) => {
     const targetUserId = req.params.id;
     const { add_amount, bonus_change, bonus_balance, balance, total_spent, total_deposited, note } = req.body;
 
@@ -294,7 +294,7 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('member_adjust_balance'
             const actorStudioId = Number(req.user && req.user.studio_id);
             const targetStudioId = Number(target.studio_id);
             if (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || targetStudioId !== actorStudioId) {
-                return denyPermission(req, res, ['member_adjust_balance'], { kind: 'action', feature: '會員帳務調整' });
+                return denyPermission(req, res, ['action_member_balance'], { kind: 'action', feature: '會員帳務調整' });
             }
         }
         await adjustUserWallet({
@@ -321,7 +321,7 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('member_adjust_balance'
 });
 
 // 1.5 👑 手動更新 VIP 等級與後台身分 (Role)
-router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async (req, res) => {
+router.post('/update-vip/:id', ensureAuth, checkPerm('action_member_role_vip'), async (req, res) => {
     const targetUserId = req.params.id;
     const { vip_level, role } = req.body;
 
@@ -349,7 +349,7 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
                 }
                 newVip = Math.max(0, newVip);
                 const newRole = role === undefined || role === '' ? (targetUser.role || 'member') : String(role).trim();
-                await authorizeRoleAssignment(req.user.id, newRole, 'member_adjust_vip', db);
+                await authorizeRoleAssignment(req.user.id, newRole, 'action_member_role_vip', db);
                 await dbRun('UPDATE users SET vip_level = ?, role = ? WHERE id = ?', [newVip, newRole, targetUserId]);
                 await writeAuditLog({
                     operatorId: req.user.id,
@@ -391,7 +391,7 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
         return res.redirect('/management/members?success=1');
     } catch (error) {
         if (isRoleDelegationError(error) || error.message === '無權調整其他工作室會員') {
-            return denyPermission(req, res, ['member_adjust_vip'], { kind: 'action', feature: '會員身分與 VIP 調整' });
+            return denyPermission(req, res, ['action_member_role_vip'], { kind: 'action', feature: '會員身分與 VIP 調整' });
         }
         return res.redirect('/management/members?error=' + encodeURIComponent(error.message || '更新身分失敗'));
     }

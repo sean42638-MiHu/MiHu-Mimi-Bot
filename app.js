@@ -68,7 +68,7 @@ app.use((req, res, next) => {
                 const role = rolesData.find(item => item.role_key === currentUser.role);
                 const storedPermissions = role && Array.isArray(role.permissions)
                     ? role.permissions
-                    : ['home', 'home_wallet_card', 'home_info', 'personal', 'profile', 'my_wallet', 'my_orders'];
+                    : ['view_dashboard', 'view_dashboard_wallet', 'view_dashboard_info', 'view_personal', 'view_profile', 'view_wallet', 'view_personal_orders'];
                 const permissions = resolvePermissions(storedPermissions, isPlatformSuperuserId(currentUser.id));
                 const isSuperuser = hasResolvedPermission(permissions, '*');
                 db.get('SELECT id FROM studios WHERE id = ? AND owner_user_id = ?', [Number(currentUser.studio_id), currentUser.id], (studioError, ownedStudio) => {
@@ -76,7 +76,7 @@ app.use((req, res, next) => {
                     res.locals.currentUser = currentUser;
                     res.locals.user = currentUser;
                     res.locals.hasPerm = node => hasResolvedPermission(permissions, node);
-                    res.locals.canManageStudioCommission = hasResolvedPermission(permissions, 'commission.manage') || Boolean(ownedStudio);
+                    res.locals.canManageStudioCommission = hasResolvedPermission(permissions, 'action_commission_config') || Boolean(ownedStudio);
                     next();
                 });
             }).catch(next);

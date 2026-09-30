@@ -39,7 +39,7 @@ test('System Settings exposes only withdrawal controls and preserves other Comin
 
 test('System Settings mutation is permissioned, CSRF-protected by middleware, atomic and whitelisted', () => {
     const route = read('routes/system.js');
-    assert.match(route, /router\.post\('\/system\/settings', ensureAuth, checkPerm\('system_settings\.manage'\)/);
+    assert.match(route, /router\.post\('\/system\/settings', ensureAuth, checkPerm\('action_system_config'\)/);
     assert.match(route, /runSystemTransaction\(async \(\) =>/);
     assert.match(route, /for \(const key of withdrawalSettingKeys\)/);
     assert.doesNotMatch(route, /req\.body\.PAYROLL_DATA_ENCRYPTION_KEY/);

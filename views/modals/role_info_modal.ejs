@@ -1,4 +1,4 @@
-<% if (hasPerm('roles.manage')) { %>
+<% if (hasPerm('action_role_manage')) { %>
 <!-- 彈窗 2：編輯身分基本資料 Modal -->
 <div class="modal fade admin-modal" id="editRoleInfoModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--md">
@@ -93,7 +93,7 @@
                             <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="*" id="new_permission_wildcard"><span class="admin-permission-name">最高權限萬用授權</span><span class="admin-badge admin-badge-danger">最高權限</span><span class="admin-permission-desc">授予此項目會授予所有已知權限</span></label>
                         <% } %>
                         <div class="admin-permission-grid">
-                            <% Object.values(permissionMetadata || {}).forEach(permission => { %>
+                            <% Object.values(permissionMetadata || {}).filter(permission => permission.implemented !== false).forEach(permission => { %>
                                 <label class="admin-permission-item"><input class="form-check-input perm-checkbox" type="checkbox" name="permissions" value="<%= permission.key %>" id="new_permission_<%= permission.key.replace(/[^a-zA-Z0-9]+/g, '_') %>" <%= (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled title="你沒有權限授予此項目"' %>><span class="admin-permission-name"><%= permission.label %></span><span class="admin-badge <%= permission.risk === 'high' ? 'admin-badge-danger' : permission.mode === 'manage' ? 'admin-badge-purple' : 'admin-badge-info' %>"><%= permission.risk === 'high' ? '高權限' : permission.mode === 'manage' ? '管理' : '唯讀' %></span><span class="admin-permission-desc"><%= permission.description %></span><% if (!(delegatablePermissions || []).includes(permission.key)) { %><i class="fa-solid fa-lock text-secondary" title="你沒有權限授予此項目" aria-label="你沒有權限授予此項目"></i><% } %></label>
                             <% }) %>
                         </div>

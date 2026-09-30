@@ -1,8 +1,8 @@
 'use strict';
 
 const sqlite3 = require('sqlite3').verbose();
-const { ALL_GRANULAR_PERMISSIONS, PERMISSION_METADATA } = require('../config/permissions');
-const { KNOWN_LEGACY_PERMISSIONS, isPlatformSuperuserId, resolvePermissions } = require('../utils/permissionResolver');
+const { ALL_GRANULAR_PERMISSIONS, ALL_PERMISSION_KEYS, PERMISSION_METADATA } = require('../config/permissions');
+const { KNOWN_LEGACY_PERMISSIONS, isPlatformSuperuserId, resolvePermissions, parsePermissionData } = require('../utils/permissionResolver');
 const { inspectProductionDatabaseConfig } = require('../utils/productionDatabaseConfig');
 const { inspectDatabaseReadiness } = require('../utils/databaseReadiness');
 const {
@@ -32,16 +32,12 @@ function getOne(db, sql, params = []) {
 }
 
 function parsePermissions(role) {
-    try {
-        const parsed = JSON.parse(role && role.permissions || '[]');
-        return Array.isArray(parsed) && parsed.every(permission => typeof permission === 'string') ? parsed : [];
-    } catch {
-        return [];
-    }
+    const parsed = parsePermissionData(role && role.permissions);
+    return parsed.valid ? [...parsed.keys, ...Object.keys(parsed.unknownEntries)] : [];
 }
 
 function findUnknownPermissions(roles) {
-    const known = new Set([...ALL_GRANULAR_PERMISSIONS, ...KNOWN_LEGACY_PERMISSIONS, '*']);
+    const known = new Set([...ALL_PERMISSION_KEYS, ...KNOWN_LEGACY_PERMISSIONS, '*']);
     const unknown = new Map();
     for (const role of roles) {
         for (const permission of parsePermissions(role)) {
@@ -55,15 +51,7 @@ function findUnknownPermissions(roles) {
 }
 
 function findInvalidPermissionSets(roles) {
-    return roles.filter(role => {
-        if (typeof role.permissions !== 'string') return true;
-        try {
-            const permissions = JSON.parse(role.permissions);
-            return !Array.isArray(permissions) || !permissions.every(permission => typeof permission === 'string');
-        } catch {
-            return true;
-        }
-    }).map(role => role.role_key);
+    return roles.filter(role => !parsePermissionData(role.permissions).valid).map(role => role.role_key);
 }
 
 function permissionCapabilityReport(permissions) {

@@ -28,22 +28,22 @@ test('commission read access never authorizes a write route; legacy access remai
   const writes = layers.filter(layer => layer.route.methods.post);
   assert.ok(read);
   assert.equal(writes.length, 4);
-  assert.equal(permissionOutcome(read, ['commission.view']), 'allowed');
-  assert.equal(permissionOutcome(read, ['commission.manage']), 'allowed');
+  assert.equal(permissionOutcome(read, ['view_commission']), 'allowed');
+  assert.equal(permissionOutcome(read, ['action_commission_config']), 'allowed');
   for (const layer of writes) {
-    assert.equal(permissionOutcome(layer, ['commission.view']), 403, layer.route.path);
-    assert.equal(permissionOutcome(layer, ['commission.manage']), 'allowed', layer.route.path);
-    assert.equal(permissionOutcome(layer, ['sys_commission']), 'allowed', layer.route.path);
+    assert.equal(permissionOutcome(layer, ['view_commission']), 403, layer.route.path);
+    assert.equal(permissionOutcome(layer, ['action_commission_config']), 'allowed', layer.route.path);
+    assert.equal(permissionOutcome(layer, ['action_commission_management']), 'allowed', layer.route.path);
   }
-  assert.equal(permissionOutcome(read, ['sys_commission']), 'allowed');
+  assert.equal(permissionOutcome(read, ['action_commission_management']), 'allowed');
 });
 
 test('view-only commission list contains rates without edit controls', () => {
   const file = path.join(__dirname, '../views/partials/commission_category_list.ejs');
   const template = fs.readFileSync(file, 'utf8');
   const categories = [{ category: '測試類別', rate: .8 }];
-  const view = ejs.render(template, { categories, hasPerm: key => key === 'commission.view' });
-  const manage = ejs.render(template, { categories, hasPerm: key => key === 'commission.manage' });
+  const view = ejs.render(template, { categories, hasPerm: key => key === 'view_commission' });
+  const manage = ejs.render(template, { categories, hasPerm: key => key === 'action_commission_config' });
   assert.match(view, /測試類別/);
   assert.doesNotMatch(view, /commission-manage-btn/);
   assert.match(manage, /commission-manage-btn/);

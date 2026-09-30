@@ -154,10 +154,10 @@
                         const discount = Number(o.discount || 0);
                         const originalPrice = totalAmount + discount;
 
-                        const canEdit = typeof hasPerm === 'function' && hasPerm('orders.manage');
-                        const canAdjustPrice = typeof hasPerm === 'function' && hasPerm('orders.price_adjust');
-                        const canRefund = typeof hasPerm === 'function' && hasPerm('orders.refund');
-                        const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('orders.refund_completed');
+                        const canEdit = typeof hasPerm === 'function' && hasPerm('action_order_manage');
+                        const canAdjustPrice = typeof hasPerm === 'function' && hasPerm('action_order_price');
+                        const canRefund = typeof hasPerm === 'function' && hasPerm('action_order_refund');
+                        const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
                         const canRefundThisOrder = canRefund
                             && !['cancelled', 'refunded'].includes(o.status)
                             && (o.status !== 'completed' || canRefundCompleted);

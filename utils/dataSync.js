@@ -1,3 +1,4 @@
+const { parsePermissionData } = require('./permissionResolver');
 const fs = require('fs');
 const path = require('path');
 const { isProductionRuntime } = require('./productionRuntimeConfig');
@@ -79,7 +80,10 @@ function getRolesDataFromDb() {
             if (error) return reject(error);
             resolve((rows || []).map(row => ({
                 ...row,
-                permissions: typeof row.permissions === 'string' ? JSON.parse(row.permissions || '[]') : (row.permissions || [])
+                permissions: parsePermissionData(row.permissions).keys,
+                rawPermissions: row.permissions,
+                permissionsValid: parsePermissionData(row.permissions).valid,
+                unknownPermissions: parsePermissionData(row.permissions).unknownEntries
             })));
         });
     });

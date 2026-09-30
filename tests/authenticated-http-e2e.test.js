@@ -134,25 +134,25 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ('ledger-viewer','ledger-viewer','ledger_viewer',1),('payroll-viewer','payroll-viewer','payroll_viewer',1),
         ('star-actor','star-actor','star_actor',1)`);
     await run(`INSERT INTO roles (id,role_key,name,permissions) VALUES
-        (1,'member','Member','["my_income","profile"]'),(2,'staff','Staff','["payout.view"]'),
-        (3,'manager','Manager','["manage_orders","manage_members","member_adjust_balance","member_adjust_vip","staff_view_payroll","manage_staff","sys_settings","sys_roles","payout.view","payout.view_sensitive","payout.export","payout.mark_paid","payout.reject"]'),
-        (4,'limited_staff_manager','Limited Staff Manager','["manage_staff","payout.view"]'),
-        (5,'settings_viewer','Settings Viewer','["system_settings.view"]'),(6,'roles_viewer','Roles Viewer','["roles.view"]'),
-        (7,'legacy_roles','Legacy Roles','["sys_roles"]'),(8,'security_self','Self Editor','["roles.manage"]'),
-        (9,'security_cross','Cross Editor','["roles.manage","staff.manage"]'),
-        (10,'security_allow','Allowed Editor','["roles.manage","members.view","staff.view"]'),
-        (11,'legacy_security','Legacy Security','["sys_roles"]'),
-        (12,'assignment_manager','Assignment Manager','["staff.manage","member_adjust_vip","members.view","staff.view"]'),
+        (1,'member','Member','["view_income","view_profile"]'),(2,'staff','Staff','["view_payout"]'),
+        (3,'manager','Manager','["action_order_management","action_member_management","action_member_balance","action_member_role_vip","action_staff_payroll_details","action_staff_management","action_system_management","action_role_management","view_payout","action_payout_sensitive","action_payout_export","action_payout_mark_paid","action_payout_reject"]'),
+        (4,'limited_staff_manager','Limited Staff Manager','["action_staff_management","view_payout"]'),
+        (5,'settings_viewer','Settings Viewer','["view_system_settings"]'),(6,'roles_viewer','Roles Viewer','["view_roles"]'),
+        (7,'legacy_roles','Legacy Roles','["action_role_management"]'),(8,'security_self','Self Editor','["action_role_manage"]'),
+        (9,'security_cross','Cross Editor','["action_role_manage","action_staff_manage"]'),
+        (10,'security_allow','Allowed Editor','["action_role_manage","view_manage_members","view_manage_staff"]'),
+        (11,'legacy_security','Legacy Security','["action_role_management"]'),
+        (12,'assignment_manager','Assignment Manager','["action_staff_manage","action_member_role_vip","view_manage_members","view_manage_staff"]'),
         (13,'star_actor','Star Actor','["*"]'),
-        (21,'ledger_viewer','Ledger Viewer','["member_ledger.view"]'),
-        (22,'payroll_viewer','Payroll Viewer','["payroll.view"]'),
-        (17,'admin','店長','["orders.view","orders.manage","orders.price_adjust","orders.refund","orders.refund_completed"]'),
-        (18,'cs','客服','["orders.view","orders.manage","orders_edit_and_reassign"]'),
-        (19,'legacy_order_manager','Legacy Order Manager','["manage_orders"]'),
-        (20,'aftersales','售後','["orders.view","orders.manage","orders.refund"]'),
-        (14,'protected_deployer','Protected Deployer','["roles.manage","discord_commands.deploy_production"]'),
-        (15,'settings_target','Settings Target','["system_settings.manage"]'),
-        (16,'delegatable_target','Delegatable Target','["members.view","staff.view"]')`);
+        (21,'ledger_viewer','Ledger Viewer','["view_member_ledger"]'),
+        (22,'payroll_viewer','Payroll Viewer','["view_staff_payroll"]'),
+        (17,'admin','店長','["view_manage_orders","action_order_manage","action_order_price","action_order_refund","action_order_refund_completed"]'),
+        (18,'cs','客服','["view_manage_orders","action_order_manage","action_order_reassign"]'),
+        (19,'legacy_order_manager','Legacy Order Manager','["action_order_management"]'),
+        (20,'aftersales','售後','["view_manage_orders","action_order_manage","action_order_refund"]'),
+        (14,'protected_deployer','Protected Deployer','["action_role_manage","action_bot_deploy_production"]'),
+        (15,'settings_target','Settings Target','["action_system_config"]'),
+        (16,'delegatable_target','Delegatable Target','["view_manage_members","view_manage_staff"]')`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','manager-b')");
     await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP),('cs-orders',0,0,0,0,CURRENT_TIMESTAMP),('legacy-orders',0,0,0,0,CURRENT_TIMESTAMP),('aftersales-orders',0,0,0,0,CURRENT_TIMESTAMP)");
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,headcount,discount,total_amount,status,created_at,studio_id)
@@ -352,15 +352,15 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(selfRolePage.status, 200, selfRolePage.body);
         assert.match(selfRolePage.body, /目前使用中的身分無法由自己修改權限/);
-        assert.ok(selfRolePage.body.includes('permission_system_settings_manage'), `permission grid present: ${selfRolePage.body.includes('Granular Permissions')}`);
+        assert.ok(selfRolePage.body.includes('role_permission_action_system_config'), `permission grid present: ${selfRolePage.body.includes('高權限與敏感情節')}`);
         assert.ok(selfRolePage.body.includes('你沒有權限授予此項目'));
         assert.doesNotMatch(selfRolePage.body, /id="permission_wildcard"|id="new_permission_wildcard"/);
         const selfEscalation = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securitySelf.cookie,
             'X-CSRF-Token': securitySelf.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
-        }, new URLSearchParams([['role', 'security_self'], ['permissions', 'roles.manage'], ['permissions', 'system_settings.manage']]).toString());
+        }, new URLSearchParams([['role', 'security_self'], ['permissions', 'action_role_manage'], ['permissions', 'action_system_config']]).toString());
         assert.equal(selfEscalation.status, 403);
-        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='security_self'", (error, row) => error ? reject(error) : resolve(row.permissions))), '["roles.manage"]');
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='security_self'", (error, row) => error ? reject(error) : resolve(row.permissions))), '["action_role_manage"]');
 
         const securityCross = await createSession('security-cross');
         const crossRoleEscalation = await createRequest(port, 'POST', '/system/roles/add', {
@@ -368,8 +368,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams([
             ['name', 'Cross Escalation'], ['category', '主管職位'], ['tier_level', '80'], ['description', 'fixture'],
-            ['permissions', 'roles.manage'], ['permissions', 'staff.manage'], ['permissions', 'system_settings.manage'],
-            ['permissions', 'discord_commands.deploy_production'], ['permissions', 'payout.view_sensitive'], ['permissions', '*']
+            ['permissions', 'action_role_manage'], ['permissions', 'action_staff_manage'], ['permissions', 'action_system_config'],
+            ['permissions', 'action_bot_deploy_production'], ['permissions', 'action_payout_sensitive'], ['permissions', '*']
         ]).toString());
         assert.equal(crossRoleEscalation.status, 403);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM roles WHERE name='Cross Escalation'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
@@ -378,7 +378,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams([
             ['name', 'Crafted Sensitive Grant'], ['category', '主管職位'], ['tier_level', '80'], ['description', 'fixture'],
-            ['permissions', 'system_settings.manage'], ['permissions', 'discord_commands.deploy_production'], ['permissions', 'payout.view_sensitive']
+            ['permissions', 'action_system_config'], ['permissions', 'action_bot_deploy_production'], ['permissions', 'action_payout_sensitive']
         ]).toString());
         assert.equal(craftedSensitiveGrant.status, 403);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM roles WHERE name='Crafted Sensitive Grant'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
@@ -389,7 +389,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'X-CSRF-Token': legacySecurity.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams([
             ['name', 'Legacy Escalation'], ['category', '主管職位'], ['tier_level', '80'], ['description', 'fixture'],
-            ['permissions', 'system_settings.manage']
+            ['permissions', 'action_system_config']
         ]).toString());
         assert.equal(legacyGrantAttempt.status, 403);
 
@@ -399,16 +399,16 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'X-CSRF-Token': securityAllow.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams([
             ['name', 'Allowed Delegation'], ['category', '一般職位'], ['tier_level', '60'], ['description', 'fixture'],
-            ['permissions', 'members.view'], ['permissions', 'staff.view']
+            ['permissions', 'view_manage_members'], ['permissions', 'view_manage_staff']
         ]).toString());
         assert.equal(allowedRoleCreate.status, 302);
         const createdDelegatedRole = await new Promise((resolve, reject) => db.get("SELECT role_key, permissions FROM roles WHERE name='Allowed Delegation'", (error, row) => error ? reject(error) : resolve(row)));
-        assert.deepEqual(JSON.parse(createdDelegatedRole.permissions), ['members.view', 'staff.view']);
+        assert.deepEqual(JSON.parse(createdDelegatedRole.permissions), ['view_manage_members', 'view_manage_staff']);
         const createdRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, before_data, after_data, metadata FROM audit_logs WHERE action='ROLE_CREATED' AND target_id=?", [createdDelegatedRole.role_key], (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(createdRoleAudit.action, 'ROLE_CREATED');
         assert.equal(createdRoleAudit.before_data, null);
         assert.equal(createdRoleAudit.after_data, null);
-        assert.deepEqual(JSON.parse(createdRoleAudit.metadata).permissionDiff.added, ['members.view', 'staff.view']);
+        assert.deepEqual(JSON.parse(createdRoleAudit.metadata).permissionDiff.added, ['view_manage_members', 'view_manage_staff']);
 
         const starActor = await createSession('star-actor');
         const superuserRolePage = await createRequest(port, 'GET', '/system/roles', {
@@ -417,7 +417,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(superuserRolePage.status, 200, superuserRolePage.body);
         assert.match(superuserRolePage.body, /id="permission_wildcard"/);
         assert.match(superuserRolePage.body, /id="new_permission_wildcard"/);
-        assert.match(superuserRolePage.body, /value="orders\.price_adjust" id="role_granular_orders_price_adjust"/);
+        assert.match(superuserRolePage.body, /value="action_order_price" id="role_permission_action_order_price"/);
 
         const saveRolePermissions = async (roleKey, permissions) => {
             const fields = new URLSearchParams([['role', roleKey]]);
@@ -431,8 +431,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const storedRolePermissions = async roleKey => JSON.parse(await new Promise((resolve, reject) => db.get(
             'SELECT permissions FROM roles WHERE role_key = ?', [roleKey], (error, row) => error ? reject(error) : resolve(row.permissions)
         )));
-        await saveRolePermissions('settings_viewer', ['system_settings.manage']);
-        assert.deepEqual(await storedRolePermissions('settings_viewer'), ['system_settings.manage']);
+        await saveRolePermissions('settings_viewer', ['action_system_config']);
+        assert.deepEqual(await storedRolePermissions('settings_viewer'), ['action_system_config']);
         const newlyAuthorizedSettingsPost = await createRequest(port, 'POST', '/system/settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: settingsViewer.cookie,
             'X-CSRF-Token': settingsViewer.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
@@ -461,19 +461,19 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.deepEqual(csPermissionsAfterReload, permissionsBeforeSave.cs);
         assert.deepEqual(managerPermissionsAfterReload, permissionsBeforeSave.manager);
         assert.deepEqual(adminPermissionsAfterReload, permissionsBeforeSave.admin);
-        assert.ok(managerPermissionsAfterReload.includes('manage_orders'));
-        assert.ok(adminPermissionsAfterReload.includes('orders.price_adjust'));
+        assert.ok(managerPermissionsAfterReload.includes('action_order_management'));
+        assert.ok(adminPermissionsAfterReload.includes('action_order_price'));
         for (const [roleKey, permissions] of [['cs', csPermissionsAfterReload], ['manager', managerPermissionsAfterReload]]) {
-            assert.equal(permissions.includes('orders.price_adjust'), false, `${roleKey} price toggle must reload off`);
+            assert.equal(permissions.includes('action_order_price'), false, `${roleKey} price toggle must reload off`);
         }
-        assert.ok(adminPermissionsAfterReload.includes('orders.price_adjust'), 'admin price toggle must reload on');
+        assert.ok(adminPermissionsAfterReload.includes('action_order_price'), 'admin price toggle must reload on');
 
         const superuserCreate = await createRequest(port, 'POST', '/system/roles/add', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams([
             ['name', 'Superuser Delegation'], ['category', '最高權限'], ['tier_level', '100'], ['description', 'fixture'],
-            ['permissions', 'payout.view_sensitive'], ['permissions', 'discord_commands.deploy_production']
+            ['permissions', 'action_payout_sensitive'], ['permissions', 'action_bot_deploy_production']
         ]).toString());
         assert.equal(superuserCreate.status, 302);
         const assignedAdminRole = await new Promise((resolve, reject) => db.get("SELECT id FROM roles WHERE role_key='admin'", (error, row) => error ? reject(error) : resolve(row)));
@@ -497,13 +497,13 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const superuserProtectedRoleEdit = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
-        }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'system_settings.manage']]).toString());
+        }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'action_system_config']]).toString());
         assert.equal(superuserProtectedRoleEdit.status, 302);
         const superuserRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, metadata FROM audit_logs WHERE action='ROLE_UPDATED' AND target_id='protected_deployer'", (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(superuserRoleAudit.action, 'ROLE_UPDATED');
         assert.deepEqual(JSON.parse(superuserRoleAudit.metadata).permissionDiff, {
-            added: ['system_settings.manage'],
-            removed: ['discord_commands.deploy_production', 'roles.manage']
+            added: ['action_system_config'],
+            removed: ['action_bot_deploy_production', 'action_role_manage']
         });
         const superuserUnknownGrant = await createRequest(port, 'POST', '/system/roles/add', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
@@ -519,7 +519,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const protectedRoleJsonDenial = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
             Accept: 'application/json', 'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/json'
-        }, JSON.stringify({ role: 'protected_deployer', permissions: ['roles.manage'] }));
+        }, JSON.stringify({ role: 'protected_deployer', permissions: ['action_role_manage'] }));
         assert.equal(protectedRoleJsonDenial.status, 403);
         assert.deepEqual(JSON.parse(protectedRoleJsonDenial.body), {
             success: false, code: 403, reason: 'PERMISSION_DENIED', message: '您沒有權限執行此操作', feature: '角色權限修改'
@@ -536,13 +536,13 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const protectedRoleEdit = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
             'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
-        }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'roles.manage'], ['permissions', 'staff.manage']]).toString());
+        }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'action_role_manage'], ['permissions', 'action_staff_manage']]).toString());
         assert.equal(protectedRoleEdit.status, 403);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions))), protectedRoleBefore);
         const protectedRoleAliasEdit = await createRequest(port, 'POST', '/system/roles/update-perms/14', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
             'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
-        }, new URLSearchParams([['perms[]', 'roles.manage'], ['perms[]', 'staff.manage']]).toString());
+        }, new URLSearchParams([['perms[]', 'action_role_manage'], ['perms[]', 'action_staff_manage']]).toString());
         assert.equal(protectedRoleAliasEdit.status, 403);
         const protectedRoleInfoEdit = await createRequest(port, 'POST', '/system/roles/update-info/14', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
@@ -1116,6 +1116,37 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(afterAdminPriceChange.wallet_balance, beforeAdminPriceChange.wallet_balance - 25);
         assert.equal(afterAdminPriceChange.total_amount, 125);
         assert.equal(afterAdminPriceChange.ledger_count, beforeAdminPriceChange.ledger_count + 1);
+        // Existing sessions read strict boolean-map grants and preserve opaque data on canonical save.
+        const objectPermissions = { 'system_settings.view': true, 'system_settings.manage': false,
+            '*': 'true', opaque: { note: '<script>inert</script>' }, 'future.disabled': false };
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions=? WHERE role_key=?',
+            [JSON.stringify(objectPermissions), 'settings_viewer'], error => error ? reject(error) : resolve()));
+        const sameSessionObjectPage = await createRequest(port, 'GET', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Cookie: settingsViewer.cookie
+        });
+        assert.equal(sameSessionObjectPage.status, 200);
+        const objectDeniedPost = await createRequest(port, 'POST', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: settingsViewer.cookie,
+            'X-CSRF-Token': settingsViewer.csrfToken, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'start_day=1&end_day=31&minimum_amount=100');
+        assert.equal(objectDeniedPost.status, 403);
+        assert.equal(JSON.parse(objectDeniedPost.body).reason, 'PERMISSION_DENIED');
+        await saveRolePermissions('settings_viewer', ['system_settings.view']);
+        assert.deepEqual(await storedRolePermissions('settings_viewer'), {
+            opaque: { note: '<script>inert</script>' }, 'future.disabled': false, view_system_settings: true
+        });
+        const unknownInjection = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'
+        }, new URLSearchParams([['role', 'settings_viewer'], ['permissions', 'future.injected']]).toString());
+        assert.equal(unknownInjection.status, 403);
+        assert.equal((await storedRolePermissions('settings_viewer'))['future.injected'], undefined);
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions=? WHERE role_key=?',
+            ['{broken', 'settings_viewer'], error => error ? reject(error) : resolve()));
+        const malformedRolePage = await createRequest(port, 'GET', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Cookie: settingsViewer.cookie, Accept: 'text/html'
+        });
+        assert.equal(malformedRolePage.status, 403);
         assert.deepEqual(effects, { login: 0, rest: 0, smtp: 0 });
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));

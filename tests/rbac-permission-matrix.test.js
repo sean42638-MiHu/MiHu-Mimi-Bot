@@ -17,55 +17,55 @@ test('Granular permission metadata is unique, grouped and risk-labelled', () => 
 });
 
 test('Legacy permissions imply granular access without granting production deployment', () => {
-    const settings = resolvePermissions(['sys_settings']);
-    const orders = resolvePermissions(['manage_orders']);
-    assert.ok(settings.includes('system_settings.view'));
-    assert.ok(settings.includes('system_settings.manage'));
-    assert.ok(settings.includes('audit_logs.view'));
-    assert.ok(settings.includes('discord_control.view'));
-    assert.equal(settings.includes('discord_commands.deploy_production'), false);
-    assert.ok(resolvePermissions(['sys_roles']).includes('roles.view'));
-    assert.ok(resolvePermissions(['system_settings.manage']).includes('system_settings.view'));
-    assert.ok(resolvePermissions(['roles.manage']).includes('roles.view'));
-    assert.ok(orders.includes('analytics.view'));
-    assert.ok(orders.includes('orders.manage'));
-    assert.equal(orders.includes('orders.price_adjust'), false);
-    assert.equal(resolvePermissions(['orders.manage']).includes('orders.price_adjust'), false);
-    assert.equal(resolvePermissions(['discord_commands.deploy_dev']).includes('discord_control.view'), false);
-    assert.equal(hasResolvedPermission(['*'], 'unlisted.permission'), true);
-    assert.equal(hasResolvedPermission(['roles.view'], 'roles.manage'), false);
+    const settings = resolvePermissions(['action_system_management']);
+    const orders = resolvePermissions(['action_order_management']);
+    assert.ok(settings.includes('view_system_settings'));
+    assert.ok(settings.includes('action_system_config'));
+    assert.ok(settings.includes('action_view_audit_logs'));
+    assert.ok(settings.includes('view_discord_status'));
+    assert.equal(settings.includes('action_bot_deploy_production'), false);
+    assert.ok(resolvePermissions(['action_role_management']).includes('view_roles'));
+    assert.ok(resolvePermissions(['action_system_config']).includes('view_system_settings'));
+    assert.ok(resolvePermissions(['action_role_manage']).includes('view_roles'));
+    assert.ok(orders.includes('action_view_analytics'));
+    assert.ok(orders.includes('action_order_manage'));
+    assert.equal(orders.includes('action_order_price'), false);
+    assert.equal(resolvePermissions(['action_order_manage']).includes('action_order_price'), false);
+    assert.equal(resolvePermissions(['action_bot_deploy_dev']).includes('view_discord_status'), false);
+    assert.equal(hasResolvedPermission(['*'], 'unlisted.permission'), false);
+    assert.equal(hasResolvedPermission(['view_roles'], 'action_role_manage'), false);
 });
 
 test('Unknown permissions are rejected and sensitive permission remains independent', () => {
-    assert.deepEqual(sanitizePermissionKeys(['analytics.view', 'unknown.permission', 'home', 'payout.view_sensitive']), ['analytics.view', 'home', 'payout.view_sensitive']);
+    assert.deepEqual(sanitizePermissionKeys(['action_view_analytics', 'unknown.permission', 'view_dashboard', 'action_payout_sensitive']), ['action_view_analytics', 'view_dashboard', 'action_payout_sensitive']);
     assert.equal(resolvePermissions(['unknown.permission']).includes('unknown.permission'), false);
     assert.equal(hasResolvedPermission(resolvePermissions(['unknown.permission']), 'unknown.permission'), false);
-    assert.equal(LEGACY_IMPLICATIONS['payout.view_sensitive'].includes('staff.view_sensitive'), false);
+    assert.equal(LEGACY_IMPLICATIONS['action_payout_sensitive'].includes('action_staff_sensitive'), false);
 });
 
 test('Order view, management and refund are independent and Production roles follow policy', () => {
-    assert.equal(PERMISSION_METADATA['orders.refund'].mode, 'manage');
-    assert.equal(PERMISSION_METADATA['orders.refund'].risk, 'high');
-    assert.equal(PERMISSION_METADATA['orders.price_adjust'].risk, 'high');
-    assert.equal(PERMISSION_METADATA['orders.refund_completed'].risk, 'high');
-    assert.deepEqual(resolvePermissions(['orders.refund']).sort(), ['orders.refund', 'orders.view']);
-    assert.ok(resolvePermissions(['orders.manage']).includes('orders.view'));
-    assert.equal(resolvePermissions(['orders.manage']).includes('orders.refund'), false);
+    assert.equal(PERMISSION_METADATA['action_order_refund'].mode, 'manage');
+    assert.equal(PERMISSION_METADATA['action_order_refund'].risk, 'high');
+    assert.equal(PERMISSION_METADATA['action_order_price'].risk, 'high');
+    assert.equal(PERMISSION_METADATA['action_order_refund_completed'].risk, 'high');
+    assert.deepEqual(resolvePermissions(['action_order_refund']).sort(), ['action_order_refund', 'view_manage_orders']);
+    assert.ok(resolvePermissions(['action_order_manage']).includes('view_manage_orders'));
+    assert.equal(resolvePermissions(['action_order_manage']).includes('action_order_refund'), false);
 
     const roles = JSON.parse(read('deploy/rbac/production-roles.json')).roles;
     const effective = Object.fromEntries(roles.map(role => [role.role_key, resolvePermissions(role.permissions)]));
     for (const roleKey of ['admin', 'aftersales', 'manager', 'cs']) {
-        assert.ok(effective[roleKey].includes('orders.view'), roleKey);
-        assert.ok(effective[roleKey].includes('orders.manage'), roleKey);
+        assert.ok(effective[roleKey].includes('view_manage_orders'), roleKey);
+        assert.ok(effective[roleKey].includes('action_order_manage'), roleKey);
     }
-    for (const roleKey of ['admin', 'aftersales']) assert.ok(effective[roleKey].includes('orders.refund'), roleKey);
-    for (const roleKey of ['manager', 'cs']) assert.equal(effective[roleKey].includes('orders.refund'), false, roleKey);
-    assert.ok(effective.admin.includes('orders.price_adjust'));
-    for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('orders.price_adjust'), false, roleKey);
-    assert.ok(effective.admin.includes('orders.refund_completed'));
-    for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('orders.refund_completed'), false, roleKey);
+    for (const roleKey of ['admin', 'aftersales']) assert.ok(effective[roleKey].includes('action_order_refund'), roleKey);
+    for (const roleKey of ['manager', 'cs']) assert.equal(effective[roleKey].includes('action_order_refund'), false, roleKey);
+    assert.ok(effective.admin.includes('action_order_price'));
+    for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('action_order_price'), false, roleKey);
+    assert.ok(effective.admin.includes('action_order_refund_completed'));
+    for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('action_order_refund_completed'), false, roleKey);
     for (const roleKey of ['aftersales', 'manager', 'cs']) {
-        for (const forbidden of ['manage_members', 'members.manage', 'member_adjust_balance', 'member_adjust_vip', 'vip.manage', 'roles.manage']) {
+        for (const forbidden of ['action_member_management', 'action_member_manage', 'action_member_balance', 'action_member_role_vip', 'action_vip_config', 'action_role_manage']) {
             assert.equal(effective[roleKey].includes(forbidden), false, `${roleKey}: ${forbidden}`);
         }
     }
@@ -76,37 +76,37 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
     const system = read('routes/system.js');
     const auth = read('middleware/auth.js');
     const sidebar = read('views/partials/sidebar.ejs');
-    assert.match(analytics, /checkPerm\('analytics\.view'\)/);
-    assert.match(system, /checkPerm\('audit_logs\.view'\)/);
-    assert.match(system, /router\.get\('\/system\/settings', ensureAuth, checkPerm\('system_settings\.view'\)/);
-    assert.match(system, /router\.get\('\/system\/payout-settings', ensureAuth, checkPerm\('system_settings\.view'\)/);
-    assert.match(system, /system_settings\.manage/);
-    assert.match(system, /router\.post\('\/system\/payout-settings', ensureAuth, checkPerm\('system_settings\.manage'\)/);
-    assert.match(system, /router\.get\('\/system\/bot-settings', ensureAuth, checkPerm\('discord_control\.view'\)/);
-    assert.match(system, /router\.get\('\/system\/roles', ensureAuth, checkPerm\('roles\.view'\)/);
-    assert.match(system, /router\.post\('\/system\/roles\/add', ensureAuth, checkPerm\('roles\.manage'\)/);
-    assert.match(sidebar, /canAccess\('roles\.view'\)/);
-    assert.match(sidebar, /canAccess\('system_settings\.view'\)/);
-    assert.match(system, /discord_commands\.deploy_dev/);
-    assert.match(system, /discord_commands\.deploy_production/);
-    assert.match(read('routes/management/orders.js'), /checkPerm\('orders\.manage'\)/);
+    assert.match(analytics, /checkPerm\('action_view_analytics'\)/);
+    assert.match(system, /checkPerm\('action_view_audit_logs'\)/);
+    assert.match(system, /router\.get\('\/system\/settings', ensureAuth, checkPerm\('view_system_settings'\)/);
+    assert.match(system, /router\.get\('\/system\/payout-settings', ensureAuth, checkPerm\('view_system_settings'\)/);
+    assert.match(system, /action_system_config/);
+    assert.match(system, /router\.post\('\/system\/payout-settings', ensureAuth, checkPerm\('action_system_config'\)/);
+    assert.match(system, /router\.get\('\/system\/bot-settings', ensureAuth, checkPerm\('view_discord_status'\)/);
+    assert.match(system, /router\.get\('\/system\/roles', ensureAuth, checkPerm\('view_roles'\)/);
+    assert.match(system, /router\.post\('\/system\/roles\/add', ensureAuth, checkPerm\('action_role_manage'\)/);
+    assert.match(sidebar, /canAccess\('view_roles'\)/);
+    assert.match(sidebar, /canAccess\('view_system_settings'\)/);
+    assert.match(system, /action_bot_deploy_dev/);
+    assert.match(system, /action_bot_deploy_production/);
+    assert.match(read('routes/management/orders.js'), /checkPerm\('action_order_manage'\)/);
     const managementOrders = read('routes/management/orders.js');
     const legacyOrders = read('routes/orders.js');
-    assert.match(managementOrders, /router\.get\('\/', ensureAuth, checkPerm\('orders\.view'\)/);
+    assert.match(managementOrders, /router\.get\('\/', ensureAuth, checkPerm\('view_manage_orders'\)/);
     assert.match(managementOrders, /router\.post\('\/update\/:id', ensureAuth, requireUpdatePermission/);
-    assert.match(managementOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'orders\.refund' : 'orders\.manage'/);
-    assert.match(managementOrders, /router\.post\('\/batch-delete', ensureAuth, checkPerm\('orders\.refund'\)/);
-    assert.match(managementOrders, /router\.post\('\/cancel\/:id', ensureAuth, checkPerm\('orders\.refund'\)/);
-    assert.match(managementOrders, /router\.post\('\/complete\/:id', ensureAuth, checkPerm\('orders\.manage'\)/);
+    assert.match(managementOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'action_order_refund' : 'action_order_manage'/);
+    assert.match(managementOrders, /router\.post\('\/batch-delete', ensureAuth, checkPerm\('action_order_refund'\)/);
+    assert.match(managementOrders, /router\.post\('\/cancel\/:id', ensureAuth, checkPerm\('action_order_refund'\)/);
+    assert.match(managementOrders, /router\.post\('\/complete\/:id', ensureAuth, checkPerm\('action_order_manage'\)/);
     assert.match(managementOrders, /allowPriceAdjustment: canAdjustOrderPrice\(res\)/);
-    assert.match(legacyOrders, /router\.get\('\/orders', ensureAuth, checkPerm\('orders\.view'\)/);
+    assert.match(legacyOrders, /router\.get\('\/orders', ensureAuth, checkPerm\('view_manage_orders'\)/);
     assert.match(legacyOrders, /router\.post\('\/orders\/update\/:id', ensureAuth, requireUpdatePermission/);
-    assert.match(legacyOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'orders\.refund' : 'orders\.manage'/);
+    assert.match(legacyOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'action_order_refund' : 'action_order_manage'/);
     assert.match(legacyOrders, /allowPriceAdjustment: canAdjustOrderPrice\(res\)/);
     assert.match(read('routes/management.js'), /router\.use\('\/orders', ordersRouter\)/);
     assert.match(read('app.js'), /app\.use\('\/management', managementRouter\)/);
     assert.doesNotMatch(read('app.js'), /require\(['"]\.\/routes\/orders['"]\)/);
-    assert.match(read('routes/management/staff.js'), /hasPerm\('staff\.view_sensitive'\)/);
+    assert.match(read('routes/management/staff.js'), /hasPerm\('action_staff_sensitive'\)/);
     assert.doesNotMatch(auth, /role === ['"]admin['"]|id === ['"]604610298581876746['"]/);
     assert.doesNotMatch(sidebar, /isAdminUser.*role|role.*isAdminUser/);
 

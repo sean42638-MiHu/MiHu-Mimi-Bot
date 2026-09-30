@@ -17,25 +17,25 @@ const {
 const role = (role_key, permissions) => ({ role_key, permissions: JSON.stringify(permissions) });
 
 test('delegation allows only metadata permissions already effective for the actor', () => {
-    const actorPermissions = resolvePermissions(['roles.manage', 'members.view', 'staff.view']);
-    assert.equal(canGrantPermission(actorPermissions, 'members.view'), true);
-    assert.equal(canGrantPermission(actorPermissions, 'system_settings.manage'), false);
-    assert.deepEqual(validatePermissionGrant(actorPermissions, ['members.view', 'staff.view']), ['members.view', 'staff.view']);
-    assert.throws(() => validatePermissionGrant(actorPermissions, ['discord_commands.deploy_production']), /未擁有/);
+    const actorPermissions = resolvePermissions(['action_role_manage', 'view_manage_members', 'view_manage_staff']);
+    assert.equal(canGrantPermission(actorPermissions, 'view_manage_members'), true);
+    assert.equal(canGrantPermission(actorPermissions, 'action_system_config'), false);
+    assert.deepEqual(validatePermissionGrant(actorPermissions, ['view_manage_members', 'view_manage_staff']), ['view_manage_members', 'view_manage_staff']);
+    assert.throws(() => validatePermissionGrant(actorPermissions, ['action_bot_deploy_production']), /未擁有/);
     assert.throws(() => validatePermissionGrant(actorPermissions, ['unknown.permission']), /未知/);
 });
 
 test('manage grants imply view at runtime without persisting an unchecked view key', () => {
-    const actorPermissions = resolvePermissions(['roles.manage', 'system_settings.manage']);
-    const stored = validatePermissionGrant(actorPermissions, ['system_settings.manage']);
-    assert.deepEqual(stored, ['system_settings.manage']);
-    assert.equal(resolvePermissions(stored).includes('system_settings.view'), true);
+    const actorPermissions = resolvePermissions(['action_role_manage', 'action_system_config']);
+    const stored = validatePermissionGrant(actorPermissions, ['action_system_config']);
+    assert.deepEqual(stored, ['action_system_config']);
+    assert.equal(resolvePermissions(stored).includes('view_system_settings'), true);
 });
 
 test('self-role and protected-role edits and deletions are denied to ordinary actors', () => {
-    const actor = { roleKey: 'self_editor', permissions: resolvePermissions(['roles.manage']) };
-    const selfRole = role('self_editor', ['roles.manage']);
-    const protectedRole = role('target', ['roles.manage', 'discord_commands.deploy_production']);
+    const actor = { roleKey: 'self_editor', permissions: resolvePermissions(['action_role_manage']) };
+    const selfRole = role('self_editor', ['action_role_manage']);
+    const protectedRole = role('target', ['action_role_manage', 'action_bot_deploy_production']);
     assert.equal(canModifyRole(actor, selfRole), false);
     assert.equal(canDeleteRole(actor, selfRole), false);
     assert.equal(canModifyRole(actor, protectedRole), false);
@@ -43,39 +43,39 @@ test('self-role and protected-role edits and deletions are denied to ordinary ac
 });
 
 test('legacy sys_roles delegates roles.manage but not unrelated settings authority', () => {
-    const actorPermissions = resolvePermissions(['sys_roles']);
-    assert.ok(actorPermissions.includes('roles.view'));
-    assert.ok(actorPermissions.includes('roles.manage'));
-    assert.equal(actorPermissions.includes('system_settings.manage'), false);
-    assert.throws(() => validatePermissionGrant(actorPermissions, ['system_settings.manage']), /未擁有/);
+    const actorPermissions = resolvePermissions(['action_role_management']);
+    assert.ok(actorPermissions.includes('view_roles'));
+    assert.ok(actorPermissions.includes('action_role_manage'));
+    assert.equal(actorPermissions.includes('action_system_config'), false);
+    assert.throws(() => validatePermissionGrant(actorPermissions, ['action_system_config']), /未擁有/);
 });
 
 test('role assignment is bounded by effective target permissions', () => {
-    const actor = { roleKey: 'staff_manager', permissions: resolvePermissions(['staff.manage', 'members.view']) };
-    assert.equal(canAssignRole(actor, role('limited', ['members.view'])), true);
-    assert.equal(canAssignRole(actor, role('settings_admin', ['system_settings.manage'])), false);
-    assert.equal(canAssignRole(actor, role('production_deployer', ['discord_commands.deploy_production'])), false);
+    const actor = { roleKey: 'staff_manager', permissions: resolvePermissions(['action_staff_manage', 'view_manage_members']) };
+    assert.equal(canAssignRole(actor, role('limited', ['view_manage_members'])), true);
+    assert.equal(canAssignRole(actor, role('settings_admin', ['action_system_config'])), false);
+    assert.equal(canAssignRole(actor, role('production_deployer', ['action_bot_deploy_production'])), false);
 });
 
 test('wildcard delegates all known permissions but never makes unknown keys valid', () => {
     const superuserPermissions = resolvePermissions(['*']);
     assert.ok(superuserPermissions.includes('*'));
-    assert.equal(canGrantPermission(superuserPermissions, 'payout.view_sensitive'), true);
-    assert.deepEqual(validatePermissionGrant(superuserPermissions, ['system_settings.manage']), ['system_settings.manage']);
+    assert.equal(canGrantPermission(superuserPermissions, 'action_payout_sensitive'), true);
+    assert.deepEqual(validatePermissionGrant(superuserPermissions, ['action_system_config']), ['action_system_config']);
     assert.deepEqual(validatePermissionGrant(superuserPermissions, ['*']), ['*']);
     assert.throws(() => validatePermissionGrant(superuserPermissions, ['unknown.permission']), /未知/);
 });
 
 test('role audit permission diff contains only safe permission keys', () => {
-    assert.deepEqual(permissionDiff(['roles.manage', 'staff.view'], ['roles.manage', 'members.view']), {
-        added: ['members.view'],
-        removed: ['staff.view']
+    assert.deepEqual(permissionDiff(['action_role_manage', 'view_manage_staff'], ['action_role_manage', 'view_manage_members']), {
+        added: ['view_manage_members'],
+        removed: ['view_manage_staff']
     });
 });
 
 test('assignment authorization reloads actor authority from the database', async () => {
-    let actorStoredPermissions = '["staff.manage"]';
-    const targetRole = role('settings_admin', ['system_settings.manage']);
+    let actorStoredPermissions = '["action_staff_manage"]';
+    const targetRole = role('settings_admin', ['action_system_config']);
     const db = {
         get(sql, params, callback) {
             if (sql.includes('FROM users u LEFT JOIN roles')) {
@@ -85,13 +85,13 @@ test('assignment authorization reloads actor authority from the database', async
             }
         }
     };
-    await assert.rejects(authorizeRoleAssignment('actor', 'settings_admin', 'staff.manage', db), /不可指派/);
-    actorStoredPermissions = '["staff.manage","system_settings.manage"]';
-    await authorizeRoleAssignment('actor', 'settings_admin', 'staff.manage', db);
+    await assert.rejects(authorizeRoleAssignment('actor', 'settings_admin', 'action_staff_manage', db), /不可指派/);
+    actorStoredPermissions = '["action_staff_manage","action_system_config"]';
+    await authorizeRoleAssignment('actor', 'settings_admin', 'action_staff_manage', db);
 });
 
 test('role names do not create superuser authority; only the platform principal or stored wildcard does', async () => {
-    const actorRow = { id: 'named-admin', role: 'admin', permissions: '["roles.manage"]' };
+    const actorRow = { id: 'named-admin', role: 'admin', permissions: '["action_role_manage"]' };
     const db = { get(sql, params, callback) { callback(null, actorRow); } };
     const namedAdmin = await loadActorContext('named-admin', db);
     assert.equal(namedAdmin.permissions.includes('*'), false);

@@ -9,7 +9,7 @@ const { spawnSync } = require('node:child_process');
 const { test } = require('node:test');
 const sqlite3 = require('sqlite3').verbose();
 const { PERMISSION_METADATA } = require('../config/permissions');
-const { resolvePermissions } = require('../utils/permissionResolver');
+const { resolvePermissions, canonicalPermissionKey } = require('../utils/permissionResolver');
 const { canAssignRole, validatePermissionGrant, isRoleDelegationError } = require('../services/roleDelegationService');
 const {
     evaluateBreakGlassStoredRole,
@@ -23,9 +23,9 @@ const root = path.join(__dirname, '..');
 const BREAK_GLASS_ID = 'rbac-init-breakglass';
 
 const role = (role_key, permissions) => ({ role_key, permissions: JSON.stringify(permissions) });
-const approver = role('admin', ['payout.view', 'payout.mark_paid', 'payout.reject', 'sys_roles']);
-const executor = role('cfo', ['payout.view', 'payout.view_sensitive', 'payout.export']);
-const member = role('member', ['home', 'profile']);
+const approver = role('admin', ['view_payout', 'action_payout_mark_paid', 'action_payout_reject', 'action_role_management']);
+const executor = role('cfo', ['view_payout', 'action_payout_sensitive', 'action_payout_export']);
+const member = role('member', ['view_dashboard', 'view_profile']);
 
 function readRepoRoles() {
     return JSON.parse(fs.readFileSync(DEFAULT_ROLES_FILE, 'utf8'));
@@ -125,17 +125,17 @@ function runPreflight(fixture, extraEnv = {}) {
 }
 
 test('payout approval permissions are granular, delegable only by holders, and survive role re-save', () => {
-    for (const key of ['payout.mark_paid', 'payout.reject']) {
+    for (const key of ['action_payout_mark_paid', 'action_payout_reject']) {
         assert.equal(PERMISSION_METADATA[key].mode, 'manage');
         assert.equal(PERMISSION_METADATA[key].risk, 'high');
         assert.ok(resolvePermissions([key]).includes(key));
     }
     const superuser = resolvePermissions([], true);
-    const saved = validatePermissionGrant(superuser, ['payout.view', 'payout.mark_paid', 'payout.reject']);
-    assert.ok(saved.includes('payout.mark_paid'));
-    assert.ok(saved.includes('payout.reject'));
+    const saved = validatePermissionGrant(superuser, ['view_payout', 'action_payout_mark_paid', 'action_payout_reject']);
+    assert.ok(saved.includes('action_payout_mark_paid'));
+    assert.ok(saved.includes('action_payout_reject'));
     assert.deepEqual(validatePermissionGrant(superuser, saved).sort(), saved.sort());
-    assert.throws(() => validatePermissionGrant(resolvePermissions(['payout.view']), ['payout.mark_paid']), error => isRoleDelegationError(error));
+    assert.throws(() => validatePermissionGrant(resolvePermissions(['view_payout']), ['action_payout_mark_paid']), error => isRoleDelegationError(error));
 });
 
 test('payout duty policy requires coverage by eligible roles and reports combined duties without failing', () => {
@@ -143,16 +143,16 @@ test('payout duty policy requires coverage by eligible roles and reports combine
     assert.equal(split.coveragePass, true);
     assert.deepEqual(split.combinedDutyRoles, []);
 
-    const combined = evaluatePayoutDuties([role('admin', ['payout.view', 'payout.view_sensitive', 'payout.export', 'payout.mark_paid', 'payout.reject']), member]);
+    const combined = evaluatePayoutDuties([role('admin', ['view_payout', 'action_payout_sensitive', 'action_payout_export', 'action_payout_mark_paid', 'action_payout_reject']), member]);
     assert.equal(combined.coveragePass, true);
     assert.deepEqual(combined.combinedDutyRoles, ['admin']);
 
     const wildcardOnly = evaluatePayoutDuties([role('owner', ['*']), member]);
     assert.equal(wildcardOnly.coveragePass, false);
 
-    const missingReject = evaluatePayoutDuties([role('admin', ['payout.view', 'payout.mark_paid']), executor]);
+    const missingReject = evaluatePayoutDuties([role('admin', ['view_payout', 'action_payout_mark_paid']), executor]);
     assert.equal(missingReject.coveragePass, false);
-    assert.deepEqual(missingReject.coverage['payout.reject'], []);
+    assert.deepEqual(missingReject.coverage['action_payout_reject'], []);
 });
 
 test('break-glass stored role is classified as member, admin or other', () => {
@@ -190,12 +190,12 @@ test('repository Production roles definition records owner approval and satisfie
     assert.deepEqual(readRepoRoles().roles.map(item => item.role_key), ['admin', 'aftersales', 'manager', 'cs', 'talent', 'member']);
     // cfo is intentionally absent; assigning a role key with no DB row must fail closed even for the superuser.
     assert.equal(canAssignRole({ permissions: resolvePermissions([], true) }, null), false);
-    for (const key of ['payout.view', 'payout.view_sensitive', 'payout.export', 'payout.mark_paid', 'payout.reject']) {
-        assert.ok(repoAdmin.permissions.includes(key), key);
+    for (const key of ['view_payout', 'action_payout_sensitive', 'action_payout_export', 'action_payout_mark_paid', 'action_payout_reject']) {
+        assert.ok(resolvePermissions(repoAdmin.permissions).includes(key), key);
     }
 
     const missingExport = approvedCopy();
-    missingExport.roles = missingExport.roles.map(item => item.role_key === 'admin' ? { ...item, permissions: item.permissions.filter(key => key !== 'payout.export') } : item);
+    missingExport.roles = missingExport.roles.map(item => item.role_key === 'admin' ? { ...item, permissions: item.permissions.filter(key => canonicalPermissionKey(key) !== 'action_payout_export') } : item);
     assert.ok(validateRolesDefinition(missingExport).includes('admin role lacks required operational capabilities'));
 
     const wildcard = approvedCopy();

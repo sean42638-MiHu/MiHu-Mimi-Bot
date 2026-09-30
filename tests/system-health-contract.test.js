@@ -11,9 +11,9 @@ test('System Health route and permission metadata are read-only and granular', (
     const route = read('routes/system.js');
     const view = read('views/system_health.ejs');
     const permissions = read('config/permissions.js');
-    assert.match(route, /router\.get\('\/system\/health', ensureAuth, checkPerm\('system_health\.view'\)/);
-    assert.match(route, /router\.get\('\/system\/health\/status', ensureAuth, checkPerm\('system_health\.view'\)/);
-    assert.match(permissions, /system_health\.view/);
+    assert.match(route, /router\.get\('\/system\/health', ensureAuth, checkPerm\('view_system_health'\)/);
+    assert.match(route, /router\.get\('\/system\/health\/status', ensureAuth, checkPerm\('view_system_health'\)/);
+    assert.match(permissions, /view_system_health/);
     assert.doesNotMatch(route, /client\.login\(|new Client\(|DISCORD_BOT_TOKEN.*res\.|process\.env.*res\.json/);
     assert.doesNotMatch(view, /method="POST"|data-admin-confirm|discord_commands\.deploy/);
 });

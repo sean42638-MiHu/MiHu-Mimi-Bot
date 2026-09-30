@@ -1,6 +1,8 @@
 'use strict';
 
-const PERMISSIONS = Object.freeze([
+const { PERMISSION_ALIASES } = require('./permissionAliases');
+
+const granularDefinitions = [
     ['system_health.view', '查看系統狀態', '系統', 'read', 'low'],
     ['analytics.view', '查看營運統計', '營運分析', 'read', 'low'],
     ['audit_logs.view', '查看操作紀錄', '稽核', 'read', 'medium'],
@@ -33,9 +35,206 @@ const PERMISSIONS = Object.freeze([
     ['payout.view_sensitive', '查看提款敏感資料', '提款', 'read', 'high'],
     ['payout.mark_paid', '標記提款已匯款', '提款', 'manage', 'high'],
     ['payout.reject', '駁回提款申請', '提款', 'manage', 'high']
-].map(([key, label, group, mode, risk]) => Object.freeze({ key, label, description: `${mode === 'manage' ? '可執行' : '唯讀'}${label}`, group, mode, risk })));
+];
 
+const supplementalDefinitions = [
+    [
+        "home",
+        "首頁儀表板",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "home_banner",
+        "首頁 Banner",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "home_wallet_card",
+        "首頁錢包卡片",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "home_info",
+        "首頁公告與資訊",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "personal",
+        "個人專區目錄",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "profile",
+        "個人檔案",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "profile_discord",
+        "Discord 綁定資訊",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "profile_nickname",
+        "變更暱稱",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "my_wallet",
+        "我的錢包",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "my_income",
+        "我的收入",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "my_orders",
+        "我的訂單",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "manage",
+        "工作室管理目錄",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "manage_members",
+        "會員管理完整授權",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "member_adjust_balance",
+        "手動調整會員帳務",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "member_adjust_vip",
+        "調整會員身分與 VIP",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "manage_staff",
+        "員工管理完整授權",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "manage_orders",
+        "訂單管理完整授權",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "system",
+        "系統控制目錄",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "sys_commission",
+        "抽成檢視與管理",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "sys_vip",
+        "VIP 檢視與管理",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "sys_roles",
+        "身分檢視與管理",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "sys_settings",
+        "系統完整管理",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "sys_logs",
+        "系統日誌選單",
+        "既有功能",
+        "read",
+        "low"
+    ],
+    [
+        "staff_view_payroll",
+        "查看員工個資與薪資",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "staff_edit_role_commission",
+        "修改員工身分與抽成",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
+        "orders_edit_and_reassign",
+        "訂單維護與改派",
+        "既有功能",
+        "manage",
+        "high"
+    ]
+];
+
+const inactiveKeys = new Set(['view_dashboard_banner', 'view_dashboard_wallet', 'view_dashboard_info',
+    'view_profile_discord', 'action_profile_nickname', 'view_management', 'view_system',
+    'view_system_logs', 'action_order_reassign']);
+
+const PERMISSIONS = Object.freeze([...granularDefinitions, ...supplementalDefinitions].map(([alias, label, group, mode, risk]) => {
+    const key = PERMISSION_ALIASES[alias];
+    const section = ['action_view_analytics', 'action_view_audit_logs', 'view_discord_status', 'view_system_health'].includes(key)
+        || key.startsWith('action_system_') || key.startsWith('action_bot_') || key.startsWith('action_role_')
+        || key.startsWith('action_commission_') || key.startsWith('action_vip_') ? 3 : key.startsWith('view_') ? 1 : 2;
+    return Object.freeze({ key, label, group, mode, risk, section, implemented: !inactiveKeys.has(key), description: `${mode === 'manage' ? '可執行' : '唯讀'}${label}` });
+}));
 const PERMISSION_METADATA = Object.freeze(Object.fromEntries(PERMISSIONS.map(item => [item.key, item])));
-const ALL_GRANULAR_PERMISSIONS = Object.freeze(PERMISSIONS.map(item => item.key));
-
-module.exports = { ALL_GRANULAR_PERMISSIONS, PERMISSION_METADATA, PERMISSIONS };
+// Preserve the original superuser-capability boundary (the original granular set).
+const ALL_GRANULAR_PERMISSIONS = Object.freeze(granularDefinitions.map(([key]) => PERMISSION_ALIASES[key]));
+const ALL_PERMISSION_KEYS = Object.freeze(PERMISSIONS.map(item => item.key));
+module.exports = { ALL_GRANULAR_PERMISSIONS, ALL_PERMISSION_KEYS, PERMISSION_METADATA, PERMISSIONS };

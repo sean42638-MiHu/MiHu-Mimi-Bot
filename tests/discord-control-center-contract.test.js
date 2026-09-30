@@ -14,7 +14,7 @@ test('Discord Control Center exposes status/deployment contracts without secrets
         assert.match(route, new RegExp(field));
         assert.match(view, new RegExp(field));
     }
-    assert.match(route, /router\.post\('\/system\/settings\/discord\/deploy', ensureAuth, requireAnyPerm\('discord_commands\.deploy_dev', 'discord_commands\.deploy_production'\)/);
+    assert.match(route, /router\.post\('\/system\/settings\/discord\/deploy', ensureAuth, requireAnyPerm\('action_bot_deploy_dev', 'action_bot_deploy_production'\)/);
     assert.match(view, /action="\/system\/settings\/discord\/deploy"/);
     assert.match(view, /data-confirm-title="確認部署正式 Discord 指令"/);
     assert.match(view, /data-admin-submit-loading/);

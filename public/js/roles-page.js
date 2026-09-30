@@ -4,8 +4,8 @@
     const legacyPermissionImplications = window.rolePageConfig.legacyPermissionImplications || {};
     const canGrantWildcard = window.rolePageConfig.canGrantWildcard;
 
-    function syncImpliedPermissions() {
-        const checkboxes = [...document.querySelectorAll('.perm-checkbox')];
+    function syncImpliedPermissions(scope = document.getElementById('editRolePermsModal')) {
+        const checkboxes = [...scope.querySelectorAll('.perm-checkbox')];
         const explicit = new Set(checkboxes
             .filter(checkbox => checkbox.dataset.explicitChecked === 'true')
             .map(checkbox => checkbox.value));
@@ -28,8 +28,8 @@
             const canDelegate = (checkbox.value === '*' && canGrantWildcard)
                 || delegatablePermissionKeys.has(checkbox.value);
             checkbox.checked = explicit.has(checkbox.value) || Boolean(source);
-            checkbox.disabled = !canDelegate || Boolean(source && !explicit.has(checkbox.value));
-            checkbox.title = source ? `由舊版權限 ${source} 啟用` : (!canDelegate ? '你沒有權限授予此項目' : '');
+            checkbox.disabled = checkbox.dataset.inactive === 'true' || !canDelegate || Boolean(source && !explicit.has(checkbox.value));
+            checkbox.title = source ? `由權限 ${source} 啟用` : (!canDelegate ? '你沒有權限授予此項目' : '');
 
             const label = checkbox.closest('label') || document.querySelector(`label[for="${checkbox.id}"]`);
             if (!label) return;
@@ -52,33 +52,43 @@
     document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', () => {
             checkbox.dataset.explicitChecked = String(checkbox.checked);
-            syncImpliedPermissions();
+            syncImpliedPermissions(checkbox.closest('form'));
         });
     });
-    syncImpliedPermissions();
+    document.querySelectorAll('form').forEach(form => {
+        if (form.querySelector('.perm-checkbox')) syncImpliedPermissions(form);
+    });
 
-    function openEditRolePermsModal(roleKey, roleName, currentPermsArray) {
+    function openEditRolePermsModal(roleKey, roleName, currentPermsArray, unknownPermissions = {}) {
+        const modalEl = document.getElementById('editRolePermsModal');
+        if (!modalEl) return;
         document.getElementById('targetRoleKey').value = roleKey;
         document.getElementById('targetRoleName').textContent = `${roleName} (${roleKey})`;
 
-        document.querySelectorAll('.perm-checkbox').forEach(cb => {
+        modalEl.querySelectorAll('.perm-checkbox').forEach(cb => {
             cb.checked = false;
             cb.dataset.explicitChecked = 'false';
         });
 
         if (Array.isArray(currentPermsArray)) {
             currentPermsArray.forEach(perm => {
-                const cb = document.querySelector(`.perm-checkbox[value="${perm}"]`);
+                const cb = modalEl.querySelector(`.perm-checkbox[value="${perm}"]`);
                 if (cb) {
                     cb.checked = true;
                     cb.dataset.explicitChecked = 'true';
                 }
             });
         }
-        syncImpliedPermissions();
-
-        const modalEl = document.getElementById('editRolePermsModal');
-        if (!modalEl) return;
+        const unknownSection = document.getElementById('roleUnknownPermissions');
+        const unknownList = document.getElementById('roleUnknownPermissionList');
+        unknownList.replaceChildren();
+        Object.entries(unknownPermissions).forEach(([key, value]) => {
+            const line = document.createElement('div');
+            line.textContent = `${key}: ${JSON.stringify(value)}`;
+            unknownList.append(line);
+        });
+        unknownSection.hidden = Object.keys(unknownPermissions).length === 0;
+        syncImpliedPermissions(modalEl);
         const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         modalInstance.show();
     }
@@ -148,7 +158,7 @@
             if (editPermsBtn) {
                 editPermsBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    openEditRolePermsModal(roleKey, name, perms);
+                    openEditRolePermsModal(roleKey, name, perms, JSON.parse(row.dataset.unknownPermissions || '{}'));
                 });
             }
         });

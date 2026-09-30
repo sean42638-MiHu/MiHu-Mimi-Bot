@@ -21,22 +21,22 @@ function canManageOrderStudio(req, res, studioId) {
 }
 
 function requireUpdatePermission(req, res, next) {
-    const permission = req.body && req.body.is_delete === '1' ? 'orders.refund' : 'orders.manage';
+    const permission = req.body && req.body.is_delete === '1' ? 'action_order_refund' : 'action_order_manage';
     return checkPerm(permission)(req, res, next);
 }
 
 function canApproveCompletedRefund(res) {
-    return hasResolvedPermission(res.locals.userPerms, 'orders.refund_completed');
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_refund_completed');
 }
 
 function canAdjustOrderPrice(res) {
-    return hasResolvedPermission(res.locals.userPerms, 'orders.price_adjust');
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_price');
 }
 
 // =========================================================================
 // 1. 訂單管理主頁面 (對應完整網址 /management/orders)
 // =========================================================================
-router.get('/', ensureAuth, checkPerm('orders.view'), (req, res) => {
+router.get('/', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
     const allStudios = isPlatformSuperuser(res);
     const actorStudioId = Number(req.user && req.user.studio_id);
     if (!allStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
@@ -129,7 +129,7 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
 // =========================================================================
 // 🚀 3. 專用訂單批量刪除 API (對應 /management/orders/batch-delete)
 // =========================================================================
-router.post('/batch-delete', ensureAuth, checkPerm('orders.refund'), async (req, res) => {
+router.post('/batch-delete', ensureAuth, checkPerm('action_order_refund'), async (req, res) => {
     try {
         let orderIds = req.body.order_ids;
         if (!orderIds) {
@@ -168,7 +168,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('orders.refund'), async (req,
 // =========================================================================
 // 4. 單筆作廢退款 API (對應 /management/orders/cancel/:id)
 // =========================================================================
-router.post('/cancel/:id', ensureAuth, checkPerm('orders.refund'), (req, res) => {
+router.post('/cancel/:id', ensureAuth, checkPerm('action_order_refund'), (req, res) => {
     const orderId = req.params.id;
 
     db.get('SELECT * FROM orders WHERE id = ? OR order_no = ?', [orderId, orderId], (err, order) => {
@@ -190,7 +190,7 @@ router.post('/cancel/:id', ensureAuth, checkPerm('orders.refund'), (req, res) =>
 // =========================================================================
 // 5. 標記完成 API (對應 /management/orders/complete/:id)
 // =========================================================================
-router.post('/complete/:id', ensureAuth, checkPerm('orders.manage'), async (req, res) => {
+router.post('/complete/:id', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
     try {
         const order = await getOrder(req.params.id);
         if (!order) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));

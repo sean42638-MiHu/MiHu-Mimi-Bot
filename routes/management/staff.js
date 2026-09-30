@@ -14,12 +14,12 @@ const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActor
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 
 // 2.1 渲染「員工列表」頁面 (對應 /management/staff)
-router.get('/', ensureAuth, checkPerm('staff.view'), async (req, res, next) => {
+router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, next) => {
     const canViewSensitive = typeof res.locals.hasPerm === 'function'
-        ? res.locals.hasPerm('staff.view_sensitive')
-        : hasResolvedPermission(res.locals.userPerms, 'staff.view_sensitive');
+        ? res.locals.hasPerm('action_staff_sensitive')
+        : hasResolvedPermission(res.locals.userPerms, 'action_staff_sensitive');
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    const canViewAllStudios = hasResolvedPermission(userPerms, 'commission.manage');
+    const canViewAllStudios = hasResolvedPermission(userPerms, 'action_commission_config');
     const actorStudioId = Number(req.user && req.user.studio_id);
     if (!canViewAllStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
@@ -33,7 +33,7 @@ router.get('/', ensureAuth, checkPerm('staff.view'), async (req, res, next) => {
             console.error('員工統計查詢失敗，已使用不含訂單統計的安全查詢:', directory.primaryError.message);
         }
         const actor = { roleKey: req.user.role, permissions: userPerms };
-        const assignableRoles = hasResolvedPermission(userPerms, 'staff.manage')
+        const assignableRoles = hasResolvedPermission(userPerms, 'action_staff_manage')
             ? roles.filter(role => canAssignRole(actor, role))
             : [];
         const staffList = canViewSensitive
@@ -59,13 +59,13 @@ router.get('/', ensureAuth, checkPerm('staff.view'), async (req, res, next) => {
 });
 
 // 2.2 💼 變更員工職位與設定 (對應 /management/staff/update/:id)
-router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
+router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (req, res) => {
     const targetStaffId = req.params.id;
     const { role, status, commission_rate, staff_channel_id } = req.body;
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
     const isPlatformSuperuser = hasResolvedPermission(userPerms, '*');
-    const canManageStaff = hasResolvedPermission(userPerms, 'staff.manage');
-    const canEditCommission = hasResolvedPermission(userPerms, 'staff_edit_role_commission');
+    const canManageStaff = hasResolvedPermission(userPerms, 'action_staff_manage');
+    const canEditCommission = hasResolvedPermission(userPerms, 'action_staff_commission');
 
     if (!canManageStaff) return res.status(403).send('無權管理員工');
 
@@ -90,10 +90,10 @@ router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, re
             try {
                 const newRole = String(role || before.role || 'staff').trim();
                 if (newRole !== before.role) {
-                    await authorizeRoleAssignment(req.user.id, newRole, 'staff.manage', db);
+                    await authorizeRoleAssignment(req.user.id, newRole, 'action_staff_manage', db);
                 } else {
                     const currentActor = await loadActorContext(req.user.id, db);
-                    if (!hasResolvedPermission(currentActor.permissions, 'staff.manage')) {
+                    if (!hasResolvedPermission(currentActor.permissions, 'action_staff_manage')) {
                         throw Object.assign(new Error('無權管理員工'), { name: 'RoleDelegationError', statusCode: 403 });
                     }
                 }
@@ -167,12 +167,12 @@ router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, re
 });
 
 // 2.3 單一員工 Discord 刷洗 (對應 /management/staff/sync/:id)
-router.get('/sync/:id', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
+router.get('/sync/:id', ensureAuth, checkPerm('action_staff_manage'), async (req, res) => {
     res.status(501).send('Discord 員工同步尚未實作');
 });
 
 // 2.4 全體員工 Discord 刷洗 (對應 /management/staff/sync-all)
-router.get('/sync-all', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
+router.get('/sync-all', ensureAuth, checkPerm('action_staff_manage'), async (req, res) => {
     res.status(501).send('Discord 員工同步尚未實作');
 });
 

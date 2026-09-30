@@ -28,7 +28,7 @@ function can(req, res, permission) {
 }
 
 function requirePayrollAccess(req, res, next) {
-    if (can(req, res, 'payroll.view') || can(req, res, 'staff_view_payroll') || can(req, res, 'payout.view')) return next();
+    if (can(req, res, 'view_staff_payroll') || can(req, res, 'action_staff_payroll_details') || can(req, res, 'view_payout')) return next();
     return res.status(403).send('您的身分無權訪問薪轉管理頁面');
 }
 
@@ -38,9 +38,9 @@ router.get('/', ensureAuth, requirePayrollAccess, (req, res) => {
     if (!actorStudioId) {
         return res.status(403).send('找不到已授權的工作室範圍');
     }
-    const canViewSensitive = can(req, res, 'payout.view_sensitive');
-    const canViewPayouts = can(req, res, 'payout.view');
-    const canViewStaffPayroll = can(req, res, 'payroll.view') || can(req, res, 'staff_view_payroll');
+    const canViewSensitive = can(req, res, 'action_payout_sensitive');
+    const canViewPayouts = can(req, res, 'view_payout');
+    const canViewStaffPayroll = can(req, res, 'view_staff_payroll') || can(req, res, 'action_staff_payroll_details');
     const sensitiveColumns = canViewSensitive
         ? ', u.real_name, u.bank_name, u.bank_code, u.bank_branch, u.bank_account'
         : '';
@@ -96,16 +96,16 @@ router.get('/', ensureAuth, requirePayrollAccess, (req, res) => {
                 console.error('載入提款管理清單失敗:', error.message);
             }
         }
-        const canExportPayouts = Boolean(can(req, res, 'payout.export') && canViewSensitive);
-        const canExportBankAccounts = Boolean(can(req, res, 'payout.export') && canViewSensitive);
+        const canExportPayouts = Boolean(can(req, res, 'action_payout_export') && canViewSensitive);
+        const canExportBankAccounts = Boolean(can(req, res, 'action_payout_export') && canViewSensitive);
         const payrollViewModel = {
             staffList: sortedPayroll,
             payouts,
             canViewStaffPayroll,
             canViewSensitive,
             canViewPayouts,
-            canMarkPayoutPaid: can(req, res, 'payout.mark_paid'),
-            canRejectPayout: can(req, res, 'payout.reject'),
+            canMarkPayoutPaid: can(req, res, 'action_payout_mark_paid'),
+            canRejectPayout: can(req, res, 'action_payout_reject'),
             canExportPayouts,
             canExportBankAccounts,
             csrfToken: res.locals.csrfToken,
@@ -136,12 +136,12 @@ async function sendPayrollExport(req, res, exporter) {
     }
 }
 
-router.get('/export/payouts', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), (req, res) => sendPayrollExport(req, res, exportPayoutRequests));
-router.get('/export/bank-accounts', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), (req, res) => sendPayrollExport(req, res, exportStaffBankAccounts));
+router.get('/export/payouts', ensureAuth, checkPerm('action_payout_export'), checkPerm('action_payout_sensitive'), (req, res) => sendPayrollExport(req, res, exportPayoutRequests));
+router.get('/export/bank-accounts', ensureAuth, checkPerm('action_payout_export'), checkPerm('action_payout_sensitive'), (req, res) => sendPayrollExport(req, res, exportStaffBankAccounts));
 // Legacy consumer compatibility: retain the old payout-only endpoint with the same read-only export semantics.
-router.get('/export', ensureAuth, checkPerm('payout.export'), checkPerm('payout.view_sensitive'), (req, res) => sendPayrollExport(req, res, args => exportPayoutRequests({ ...args, auditAction: 'WITHDRAWAL_EXPORTED' })));
+router.get('/export', ensureAuth, checkPerm('action_payout_export'), checkPerm('action_payout_sensitive'), (req, res) => sendPayrollExport(req, res, args => exportPayoutRequests({ ...args, auditAction: 'WITHDRAWAL_EXPORTED' })));
 
-router.post('/payouts/:id/paid', ensureAuth, checkPerm('payout.mark_paid'), async (req, res) => {
+router.post('/payouts/:id/paid', ensureAuth, checkPerm('action_payout_mark_paid'), async (req, res) => {
     const studioId = getActorStudioId(req);
     if (!studioId) return res.status(403).json({ success: false, message: '找不到已授權的工作室範圍' });
     try {
@@ -152,7 +152,7 @@ router.post('/payouts/:id/paid', ensureAuth, checkPerm('payout.mark_paid'), asyn
     }
 });
 
-router.post('/payouts/batch-paid', ensureAuth, checkPerm('payout.mark_paid'), async (req, res) => {
+router.post('/payouts/batch-paid', ensureAuth, checkPerm('action_payout_mark_paid'), async (req, res) => {
     const studioId = getActorStudioId(req);
     if (!studioId) return res.status(403).json({ success: false, message: '找不到已授權的工作室範圍' });
     try {
@@ -163,7 +163,7 @@ router.post('/payouts/batch-paid', ensureAuth, checkPerm('payout.mark_paid'), as
     }
 });
 
-router.post('/payouts/:id/reject', ensureAuth, checkPerm('payout.reject'), async (req, res) => {
+router.post('/payouts/:id/reject', ensureAuth, checkPerm('action_payout_reject'), async (req, res) => {
     const studioId = getActorStudioId(req);
     if (!studioId) return res.status(403).json({ success: false, message: '找不到已授權的工作室範圍' });
     try {

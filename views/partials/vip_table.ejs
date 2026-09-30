@@ -37,7 +37,7 @@
                             </div>
                         </td>
                         <td class="text-end" onclick="event.stopPropagation();">
-                            <% if (typeof hasPerm === 'function' && hasPerm('vip.manage')) { %><button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 vip-edit-trigger" data-rewards='<%- JSON.stringify(rewards).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/"/g, '&quot;') %>'>
+                            <% if (typeof hasPerm === 'function' && hasPerm('action_vip_config')) { %><button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 vip-edit-trigger" data-rewards='<%- JSON.stringify(rewards).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/"/g, '&quot;') %>'>
                                 <i class="fa-solid fa-pen-to-square me-1"></i>編輯
                             </button><% } %>
                         </td>

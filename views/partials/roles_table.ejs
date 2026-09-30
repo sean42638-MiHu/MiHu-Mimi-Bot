@@ -26,6 +26,7 @@
                             <% roleList.forEach(r => { %>
                                 <tr class="role-row"
                                     data-id="<%= r.id %>"
+                                    data-unknown-permissions="<%= JSON.stringify(r.unknownPermissions || {}) %>"
                                     data-rolekey="<%= r.role_key %>"
                                     data-name="<%= r.name %>"
                                     data-category="<%= r.category %>"
@@ -47,7 +48,7 @@
                                         <span class="text-light"><%= r.description || '無特別說明' %></span>
                                     </td>
                                     <td class="text-end" onclick="event.stopPropagation();">
-                                        <% if (hasPerm('roles.manage') && r.canManageRole) { %>
+                                        <% if (hasPerm('action_role_manage') && r.canManageRole) { %>
                                         <div class="action-btns-group">
                                             <button type="button" class="btn btn-sm btn-outline-light rounded-pill action-btn-clean btn-edit-info">
                                                 <i class="fa-solid fa-user-pen me-1"></i>編輯資料
@@ -59,7 +60,7 @@
                                                 <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill action-btn-clean"><i class="fa-solid fa-trash me-1"></i>刪除</button>
                                             </form>
                                         </div>
-                                        <% } else if (hasPerm('roles.manage')) { %>
+                                        <% } else if (hasPerm('action_role_manage')) { %>
                                             <span class="admin-badge admin-badge-muted"><%= r.roleProtectionMessage %></span>
                                         <% } %>
                                     </td>
@@ -72,7 +73,7 @@
                                         <div class="admin-empty-state__icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
                                         <p class="admin-empty-state__title">目前沒有角色</p>
                                         <p class="admin-empty-state__description">建立第一個角色後，便能設定角色層級與功能權限。</p>
-                                        <% if (hasPerm('roles.manage')) { %><button type="button" class="admin-btn admin-btn-primary admin-empty-state__action" data-bs-toggle="modal" data-bs-target="#addRoleModal">新增角色</button><% } %>
+                                        <% if (hasPerm('action_role_manage')) { %><button type="button" class="admin-btn admin-btn-primary admin-empty-state__action" data-bs-toggle="modal" data-bs-target="#addRoleModal">新增角色</button><% } %>
                                     </div>
                                 </td>
                             </tr>

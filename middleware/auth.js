@@ -9,15 +9,15 @@ const permissionNames = Object.freeze({
     my_wallet: '我的錢包',
     my_income: '我的收入',
     my_orders: '我的訂單',
-    'members.view': '會員管理',
-    'member_ledger.view': '會員資金明細',
-    'staff.view': '員工列表',
-    'payroll.view': '薪資管理',
-    'orders.view': '訂單管理',
-    'roles.view': '身分管理',
-    'system_settings.view': '系統設定',
-    'audit_logs.view': '操作紀錄',
-    'system_health.view': '系統狀態'
+    'view_manage_members': '會員管理',
+    'view_member_ledger': '會員資金明細',
+    'view_manage_staff': '員工列表',
+    'view_staff_payroll': '薪資管理',
+    'view_manage_orders': '訂單管理',
+    'view_roles': '身分管理',
+    'view_system_settings': '系統設定',
+    'action_view_audit_logs': '操作紀錄',
+    'view_system_health': '系統狀態'
 });
 
 function permissionName(permission) {

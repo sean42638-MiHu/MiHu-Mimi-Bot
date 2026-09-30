@@ -39,33 +39,24 @@ test('roles are returned by tier_level DESC and id ASC from a disposable databas
     }
 });
 
-test('permission editor renders both groups once and preserves legacy grants on save', async () => {
+test('permission editor renders every canonical switch once across three groups', async () => {
+    const { PERMISSION_METADATA } = require('../config/permissions');
     const page = await ejs.renderFile(path.join(root, 'views/modals/role_permission_modal.ejs'), {
-        hasPerm: key => key === 'roles.manage',
-        permissionMetadata: {
-            'orders.view': { key: 'orders.view', label: '查看訂單', mode: 'read', risk: 'low' },
-            'orders.manage': { key: 'orders.manage', label: '管理訂單', mode: 'manage', risk: 'high' },
-            'orders.price_adjust': { key: 'orders.price_adjust', label: '調整訂單價格', mode: 'manage', risk: 'high' },
-            'orders.refund': { key: 'orders.refund', label: '退款', mode: 'manage', risk: 'high' }
-        },
-        legacyPermissionKeys: ['home', 'manage_orders', 'member_adjust_balance'],
-        delegatablePermissions: ['home', 'manage_orders', 'member_adjust_balance', 'orders.view', 'orders.manage', 'orders.price_adjust', 'orders.refund'],
-        canGrantWildcard: false
+        hasPerm: key => key === 'action_role_manage', permissionMetadata: PERMISSION_METADATA,
+        delegatablePermissions: Object.keys(PERMISSION_METADATA), canGrantWildcard: false
     });
-    for (const key of ['orders.view','orders.manage','orders.price_adjust','orders.refund','home','manage_orders','member_adjust_balance']) {
+    for (const key of Object.keys(PERMISSION_METADATA)) {
         assert.equal(page.split('value="' + key + '"').length - 1, 1, key);
     }
-    assert.match(page, /2\. 敏感個資與進階操作權限[\s\S]*value="orders\.price_adjust"/);
-    assert.match(page, /1\. 側邊欄選單與模組能見度/);
+    assert.match(page, /1\. 側邊欄與頁面能見度/);
     assert.match(page, /2\. 敏感個資與進階操作權限/);
-    assert.doesNotMatch(page, /value="\*"/);
-
-    const actor = ['roles.manage', 'manage_orders', 'orders.view', 'orders.manage'];
-    const saved = validatePermissionGrant(actor, ['manage_orders','orders.view'], { preserveLegacy: true });
-    assert.deepEqual(saved, ['manage_orders', 'orders.view']);
-    assert.equal(resolvePermissions(saved).includes('orders.manage'), true);
+    assert.match(page, /3\. 高權限與敏感情節/);
+    assert.doesNotMatch(page, /舊版選單|舊版操作|value="\*"/);
+    const actor = resolvePermissions(['sys_roles', 'manage_orders']);
+    const saved = validatePermissionGrant(actor, ['manage_orders', 'orders.view'], { preserveLegacy: true });
+    assert.deepEqual(saved, ['action_order_management', 'view_manage_orders']);
+    assert.equal(resolvePermissions(saved).includes('action_order_manage'), true);
     assert.throws(() => validatePermissionGrant(actor, ['member_adjust_balance'], { preserveLegacy: true }), RoleDelegationError);
-    assert.throws(() => validatePermissionGrant(actor, ['unknown.key'], { preserveLegacy: true }), RoleDelegationError);
 });
 
 test('role editor reloads checkbox state from stored raw permissions rather than alias implications', () => {
@@ -74,8 +65,8 @@ test('role editor reloads checkbox state from stored raw permissions rather than
     assert.match(script, /const rawPerms = row\.getAttribute\('data-perms'\)/);
     assert.match(script, /checkbox\.dataset\.explicitChecked === 'true'/);
     assert.match(script, /legacyPermissionImplications\[source\]/);
-    assert.match(script, /checkbox\.disabled = !canDelegate \|\| Boolean\(source && !explicit\.has\(checkbox\.value\)\)/);
-    assert.match(script, /由舊版權限 \$\{source\} 啟用/);
+    assert.match(script, /checkbox\.disabled = checkbox\.dataset\.inactive === \'true\' \|\| !canDelegate \|\| Boolean\(source && !explicit\.has\(checkbox\.value\)\)/);
+    assert.match(script, /由權限 \$\{source\} 啟用/);
     const rolesPage = fs.readFileSync(path.join(root, 'views/roles.ejs'), 'utf8');
     assert.match(rolesPage, /legacyPermissionImplications: typeof legacyPermissionImplications !== 'undefined'/);
 });
@@ -113,10 +104,10 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     const ordersPage = fs.readFileSync(path.join(root, 'views/orders.ejs'), 'utf8');
     const table = fs.readFileSync(path.join(root, 'views/partials/orders_table.ejs'), 'utf8');
     const modal = fs.readFileSync(path.join(root, 'views/modals/order_detail_modal.ejs'), 'utf8');
-    assert.match(table, /hasPerm\('orders\.manage'\)/);
-    assert.match(table, /hasPerm\('orders\.price_adjust'\)/);
-    assert.match(table, /hasPerm\('orders\.refund'\)/);
-    assert.match(table, /hasPerm\('orders\.refund_completed'\)/);
+    assert.match(table, /hasPerm\('action_order_manage'\)/);
+    assert.match(table, /hasPerm\('action_order_price'\)/);
+    assert.match(table, /hasPerm\('action_order_refund'\)/);
+    assert.match(table, /hasPerm\('action_order_refund_completed'\)/);
     assert.match(table, /o\.status !== 'completed' \|\| canRefundCompleted/);
     assert.match(ordersPage, /window\.currentOrderCanAdjustPrice = !!data\.canAdjustPrice/);
     assert.match(ordersPage, /window\.currentOrderCanRefund = !!data\.canRefund/);

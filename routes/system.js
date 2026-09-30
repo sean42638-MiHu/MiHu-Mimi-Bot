@@ -16,7 +16,7 @@ const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExec
 const { getGuildConfigurationStatus } = require('../utils/developmentRuntime');
 const { deployDiscordCommands } = require('../utils/discordDeploymentService');
 const { PERMISSION_METADATA } = require('../config/permissions');
-const { hasResolvedPermission, KNOWN_LEGACY_PERMISSIONS, LEGACY_IMPLICATIONS } = require('../utils/permissionResolver');
+const { hasResolvedPermission, KNOWN_LEGACY_PERMISSIONS, LEGACY_IMPLICATIONS, PERMISSION_IMPLICATIONS, parsePermissionData, serializePermissionGrant } = require('../utils/permissionResolver');
 const {
     authorizeRoleCreation, authorizeRoleMutation, canGrantPermission, canModifyRole, isRoleDelegationError,
     loadActorContext, loadRoleById, loadRoleByKey, permissionDiff, validatePermissionGrant
@@ -30,7 +30,7 @@ const canonicalCategoryAliases = { '有獎單': '有獎', '冠名單': '冠名',
 
 function isCommissionAdministrator(req, res) {
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    return req.user && hasResolvedPermission(userPerms, 'commission.manage');
+    return req.user && hasResolvedPermission(userPerms, 'action_commission_config');
 }
 
 function requireStudioCommissionAccess(req, res, next) {
@@ -165,16 +165,16 @@ async function renderSystemSettings(req, res, feedback = {}) {
     try {
         const settings = await readWithdrawalSettings();
         const discordStatus = getDiscordControlStatus();
-        discordStatus.canView = res.locals.hasPerm('discord_control.view');
-        discordStatus.canDeployDev = res.locals.hasPerm('discord_commands.deploy_dev');
-        discordStatus.canDeployProduction = res.locals.hasPerm('discord_commands.deploy_production');
+        discordStatus.canView = res.locals.hasPerm('view_discord_status');
+        discordStatus.canDeployDev = res.locals.hasPerm('action_bot_deploy_dev');
+        discordStatus.canDeployProduction = res.locals.hasPerm('action_bot_deploy_production');
         discordStatus.lastDeployment = await getLatestDiscordDeployment();
         return res.render('system_settings', {
             activePage: 'system_settings',
             settings,
             discordStatus,
             flashData: buildSystemSettingsFlash(feedback),
-            canManageSettings: res.locals.hasPerm('system_settings.manage'),
+            canManageSettings: res.locals.hasPerm('action_system_config'),
             ...feedback
         });
     } catch (error) {
@@ -183,7 +183,7 @@ async function renderSystemSettings(req, res, feedback = {}) {
             activePage: 'system_settings',
             settings: null,
             discordStatus: getDiscordControlStatus(),
-            canManageSettings: res.locals.hasPerm('system_settings.manage'),
+            canManageSettings: res.locals.hasPerm('action_system_config'),
             error: '系統設定目前無法載入，請稍後再試。',
             flashData: buildSystemSettingsFlash({ ...feedback, error: '系統設定目前無法載入，請稍後再試。' }),
             ...feedback
@@ -242,13 +242,13 @@ function buildSystemSettingsFlash(feedback = {}) {
     return feedback.error ? { error: feedback.error } : {};
 }
 
-router.get('/system/settings', ensureAuth, checkPerm('system_settings.view'), (req, res) => renderSystemSettings(req, res, {
+router.get('/system/settings', ensureAuth, checkPerm('view_system_settings'), (req, res) => renderSystemSettings(req, res, {
     saved: req.query.saved === '1',
     error: req.query.error || null,
     discordDeploy: req.query.discordDeploy || null
 }));
 
-router.get('/system/health', ensureAuth, checkPerm('system_health.view'), async (req, res) => {
+router.get('/system/health', ensureAuth, checkPerm('view_system_health'), async (req, res) => {
     try {
         return res.render('system_health', { activePage: 'system_health', health: await getSystemHealth(), error: null });
     } catch (error) {
@@ -257,12 +257,12 @@ router.get('/system/health', ensureAuth, checkPerm('system_health.view'), async 
     }
 });
 
-router.get('/system/health/status', ensureAuth, checkPerm('system_health.view'), async (req, res) => {
+router.get('/system/health/status', ensureAuth, checkPerm('view_system_health'), async (req, res) => {
     try { return res.json(await getSystemHealth()); }
     catch (error) { console.error('讀取系統狀態失敗:', error.message); return res.status(503).json({ overall: 'DEGRADED', error: '狀態更新失敗' }); }
 });
 
-router.get('/system/audit-logs', ensureAuth, checkPerm('audit_logs.view'), async (req, res) => {
+router.get('/system/audit-logs', ensureAuth, checkPerm('action_view_audit_logs'), async (req, res) => {
     try {
         const result = await listAuditLogs({
             studioId: req.user.studio_id,
@@ -284,7 +284,7 @@ router.get('/system/audit-logs', ensureAuth, checkPerm('audit_logs.view'), async
     }
 });
 
-router.post('/system/settings', ensureAuth, checkPerm('system_settings.manage'), async (req, res) => {
+router.post('/system/settings', ensureAuth, checkPerm('action_system_config'), async (req, res) => {
     try {
         await updateWithdrawalSettings(req);
         return res.redirect('/system/settings?saved=1');
@@ -294,10 +294,10 @@ router.post('/system/settings', ensureAuth, checkPerm('system_settings.manage'),
     }
 });
 
-router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('discord_commands.deploy_dev', 'discord_commands.deploy_production'), async (req, res) => {
+router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('action_bot_deploy_dev', 'action_bot_deploy_production'), async (req, res) => {
     const target = String(req.body.target || '').trim();
     const isDevelopment = String(process.env.APP_ENV || '').trim().toLowerCase() === 'development';
-    const requiredPermission = target === 'production' ? 'discord_commands.deploy_production' : 'discord_commands.deploy_dev';
+    const requiredPermission = target === 'production' ? 'action_bot_deploy_production' : 'action_bot_deploy_dev';
     if (!res.locals.hasPerm(requiredPermission)) return res.redirect('/system/settings?discordDeploy=error');
     if (!['development', 'production'].includes(target)
         || (target === 'development' && (!isDevelopment || !String(process.env.GUILD_DEV_ID || '').trim()))
@@ -337,7 +337,7 @@ router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('disco
 });
 
 // 🤖 機器人指令設定 (載入資料庫，若無資料則自動提供 9 大核心指令預設值)
-router.get('/system/bot-settings', ensureAuth, checkPerm('discord_control.view'), (req, res) => {
+router.get('/system/bot-settings', ensureAuth, checkPerm('view_discord_status'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
         db.all('SELECT * FROM bot_commands ORDER BY id ASC', (cErr, dbCommands) => {
             
@@ -407,10 +407,10 @@ function redirectToCommandDeploymentInfo(req, res) {
     res.redirect(req.method === 'POST' ? 303 : 302, '/system/bot-settings?commandDeployInfo=1');
 }
 
-router.get('/system/bot-settings/sync', ensureAuth, checkPerm('discord_control.view'), redirectToCommandDeploymentInfo);
-router.post('/system/bot-settings/sync', ensureAuth, checkPerm('discord_control.view'), redirectToCommandDeploymentInfo);
+router.get('/system/bot-settings/sync', ensureAuth, checkPerm('view_discord_status'), redirectToCommandDeploymentInfo);
+router.post('/system/bot-settings/sync', ensureAuth, checkPerm('view_discord_status'), redirectToCommandDeploymentInfo);
 
-router.get('/system/payout-settings', ensureAuth, checkPerm('system_settings.view'), async (req, res) => {
+router.get('/system/payout-settings', ensureAuth, checkPerm('view_system_settings'), async (req, res) => {
     try {
         const values = await readWithdrawalSettings();
         res.render('payout_settings', {
@@ -424,7 +424,7 @@ router.get('/system/payout-settings', ensureAuth, checkPerm('system_settings.vie
     }
 });
 
-router.post('/system/payout-settings', ensureAuth, checkPerm('system_settings.manage'), async (req, res) => {
+router.post('/system/payout-settings', ensureAuth, checkPerm('action_system_config'), async (req, res) => {
     try {
         await updateWithdrawalSettings(req);
         return res.redirect('/system/payout-settings?saved=1');
@@ -434,7 +434,7 @@ router.post('/system/payout-settings', ensureAuth, checkPerm('system_settings.ma
 });
 
 // VIP 設定
-router.get('/system/vip', ensureAuth, checkPerm('vip.view'), (req, res) => {
+router.get('/system/vip', ensureAuth, checkPerm('view_vip'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
         db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (vErr, tiers) => {
             const normalizedTiers = (tiers || []).map(tier => ({
@@ -448,7 +448,7 @@ router.get('/system/vip', ensureAuth, checkPerm('vip.view'), (req, res) => {
     });
 });
 
-router.post('/system/vip/update/:level', ensureAuth, checkPerm('vip.manage'), async (req, res) => {
+router.post('/system/vip/update/:level', ensureAuth, checkPerm('action_vip_config'), async (req, res) => {
     const level = req.params.level;
     const { spent_threshold, deposit_threshold, color } = req.body;
     let rewards = req.body['rewards[]'] || req.body.rewards || [];
@@ -485,7 +485,7 @@ router.post('/system/vip/update/:level', ensureAuth, checkPerm('vip.manage'), as
     }
 });
 
-router.post('/system/vip/add', ensureAuth, checkPerm('vip.manage'), async (req, res) => {
+router.post('/system/vip/add', ensureAuth, checkPerm('action_vip_config'), async (req, res) => {
     const { level, name, spent_threshold, deposit_threshold, initial_reward, color } = req.body;
     const rewards = initial_reward ? [initial_reward.trim()] : [];
     if (color !== undefined && color !== null && String(color).trim() !== '' && !isValidVipColor(color)) {
@@ -515,40 +515,40 @@ router.post('/system/vip/add', ensureAuth, checkPerm('vip.manage'), async (req, 
 });
 
 // 相容舊入口，抽佣管理統一交由獨立 management route 處理。
-router.get('/system/commission', ensureAuth, checkPerm('commission.view'), (req, res) => {
+router.get('/system/commission', ensureAuth, checkPerm('view_commission'), (req, res) => {
     res.redirect('/management/commission');
 });
 
-router.post('/system/commission/update', ensureAuth, checkPerm('commission.manage'), (req, res) => {
+router.post('/system/commission/update', ensureAuth, checkPerm('action_commission_config'), (req, res) => {
     res.redirect('/management/commission');
 });
 
-router.post('/system/commission/services', ensureAuth, checkPerm('commission.manage'), (req, res) => {
+router.post('/system/commission/services', ensureAuth, checkPerm('action_commission_config'), (req, res) => {
     res.redirect('/management/commission');
 });
 
 // 身分權限管理
-router.get('/system/roles', ensureAuth, checkPerm('roles.view'), async (req, res) => {
+router.get('/system/roles', ensureAuth, checkPerm('view_roles'), async (req, res) => {
     const [storedRoles, actor] = await Promise.all([getRolesDataFromDb(), loadActorContext(req.user.id, db)]);
     const rolesData = storedRoles.map(role => ({
         ...role,
-        canManageRole: canModifyRole(actor, role),
+        canManageRole: canModifyRole(actor, { ...role, permissions: role.rawPermissions ?? role.permissions }),
         roleProtectionMessage: actor.roleKey === role.role_key
             ? '目前使用中的身分無法由自己修改權限'
             : '此身分包含你無權委派的權限'
     }));
-    const delegatablePermissions = [...Object.keys(PERMISSION_METADATA), ...KNOWN_LEGACY_PERMISSIONS]
+    const delegatablePermissions = Object.keys(PERMISSION_METADATA)
         .filter(permission => canGrantPermission(actor.permissions, permission));
     res.render('roles', {
         user: req.user, activePage: 'roles', roles: rolesData, rolesData, saved: req.query.saved === '1',
         permissionMetadata: PERMISSION_METADATA, delegatablePermissions,
         legacyPermissionKeys: [...KNOWN_LEGACY_PERMISSIONS],
-        legacyPermissionImplications: LEGACY_IMPLICATIONS,
+        legacyPermissionImplications: PERMISSION_IMPLICATIONS,
         canGrantWildcard: hasResolvedPermission(actor.permissions, '*')
     });
 });
 
-router.post('/system/roles/update-permissions', ensureAuth, checkPerm('roles.manage'), async (req, res) => {
+router.post('/system/roles/update-permissions', ensureAuth, checkPerm('action_role_manage'), async (req, res) => {
     try {
         const { role, permissions } = req.body;
         if (!role) return res.status(400).send('目標身分組不可為空');
@@ -557,7 +557,8 @@ router.post('/system/roles/update-permissions', ensureAuth, checkPerm('roles.man
             if (!before) throw Object.assign(new Error('找不到身分組'), { statusCode: 404 });
             const actor = await authorizeRoleMutation(req.user.id, before, db);
             const permsArray = validatePermissionGrant(actor.permissions, permissions === undefined ? [] : (Array.isArray(permissions) ? permissions : [permissions]), { preserveLegacy: true });
-            await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE role_key = ?', [JSON.stringify(permsArray), role]);
+            const storedPermissions = serializePermissionGrant(permsArray, before.permissions);
+            await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE role_key = ?', [storedPermissions, role]);
             await writeAuditLog({
                 operatorId: req.user.id,
                 action: 'ROLE_UPDATED',
@@ -565,18 +566,18 @@ router.post('/system/roles/update-permissions', ensureAuth, checkPerm('roles.man
                 targetId: role,
                 before: null,
                 after: null,
-                metadata: { source: 'system-role-route', permissionDiff: permissionDiff(JSON.parse(before.permissions || '[]'), permsArray) }
+                metadata: { source: 'system-role-route', permissionDiff: permissionDiff(parsePermissionData(before.permissions).keys, parsePermissionData(storedPermissions).keys) }
             });
         });
         return res.redirect('/system/roles?saved=1');
     } catch (err) {
         if (err.statusCode === 404) return res.status(404).send(err.message);
-        if (isRoleDelegationError(err)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '角色權限修改' });
+        if (isRoleDelegationError(err)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '角色權限修改' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
 
-router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('roles.manage'), async (req, res) => {
+router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('action_role_manage'), async (req, res) => {
     const roleId = Number(req.params.id);
     const { name, category, tier_level, description } = req.body;
     const badgeMap = { '最高權限': 'danger', '主管職位': 'warning', '客服職位': 'info', '一般職位': 'primary', '會員': 'secondary' };
@@ -601,12 +602,12 @@ router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('roles.manage
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
         if (error.statusCode === 404) return res.status(404).send(error.message);
-        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '角色資料修改' });
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '角色資料修改' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('身分組更新失敗'));
     }
 });
 
-router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('roles.manage'), async (req, res) => {
+router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('action_role_manage'), async (req, res) => {
     const roleId = Number(req.params.id);
     const requestedPermissions = req.body['perms[]'] ?? req.body.perms ?? [];
     const normalizedRequest = Array.isArray(requestedPermissions) ? requestedPermissions : [requestedPermissions];
@@ -616,7 +617,8 @@ router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('roles.manag
             if (!before) throw Object.assign(new Error('找不到身分組'), { statusCode: 404 });
             const actor = await authorizeRoleMutation(req.user.id, before, db);
             const permissions = validatePermissionGrant(actor.permissions, normalizedRequest, { preserveLegacy: true });
-            await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [JSON.stringify(permissions), roleId]);
+            const storedPermissions = serializePermissionGrant(permissions, before.permissions);
+            await runSql('UPDATE roles SET permissions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [storedPermissions, roleId]);
             await writeAuditLog({
                 operatorId: req.user.id,
                 action: 'ROLE_UPDATED',
@@ -624,18 +626,18 @@ router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('roles.manag
                 targetId: before.role_key,
                 before: null,
                 after: null,
-                metadata: { source: 'system-role-route', permissionDiff: permissionDiff(JSON.parse(before.permissions || '[]'), permissions) }
+                metadata: { source: 'system-role-route', permissionDiff: permissionDiff(parsePermissionData(before.permissions).keys, parsePermissionData(storedPermissions).keys) }
             });
         });
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
         if (error.statusCode === 404) return res.status(404).send(error.message);
-        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '角色權限修改' });
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '角色權限修改' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
 
-router.post('/system/roles/add', ensureAuth, checkPerm('roles.manage'), async (req, res) => {
+router.post('/system/roles/add', ensureAuth, checkPerm('action_role_manage'), async (req, res) => {
     const { name, category, tier_level, description } = req.body;
     const requestedPermissions = req.body.permissions ?? req.body['perms[]'] ?? req.body.perms ?? [];
     const normalizedRequest = Array.isArray(requestedPermissions) ? requestedPermissions : [requestedPermissions];
@@ -662,12 +664,12 @@ router.post('/system/roles/add', ensureAuth, checkPerm('roles.manage'), async (r
         });
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
-        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '新增身分組' });
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '新增身分組' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('新增身分組失敗'));
     }
 });
 
-router.post('/system/roles/delete/:id', ensureAuth, checkPerm('roles.manage'), async (req, res) => {
+router.post('/system/roles/delete/:id', ensureAuth, checkPerm('action_role_manage'), async (req, res) => {
     const roleId = Number(req.params.id);
     try {
         await runSystemTransaction(async () => {
@@ -692,7 +694,7 @@ router.post('/system/roles/delete/:id', ensureAuth, checkPerm('roles.manage'), a
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
         if ([404, 409].includes(error.statusCode)) return res.status(error.statusCode).send(error.message);
-        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '刪除身分組' });
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '刪除身分組' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('身分組刪除失敗'));
     }
 });

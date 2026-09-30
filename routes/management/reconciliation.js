@@ -4,7 +4,7 @@ const { ensureAuth, checkPerm } = require('../../middleware/auth');
 const { generateReconciliationReport } = require('../../utils/reconciliationService');
 const { generateWalletMirrorReport } = require('../../utils/walletMirrorMonitor');
 
-router.get('/', ensureAuth, checkPerm('staff_view_payroll'), async (req, res) => {
+router.get('/', ensureAuth, checkPerm('action_staff_payroll_details'), async (req, res) => {
     try {
         const report = await generateReconciliationReport();
         return res.json({ success: true, readOnly: true, report });
@@ -14,7 +14,7 @@ router.get('/', ensureAuth, checkPerm('staff_view_payroll'), async (req, res) =>
     }
 });
 
-router.get('/wallet-mirror', ensureAuth, checkPerm('staff_view_payroll'), async (req, res) => {
+router.get('/wallet-mirror', ensureAuth, checkPerm('action_staff_payroll_details'), async (req, res) => {
     try {
         const report = await generateWalletMirrorReport();
         return res.json({ success: true, readOnly: true, repairsPerformed: 0, report });

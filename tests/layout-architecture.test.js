@@ -80,13 +80,13 @@ test('wildcard renders every existing sidebar destination', async () => {
 });
 
 test('individual view permissions render only their destination and necessary parent', async () => {
-    const ledger = await renderSidebar(['member_ledger.view'], 'member_transactions');
+    const ledger = await renderSidebar(['view_member_ledger'], 'member_transactions');
     assert.match(ledger, /會員管理/);
     assert.match(ledger, /href="\/management\/members\/transactions"[^>]*active-staff/);
     assert.doesNotMatch(ledger, /href="\/management\/members"/);
     assert.doesNotMatch(ledger, /員工管理/);
 
-    const payroll = await renderSidebar(['payroll.view'], 'payroll');
+    const payroll = await renderSidebar(['view_staff_payroll'], 'payroll');
     assert.match(payroll, /員工管理/);
     assert.match(payroll, /href="\/management\/payroll"[^>]*active-staff/);
     assert.doesNotMatch(payroll, /href="\/management\/staff"/);
@@ -94,7 +94,7 @@ test('individual view permissions render only their destination and necessary pa
 });
 
 test('nested admin destinations have one current link and an active expanded parent', async () => {
-    const permissions = ['analytics.view', 'members.view', 'member_ledger.view', 'staff.view', 'payroll.view'];
+    const permissions = ['action_view_analytics', 'view_manage_members', 'view_member_ledger', 'view_manage_staff', 'view_staff_payroll'];
     const cases = [
         ['analytics', '/management/analytics', 'collapseOperation'],
         ['members', '/management/members', 'collapseMembers'],

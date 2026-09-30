@@ -33,7 +33,7 @@ function createVipInfo(tiers, level) {
 // =========================================================================
 router.get('/home', ensureAuth, (req, res) => res.redirect('/dashboard'));
 
-router.get('/dashboard', ensureAuth, checkPerm('home'), (req, res) => {
+router.get('/dashboard', ensureAuth, checkPerm('view_dashboard'), (req, res) => {
     db.get(`
         SELECT u.*,
             COALESCE(w.balance, 0) AS balance,
@@ -69,7 +69,7 @@ router.get('/dashboard', ensureAuth, checkPerm('home'), (req, res) => {
 // =========================================================================
 // 2. 個人檔案 (Profile)
 // =========================================================================
-router.get('/profile', ensureAuth, checkPerm('profile'), (req, res) => {
+router.get('/profile', ensureAuth, checkPerm('view_profile'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
         try {
             const user = currentUser ? decryptSensitiveFields(currentUser, payrollProfileFields) : req.user;
@@ -80,7 +80,7 @@ router.get('/profile', ensureAuth, checkPerm('profile'), (req, res) => {
     });
 });
 
-router.post('/profile', ensureAuth, checkPerm('profile'), async (req, res) => {
+router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) => {
     const { email, custom_nickname, birthday, gender, age, mbti, real_name, bank_name, bank_code, bank_branch, bank_account } = req.body;
     try {
         const encryptedPayrollFields = encryptSensitiveFields({
@@ -156,7 +156,7 @@ router.post('/profile', ensureAuth, checkPerm('profile'), async (req, res) => {
 // =========================================================================
 // 3. 我的錢包模組 (Wallet) 🚀 完全對接獨立資金庫，排除名稱歧義
 // =========================================================================
-router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
+router.get('/wallet', ensureAuth, checkPerm('view_wallet'), (req, res) => {
     const userId = req.user.id;
     
     // 🚀 1. 核心整合：使用 LEFT JOIN 讀取 user_wallets，確保名稱精準對齊
@@ -281,7 +281,7 @@ router.get('/wallet', ensureAuth, checkPerm('my_wallet'), (req, res) => {
 // =========================================================================
 // 4. 我的收入 (Income) 🚀 模組化 + 以原價金額計算陪陪分潤 (不承擔折扣)
 // =========================================================================
-router.get('/income', ensureAuth, checkPerm('my_income'), async (req, res) => {
+router.get('/income', ensureAuth, checkPerm('view_income'), async (req, res) => {
     const userId = req.user.id;
 
     db.get('SELECT * FROM users WHERE id = ?', [userId], async (err, currentUser) => {

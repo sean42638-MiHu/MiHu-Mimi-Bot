@@ -383,14 +383,14 @@ test('explicit migration and restore contracts round-trip only an isolated tempo
 
         const seedProductionLike = new sqlite3.Database(databasePath);
         const approverPermissions = [
-            'members.manage', 'staff.manage', 'staff.view_sensitive', 'orders.manage', 'roles.manage',
-            'system_settings.manage', 'audit_logs.view', 'system_health.view', 'analytics.view',
-            'discord_control.view', 'payroll.view', 'payout.view', 'payout.view_sensitive', 'payout.export',
-            'payout.mark_paid', 'payout.reject'
+            'action_member_manage', 'action_staff_manage', 'action_staff_sensitive', 'action_order_manage', 'action_role_manage',
+            'action_system_config', 'action_view_audit_logs', 'view_system_health', 'action_view_analytics',
+            'view_discord_status', 'view_staff_payroll', 'view_payout', 'action_payout_sensitive', 'action_payout_export',
+            'action_payout_mark_paid', 'action_payout_reject'
         ];
         const fixtureRoles = [
             ['admin', '店長', approverPermissions],
-            ['member', '會員', ['home', 'profile']]
+            ['member', '會員', ['view_dashboard', 'view_profile']]
         ];
         const fixtureUsers = [
             ['preflight-breakglass-user', 'Fixture', 'admin', 1]

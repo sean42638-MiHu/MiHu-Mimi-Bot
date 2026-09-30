@@ -1,7 +1,7 @@
 'use strict';
 
 const { ALL_GRANULAR_PERMISSIONS, PERMISSION_METADATA } = require('../config/permissions');
-const { hasResolvedPermission, KNOWN_LEGACY_PERMISSIONS, isPlatformSuperuserId, resolvePermissions } = require('../utils/permissionResolver');
+const { hasResolvedPermission, KNOWN_LEGACY_PERMISSIONS, isPlatformSuperuserId, resolvePermissions, parsePermissionData, canonicalPermissionKey, isKnownPermission } = require('../utils/permissionResolver');
 
 class RoleDelegationError extends Error {
     constructor(message = '無權執行此身分權限操作') {
@@ -13,12 +13,8 @@ class RoleDelegationError extends Error {
 
 function permissionsForRole(role) {
     if (!role) return null;
-    try {
-        const permissions = typeof role.permissions === 'string' ? JSON.parse(role.permissions || '[]') : role.permissions;
-        return Array.isArray(permissions) && permissions.every(permission => typeof permission === 'string') ? permissions : null;
-    } catch (error) {
-        return null;
-    }
+    const parsed = parsePermissionData(role.permissions);
+    return parsed.valid ? [...parsed.keys, ...Object.keys(parsed.unknownEntries)] : null;
 }
 
 function effectiveRolePermissions(role) {
@@ -27,19 +23,18 @@ function effectiveRolePermissions(role) {
 }
 
 function canGrantPermission(actorPermissions, permission) {
-    return Boolean(PERMISSION_METADATA[permission] || KNOWN_LEGACY_PERMISSIONS.has(permission))
+    return Boolean(isKnownPermission(permission) && permission !== '*')
         && hasResolvedPermission(actorPermissions, permission);
 }
 
-function validatePermissionGrant(actorPermissions, requestedPermissions, { preserveLegacy = false } = {}) {
+function validatePermissionGrant(actorPermissions, requestedPermissions, _options = {}) {
     if (!Array.isArray(requestedPermissions) || requestedPermissions.some(permission => typeof permission !== 'string')) {
         throw new RoleDelegationError('權限清單格式無效');
     }
 
-    const requested = [...new Set(requestedPermissions)];
+    const requested = [...new Set(requestedPermissions.map(canonicalPermissionKey))];
     const isSuperuser = hasResolvedPermission(actorPermissions, '*');
-    if (requested.some(permission => permission !== '*' && !PERMISSION_METADATA[permission]
-        && !(preserveLegacy && KNOWN_LEGACY_PERMISSIONS.has(permission)))) {
+    if (requested.some(permission => !isKnownPermission(permission))) {
         throw new RoleDelegationError('權限清單包含未知項目');
     }
     if (requested.includes('*') && !isSuperuser) {
@@ -49,12 +44,12 @@ function validatePermissionGrant(actorPermissions, requestedPermissions, { prese
         throw new RoleDelegationError('不可授予自己未擁有的權限');
     }
 
-    return requested.includes('*') ? ['*'] : requested;
+    return requested;
 }
 
 function hasUnknownStoredPermissions(role) {
-    const permissions = permissionsForRole(role);
-    return !permissions || permissions.some(permission => permission !== '*' && !PERMISSION_METADATA[permission] && !KNOWN_LEGACY_PERMISSIONS.has(permission));
+    const parsed = parsePermissionData(role && role.permissions);
+    return !parsed.valid || Object.keys(parsed.unknownEntries).length > 0;
 }
 
 function isSuperuserCapableRole(role) {
@@ -66,14 +61,14 @@ function isSuperuserCapableRole(role) {
 }
 
 function canDelegateStoredPermission(actorPermissions, permission) {
-    if (PERMISSION_METADATA[permission]) return canGrantPermission(actorPermissions, permission);
-    return KNOWN_LEGACY_PERMISSIONS.has(permission) && hasResolvedPermission(actorPermissions, permission);
+    return canGrantPermission(actorPermissions, permission);
 }
 
 function canModifyRole(actor, targetRole) {
     const actorPermissions = actor && actor.permissions;
-    if (!hasResolvedPermission(actorPermissions, 'roles.manage') || !targetRole || hasUnknownStoredPermissions(targetRole)) return false;
+    if (!hasResolvedPermission(actorPermissions, 'action_role_manage') || !targetRole || !permissionsForRole(targetRole)) return false;
     if (hasResolvedPermission(actorPermissions, '*')) return true;
+    if (hasUnknownStoredPermissions(targetRole)) return false;
     if (actor.roleKey && actor.roleKey === targetRole.role_key) return false;
     if (isSuperuserCapableRole(targetRole)) return false;
     const targetPermissions = permissionsForRole(targetRole);
@@ -84,8 +79,9 @@ function canModifyRole(actor, targetRole) {
 
 function canAssignRole(actor, targetRole) {
     const actorPermissions = actor && actor.permissions;
-    if (!targetRole || hasUnknownStoredPermissions(targetRole)) return false;
+    if (!targetRole || !permissionsForRole(targetRole)) return false;
     if (hasResolvedPermission(actorPermissions, '*')) return true;
+    if (hasUnknownStoredPermissions(targetRole)) return false;
     if (isSuperuserCapableRole(targetRole)) return false;
     const targetPermissions = permissionsForRole(targetRole);
     const effective = resolvePermissions(targetPermissions);
@@ -141,7 +137,7 @@ async function loadRoleById(roleId, db) {
 
 async function authorizeRoleMutation(actorId, targetRole, db) {
     const actor = await loadActorContext(actorId, db);
-    if (!hasResolvedPermission(actor.permissions, 'roles.manage')) throw new RoleDelegationError();
+    if (!hasResolvedPermission(actor.permissions, 'action_role_manage')) throw new RoleDelegationError();
     if (!canModifyRole(actor, targetRole)) {
         const isSelf = actor.roleKey && targetRole && actor.roleKey === targetRole.role_key;
         throw new RoleDelegationError(isSelf ? '目前使用中的身分無法由自己修改' : '此身分包含你無權委派的權限');
@@ -151,7 +147,7 @@ async function authorizeRoleMutation(actorId, targetRole, db) {
 
 async function authorizeRoleCreation(actorId, db) {
     const actor = await loadActorContext(actorId, db);
-    if (!hasResolvedPermission(actor.permissions, 'roles.manage')) throw new RoleDelegationError();
+    if (!hasResolvedPermission(actor.permissions, 'action_role_manage')) throw new RoleDelegationError();
     return actor;
 }
 

@@ -11,16 +11,16 @@ function isPlatformSuperuser(res) {
 }
 
 function requireUpdatePermission(req, res, next) {
-    const permission = req.body && req.body.is_delete === '1' ? 'orders.refund' : 'orders.manage';
+    const permission = req.body && req.body.is_delete === '1' ? 'action_order_refund' : 'action_order_manage';
     return checkPerm(permission)(req, res, next);
 }
 
 function canApproveCompletedRefund(res) {
-    return hasResolvedPermission(res.locals.userPerms, 'orders.refund_completed');
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_refund_completed');
 }
 
 function canAdjustOrderPrice(res) {
-    return hasResolvedPermission(res.locals.userPerms, 'orders.price_adjust');
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_price');
 }
 
 /**
@@ -67,7 +67,7 @@ router.get('/my', ensureAuth, (req, res) => {
  * 🛠️ 2. 訂單管理全站總覽 (GET /management/orders 或 /orders)
  * 權限定義：管理者/客服視角，抓取全站所有訂單
  */
-router.get('/orders', ensureAuth, checkPerm('orders.view'), (req, res) => {
+router.get('/orders', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
     const allStudios = isPlatformSuperuser(res);
     const studioId = Number(req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {

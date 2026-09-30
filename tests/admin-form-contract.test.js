@@ -35,7 +35,7 @@ test('member role adjustment reloads role options safely every time it opens', (
     const page = read('views/members.ejs');
     assert.match(modal, /inputRoleSelect[\s\S]*disabled[\s\S]*開啟視窗後載入身分角色/);
     assert.doesNotMatch(modal, /<option value="(?:admin|cfo|manager|member)">/);
-    assert.match(read('routes/management/members.js'), /router\.get\('\/role-options'[\s\S]*checkPerm\('member_adjust_vip'\)[\s\S]*getRolesDataFromDb\(\)/);
+    assert.match(read('routes/management/members.js'), /router\.get\('\/role-options'[\s\S]*checkPerm\('action_member_role_vip'\)[\s\S]*getRolesDataFromDb\(\)/);
     assert.match(page, /new AbortController\(\)/);
     assert.match(page, /requestId !== roleOptionsRequestId/);
     assert.match(page, /roleSelect\.replaceChildren/);

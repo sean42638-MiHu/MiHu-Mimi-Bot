@@ -228,7 +228,7 @@
 
     <div class="content-body admin-page-content">
         <!-- 🚀 專屬大標題與說明（左側標題、右側按鈕置右） -->
-        <%- include('partials/admin_page_header', { icon: 'fa-crown', title: 'VIP設定', description: '設定各階級 VIP 門檻（累計消費與預存額度）及對應特權獎勵內容', actions: hasPerm('vip.manage') ? '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addVipModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增 VIP 等級</button>' : '' }) %>
+        <%- include('partials/admin_page_header', { icon: 'fa-crown', title: 'VIP設定', description: '設定各階級 VIP 門檻（累計消費與預存額度）及對應特權獎勵內容', actions: hasPerm('action_vip_config') ? '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addVipModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增 VIP 等級</button>' : '' }) %>
 
         <% if (typeof success !== 'undefined' && success) { %>
             <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">

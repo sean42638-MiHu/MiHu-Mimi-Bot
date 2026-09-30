@@ -17,7 +17,7 @@
     <%- include('partials/navbar', { activePage: 'roles' }) %>
 
     <div class="content-body admin-page-content roles-page">
-        <%- include('partials/admin_page_header', { icon: 'fa-shield-halved', title: '身分管理', description: '自訂系統身分組類別、權限層級與各功能模組之訪問與操作權限', actions: hasPerm('roles.manage') ? '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addRoleModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增身分組</button>' : '' }) %>
+        <%- include('partials/admin_page_header', { icon: 'fa-shield-halved', title: '身分管理', description: '自訂系統身分組類別、權限層級與各功能模組之訪問與操作權限', actions: hasPerm('action_role_manage') ? '<button type="button" class="btn btn-sm px-3 py-2 rounded-pill text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#addRoleModal" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;"><i class="fa-solid fa-plus me-1"></i>新增身分組</button>' : '' }) %>
 
         <% if (typeof success !== 'undefined' && success) { %>
             <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success">

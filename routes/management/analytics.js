@@ -5,7 +5,7 @@ const router = express.Router();
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../../middleware/auth');
 const { getBusinessAnalytics } = require('../../services/businessAnalyticsService');
 
-router.get('/', ensureAuth, checkPerm('analytics.view'), async (req, res) => {
+router.get('/', ensureAuth, checkPerm('action_view_analytics'), async (req, res) => {
     try {
         const analytics = await getBusinessAnalytics({ studioId: req.user.studio_id, query: req.query });
         return res.render('business_analytics', { activePage: 'analytics', analytics, error: null });

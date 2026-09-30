@@ -115,8 +115,8 @@
 
 <% 
     const activeCurrUser = typeof currentUser !== 'undefined' && currentUser ? currentUser : ((typeof user !== 'undefined' && user) ? user : {});
-    const canBatchDeleteOrders = typeof hasPerm === 'function' && hasPerm('orders.refund');
-    const canRefundCompletedOrders = typeof hasPerm === 'function' && hasPerm('orders.refund_completed');
+    const canBatchDeleteOrders = typeof hasPerm === 'function' && hasPerm('action_order_refund');
+    const canRefundCompletedOrders = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
 %>
 
 <div class="app-layout">
