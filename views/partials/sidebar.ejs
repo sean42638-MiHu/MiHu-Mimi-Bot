@@ -11,12 +11,14 @@
     const hasManageChildren = canAccess('action_view_analytics') || hasMemberSection || canAccess('view_manage_staff') || canAccess('view_staff_payroll') || canAccess('view_payout') || canAccess('view_manage_orders');
     const hasManageSection = canAccess('view_management') && hasManageChildren;
     const canManageCommissionPage = canAccess('view_commission');
-    const hasSystemChildren = canManageCommissionPage || canAccess('view_vip') || canAccess('view_roles') || canAccess('action_view_audit_logs') || canAccess('view_system_settings') || canAccess('view_discord_status') || canAccess('view_system_health');
+    const hasSystemInfoChildren = canAccess('view_system_settings') || canAccess('action_view_audit_logs') || canAccess('view_system_health');
+    const hasSystemChildren = canManageCommissionPage || canAccess('view_vip') || canAccess('view_roles') || canAccess('view_discord_status') || hasSystemInfoChildren;
     const hasSystemSection = canAccess('view_system') && hasSystemChildren;
     const currentPage = typeof activePage !== 'undefined' ? activePage : '';
     const isAnalyticsPage = currentPage === 'analytics';
     const isMemberPage = currentPage === 'members' || currentPage === 'member_transactions';
     const isStaffPage = currentPage === 'staff' || currentPage === 'payroll';
+    const isSystemInfoPage = currentPage === 'system_settings' || currentPage === 'audit_logs' || currentPage === 'system_health';
 %>
 
 <link rel="stylesheet" href="/css/vip-badge.css">
@@ -104,7 +106,13 @@
         background: rgba(168, 85, 247, 0.15) !important;
         border: 1px solid rgba(168, 85, 247, 0.25) !important;
     }
-    .menu-item.active i { color: #c084fc !important; }
+    .menu-icon-home { color: #f59e0b; }
+    .menu-icon-personal-cyan { color: #38bdf8; }
+    .menu-icon-personal-pink { color: #ec4899; }
+    .menu-icon-manage-violet { color: #a855f7; }
+    .menu-icon-manage-green { color: #10b981; }
+    .menu-icon-bot { color: #06b6d4; }
+    .menu-icon-system-info { color: #c084fc; }
     .menu-item.locked,
     .menu-item.locked.active,
     .submenu-item.locked,
@@ -167,7 +175,7 @@
         <% if (canAccess('view_dashboard')) { %>
             <div class="menu-label">首頁</div>
             <a href="/dashboard" class="menu-item <%= currentPage === 'dashboard' ? 'active' : '' %>" <%- currentPage === 'dashboard' ? 'aria-current="page"' : '' %>>
-                <i class="fa-solid fa-house" style="color: #fbbf24;"></i>
+                <i class="fa-solid fa-house menu-icon-home"></i>
                 <span class="fw-semibold">首頁</span>
             </a>
         <% } %>
@@ -177,28 +185,28 @@
             
             <% if (canAccess('view_profile')) { %>
                 <a href="/profile" class="menu-item <%= currentPage === 'profile' ? 'active' : '' %>" <%- currentPage === 'profile' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-user-gear" style="color: #c084fc;"></i>
+                    <i class="fa-solid fa-user-gear menu-icon-personal-pink"></i>
                     <span class="fw-semibold">個人檔案</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_wallet')) { %>
                 <a href="/wallet" class="menu-item <%= currentPage === 'wallet' ? 'active' : '' %>" <%- currentPage === 'wallet' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-wallet" style="color: #38bdf8;"></i>
+                    <i class="fa-solid fa-wallet menu-icon-personal-cyan"></i>
                     <span class="fw-semibold">我的錢包</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_income')) { %>
                 <a href="/income" class="menu-item <%= currentPage === 'income' ? 'active' : '' %>" <%- currentPage === 'income' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-sack-dollar" style="color: #fde047;"></i>
+                    <i class="fa-solid fa-sack-dollar menu-icon-personal-cyan"></i>
                     <span class="fw-semibold">我的收入</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_personal_orders')) { %>
                 <a href="/my-orders" class="menu-item <%= currentPage === 'my_orders' ? 'active' : '' %>" <%- currentPage === 'my_orders' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-receipt" style="color: #ec4899;"></i>
+                    <i class="fa-solid fa-receipt menu-icon-personal-pink"></i>
                     <span class="fw-semibold">我的訂單</span>
                 </a>
             <% } %>
@@ -211,7 +219,7 @@
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseOperation" class="menu-item d-flex justify-content-between align-items-center <%= isAnalyticsPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isAnalyticsPage ? 'true' : 'false' %>" aria-controls="collapseOperation">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-chart-pie" style="color: #f59e0b;"></i>
+                            <i class="fa-solid fa-chart-pie menu-icon-manage-violet"></i>
                             <span>營運總覽</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
@@ -231,7 +239,7 @@
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseMembers" class="menu-item d-flex justify-content-between align-items-center <%= isMemberPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isMemberPage ? 'true' : 'false' %>" aria-controls="collapseMembers">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
+                            <i class="fa-solid fa-users menu-icon-manage-violet"></i>
                             <span>會員管理</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
@@ -255,7 +263,7 @@
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseStaff" class="menu-item d-flex justify-content-between align-items-center <%= isStaffPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isStaffPage ? 'true' : 'false' %>" aria-controls="collapseStaff">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-id-badge" style="color: #10b981;"></i>
+                            <i class="fa-solid fa-id-badge menu-icon-manage-green"></i>
                             <span>員工管理</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
@@ -282,7 +290,7 @@
 
             <% if (canAccess('view_manage_orders')) { %>
                 <a href="/management/orders" class="menu-item <%= currentPage === 'orders' ? 'active' : '' %>" <%- currentPage === 'orders' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-list-check" style="color: #ec4899;"></i>
+                    <i class="fa-solid fa-list-check menu-icon-manage-green"></i>
                     <span class="fw-semibold">訂單管理</span>
                 </a>
             <% } %>
@@ -293,51 +301,67 @@
 
             <% if (canAccess('action_system_management') || canAccess('view_discord_status')) { %>
                 <a href="/system/bot-settings" class="menu-item <%= currentPage === 'bot_settings' ? 'active' : '' %>" <%- currentPage === 'bot_settings' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-robot" style="color: #38bdf8;"></i>
+                    <i class="fa-solid fa-robot menu-icon-bot"></i>
                     <span class="fw-semibold">機器人設定</span>
                 </a>
             <% } %>
 
             <% if (canManageCommissionPage) { %>
                 <a href="/management/commission" class="menu-item <%= currentPage === 'commission' ? 'active' : '' %>" <%- currentPage === 'commission' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-percent" style="color: #fde047;"></i>
+                    <i class="fa-solid fa-percent menu-icon-manage-green"></i>
                     <span class="fw-semibold">抽佣設定</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_vip')) { %>
                 <a href="/system/vip" class="menu-item <%= currentPage === 'vip' ? 'active' : '' %>" <%- currentPage === 'vip' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-crown" style="color: #fde047;"></i>
+                    <i class="fa-solid fa-crown menu-icon-manage-violet"></i>
                     <span class="fw-semibold">VIP設定</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_roles')) { %>
                 <a href="/system/roles" class="menu-item <%= currentPage === 'roles' ? 'active' : '' %>" <%- currentPage === 'roles' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-shield-halved" style="color: #34d399;"></i>
+                    <i class="fa-solid fa-shield-halved menu-icon-manage-green"></i>
                     <span class="fw-semibold">身分管理</span>
                 </a>
             <% } %>
 
-            <% if (canAccess('view_system_settings')) { %>
-                <a href="/system/settings" class="menu-item <%= currentPage === 'system_settings' ? 'active' : '' %>" <%- currentPage === 'system_settings' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-sliders" style="color: #a78bfa;"></i>
-                    <span class="fw-semibold">系統設定</span>
-                </a>
-            <% } %>
-
-            <% if (canAccess('action_view_audit_logs')) { %>
-                <a href="/system/audit-logs" class="menu-item <%= currentPage === 'audit_logs' ? 'active' : '' %>" <%- currentPage === 'audit_logs' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-clock-rotate-left"></i>
-                    <span>操作紀錄</span>
-                </a>
-            <% } %>
-                <% if (canAccess('view_system_health')) { %>
-                    <a href="/system/health" class="menu-item <%= currentPage === 'system_health' ? 'active' : '' %>" <%- currentPage === 'system_health' ? 'aria-current="page"' : '' %>>
-                        <i class="fa-solid fa-heart-pulse"></i>
-                        <span>系統狀態</span>
+            <% if (hasSystemInfoChildren) { %>
+                <div class="sidebar-collapse-wrap">
+                    <a href="#collapseSystemInfo" class="menu-item d-flex justify-content-between align-items-center <%= isSystemInfoPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isSystemInfoPage ? 'true' : 'false' %>" aria-controls="collapseSystemInfo">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fa-solid fa-circle-info menu-icon-system-info"></i>
+                            <span>系統資訊</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
                     </a>
-                <% } %>
+                    <div class="collapse <%= isSystemInfoPage ? 'show' : '' %>" id="collapseSystemInfo">
+                        <div class="sidebar-submenu-items">
+                            <% if (canAccess('view_system_settings')) { %>
+                                <a href="/system/settings" class="submenu-item <%= currentPage === 'system_settings' ? 'active-staff' : '' %>" <%- currentPage === 'system_settings' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-sliders"></i>
+                                    <span>系統設定</span>
+                                </a>
+                            <% } %>
+
+                            <% if (canAccess('action_view_audit_logs')) { %>
+                                <a href="/system/audit-logs" class="submenu-item <%= currentPage === 'audit_logs' ? 'active-staff' : '' %>" <%- currentPage === 'audit_logs' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                    <span>操作紀錄</span>
+                                </a>
+                            <% } %>
+
+                            <% if (canAccess('view_system_health')) { %>
+                                <a href="/system/health" class="submenu-item <%= currentPage === 'system_health' ? 'active-staff' : '' %>" <%- currentPage === 'system_health' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-heart-pulse"></i>
+                                    <span>系統狀態</span>
+                                </a>
+                            <% } %>
+                        </div>
+                    </div>
+                </div>
+            <% } %>
         <% } %>
     </div>
 </aside>

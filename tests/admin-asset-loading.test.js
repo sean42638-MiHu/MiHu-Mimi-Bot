@@ -28,3 +28,21 @@ test('migrated pages do not duplicate shared Admin CSS or Bootstrap bundle', () 
 test('shared Admin CSS is not duplicated in canonical layout partials', () => {
     assert.equal((read('views/partials/sidebar.ejs').match(/\/css\/admin-components\.css/g) || []).length, 1);
 });
+
+test('shared admin CSS owns the dark neon scrollbar contract', () => {
+    const css = read('public/css/admin-components.css');
+    for (const selector of [
+        '.mihu-sidebar',
+        '.main-wrapper',
+        '.commission-main',
+        '.admin-modal-body',
+        '.roles-scroll-container',
+        '.table-responsive-scroll',
+        '.payroll-table-scroll'
+    ]) {
+        assert.match(css, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), selector);
+    }
+    assert.match(css, /::-webkit-scrollbar/);
+    assert.match(css, /scrollbar-color:/);
+    assert.match(css, /scrollbar-width:/);
+});

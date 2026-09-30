@@ -74,7 +74,7 @@ test('wildcard renders every existing sidebar destination', async () => {
     ]) {
         assert.match(html, new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), href);
     }
-    for (const label of ['首頁', '個人', '管理', '系統', '會員名單', '會員資金明細', '員工列表', '薪轉管理']) {
+    for (const label of ['首頁', '個人', '管理', '系統', '系統資訊', '會員名單', '會員資金明細', '員工列表', '薪轉管理']) {
         assert.match(html, new RegExp(label), label);
     }
 });
@@ -112,10 +112,69 @@ test('nested admin destinations have one current link and an active expanded par
     }
 });
 
+test('system info destinations keep one current link and only one active parent collapse', async () => {
+    const permissions = ['view_system', 'view_system_settings', 'action_view_audit_logs', 'view_system_health', 'view_discord_status'];
+    const cases = [
+        ['system_settings', '/system/settings'],
+        ['audit_logs', '/system/audit-logs'],
+        ['system_health', '/system/health']
+    ];
+
+    for (const [activePage, href] of cases) {
+        const html = await renderSidebar(permissions, activePage);
+        assert.equal((html.match(/aria-current="page"/g) || []).length, 1, activePage);
+        assert.match(html, new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*active-staff[^>]*aria-current="page"`), activePage);
+        assert.match(html, /href="#collapseSystemInfo"[^>]*class="menu-item[^"]*active[^"]*"[^>]*aria-expanded="true"/);
+        assert.match(html, /class="collapse show" id="collapseSystemInfo"/);
+        assert.doesNotMatch(html, /href="#collapseMembers"[^>]*class="menu-item[^"]*active[^"]*"/);
+        assert.doesNotMatch(html, /href="#collapseStaff"[^>]*class="menu-item[^"]*active[^"]*"/);
+        assert.doesNotMatch(html, /href="#collapseOperation"[^>]*class="menu-item[^"]*active[^"]*"/);
+    }
+});
+
+test('system info group is hidden when no child permission is granted', async () => {
+    const html = await renderSidebar(['view_system', 'view_discord_status']);
+    assert.doesNotMatch(html, /href="#collapseSystemInfo"/);
+    assert.doesNotMatch(html, /系統資訊/);
+});
+
+test('system info child visibility follows individual permissions', async () => {
+    const settingsOnly = await renderSidebar(['view_system', 'view_system_settings'], 'system_settings');
+    assert.match(settingsOnly, /href="\/system\/settings"/);
+    assert.doesNotMatch(settingsOnly, /href="\/system\/audit-logs"/);
+    assert.doesNotMatch(settingsOnly, /href="\/system\/health"/);
+
+    const logsOnly = await renderSidebar(['view_system', 'action_view_audit_logs'], 'audit_logs');
+    assert.match(logsOnly, /href="\/system\/audit-logs"/);
+    assert.doesNotMatch(logsOnly, /href="\/system\/settings"/);
+    assert.doesNotMatch(logsOnly, /href="\/system\/health"/);
+
+    const healthOnly = await renderSidebar(['view_system', 'view_system_health'], 'system_health');
+    assert.match(healthOnly, /href="\/system\/health"/);
+    assert.doesNotMatch(healthOnly, /href="\/system\/settings"/);
+    assert.doesNotMatch(healthOnly, /href="\/system\/audit-logs"/);
+});
+
+test('sidebar icon colors are class-driven and not tied to active state styles', () => {
+    const sidebar = fs.readFileSync(path.join(__dirname, '..', 'views', 'partials', 'sidebar.ejs'), 'utf8');
+    for (const iconClass of [
+        'menu-icon-home',
+        'menu-icon-personal-cyan',
+        'menu-icon-personal-pink',
+        'menu-icon-manage-violet',
+        'menu-icon-manage-green',
+        'menu-icon-bot',
+        'menu-icon-system-info'
+    ]) {
+        assert.match(sidebar, new RegExp(iconClass), iconClass);
+    }
+    assert.doesNotMatch(sidebar, /\.menu-item\.active i\s*\{[^}]*color\s*:/);
+});
+
 test('direct sidebar destinations use the same unique current-page contract', async () => {
-    const html = await renderSidebar(['*'], 'system_health');
+    const html = await renderSidebar(['*'], 'orders');
     assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
-    assert.match(html, /href="\/system\/health"[^>]*class="menu-item active"[^>]*aria-current="page"/);
+    assert.match(html, /href="\/management\/orders"[^>]*class="menu-item active"[^>]*aria-current="page"/);
 });
 
 test('expanded sidebar groups do not receive selected text or icon styling', () => {

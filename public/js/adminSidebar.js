@@ -4,14 +4,142 @@
     const sidebar = document.getElementById('mihuSidebar');
     if (!sidebar) return;
 
-    const storageKey = id => `mihu.sidebar.collapse.${id}`;
-    const readStoredState = id => {
-        try { return window.sessionStorage.getItem(storageKey(id)); }
-        catch { return null; }
-    };
+    const collapseStorageKey = id => `mihu.sidebar.collapse.${id}`;
+    const scrollStorageKey = 'mihu.sidebar.scrollTop';
+    const scrollSaveThrottleMs = 140;
+    const initScrollGuardMs = 300;
+    let scrollContainer = null;
+    let scrollRestorePending = true;
+    let scrollSaveTimeout = null;
+    let suppressScrollSaveUntil = Date.now() + initScrollGuardMs;
+    let isOpen = false;
+    let mobileQuery = null;
+
+    function safeSessionStorage(action, ...args) {
+        try {
+            if (!window.sessionStorage) return null;
+            if (typeof window.sessionStorage[action] !== 'function') return null;
+            return window.sessionStorage[action](...args);
+        } catch {
+            return null;
+        }
+    }
+
+    function parseStoredScrollTop(rawValue) {
+        const numericValue = Number(rawValue);
+        if (!Number.isFinite(numericValue) || numericValue < 0) return null;
+        return numericValue;
+    }
+
+    function clampScrollTop(element, value) {
+        const maxScrollable = Math.max(0, element.scrollHeight - element.clientHeight);
+        return Math.min(Math.max(0, value), maxScrollable);
+    }
+
+    function isOverflowScrollableY(element) {
+        if (!element || typeof window.getComputedStyle !== 'function') return false;
+        const overflowY = String(window.getComputedStyle(element).overflowY || '').toLowerCase();
+        return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+    }
+
+    function resolveScrollContainer() {
+        const candidates = [sidebar, ...sidebar.querySelectorAll('*')];
+        let selected = null;
+        let bestScore = -1;
+
+        candidates.forEach(candidate => {
+            if (!isOverflowScrollableY(candidate)) return;
+            const score = candidate.scrollHeight - candidate.clientHeight;
+            if (score > bestScore) {
+                bestScore = score;
+                selected = candidate;
+            }
+        });
+
+        return selected || sidebar;
+    }
+
+    function isDrawerHidden() {
+        return Boolean(mobileQuery && mobileQuery.matches && !isOpen);
+    }
+
+    function canPersistScrollPosition(reason = 'scroll') {
+        if (!scrollContainer) return false;
+        if (scrollRestorePending) return false;
+        if (scrollContainer.clientHeight <= 0) return false;
+        if (isDrawerHidden()) return false;
+        if (reason === 'scroll' && Date.now() < suppressScrollSaveUntil) return false;
+        return true;
+    }
+
+    function persistScrollPosition(reason = 'scroll') {
+        if (!canPersistScrollPosition(reason)) return;
+        const boundedTop = clampScrollTop(scrollContainer, scrollContainer.scrollTop);
+        if (!Number.isFinite(boundedTop) || boundedTop < 0) return;
+        safeSessionStorage('setItem', scrollStorageKey, String(boundedTop));
+    }
+
+    function clearScheduledScrollPersist() {
+        if (scrollSaveTimeout === null) return;
+        window.clearTimeout(scrollSaveTimeout);
+        scrollSaveTimeout = null;
+    }
+
+    function scheduleThrottledScrollPersist() {
+        if (scrollSaveTimeout !== null) return;
+        scrollSaveTimeout = window.setTimeout(() => {
+            scrollSaveTimeout = null;
+            persistScrollPosition('scroll');
+        }, scrollSaveThrottleMs);
+    }
+
+    function restoreScrollPosition({ force = false } = {}) {
+        if (!scrollRestorePending && !force) return;
+        if (!scrollContainer) scrollContainer = resolveScrollContainer();
+        if (!scrollContainer) return;
+
+        const storedValue = parseStoredScrollTop(safeSessionStorage('getItem', scrollStorageKey));
+        if (storedValue === null) {
+            scrollRestorePending = false;
+            return;
+        }
+
+        const canApplyNow = scrollContainer.clientHeight > 0;
+        if (!canApplyNow) return;
+
+        suppressScrollSaveUntil = Date.now() + initScrollGuardMs;
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                if (!scrollContainer) return;
+                const boundedTop = clampScrollTop(scrollContainer, storedValue);
+                scrollContainer.scrollTop = boundedTop;
+                scrollRestorePending = false;
+            });
+        });
+    }
+
+    function handleScrollEvent() {
+        scheduleThrottledScrollPersist();
+    }
+
+    function bindScrollTracking() {
+        const resolvedContainer = resolveScrollContainer();
+        if (!resolvedContainer) return;
+        if (resolvedContainer === scrollContainer) return;
+
+        if (scrollContainer) {
+            scrollContainer.removeEventListener('scroll', handleScrollEvent);
+            if (scrollContainer.dataset) delete scrollContainer.dataset.sidebarScrollBound;
+        }
+
+        scrollContainer = resolvedContainer;
+        scrollContainer.addEventListener('scroll', handleScrollEvent, { passive: true });
+        if (scrollContainer.dataset) scrollContainer.dataset.sidebarScrollBound = 'true';
+    }
+
+    const readStoredState = id => safeSessionStorage('getItem', collapseStorageKey(id));
     const writeStoredState = (id, expanded) => {
-        try { window.sessionStorage.setItem(storageKey(id), String(expanded)); }
-        catch { /* Bootstrap collapse remains functional without storage. */ }
+        safeSessionStorage('setItem', collapseStorageKey(id), String(expanded));
     };
 
     sidebar.querySelectorAll('[data-bs-toggle="collapse"][aria-controls]').forEach(toggleElement => {
@@ -28,18 +156,23 @@
         collapseElement.addEventListener('shown.bs.collapse', () => {
             toggleElement.setAttribute('aria-expanded', 'true');
             writeStoredState(collapseId, true);
+            if (scrollRestorePending) restoreScrollPosition({ force: true });
         });
         collapseElement.addEventListener('hidden.bs.collapse', () => {
             toggleElement.setAttribute('aria-expanded', 'false');
             writeStoredState(collapseId, false);
+            if (scrollRestorePending) restoreScrollPosition({ force: true });
         });
     });
+
+    bindScrollTracking();
+    restoreScrollPosition();
 
     const toggle = document.querySelector('.admin-sidebar-toggle');
     const closeButton = sidebar && sidebar.querySelector('.admin-sidebar-close');
     if (!toggle || !closeButton) return;
 
-    const mobileQuery = window.matchMedia('(max-width: 991.98px)');
+    mobileQuery = window.matchMedia('(max-width: 991.98px)');
     const appLayout = sidebar.closest('.app-layout');
     const mainWrapper = appLayout
         ? appLayout.querySelector('.main-wrapper')
@@ -51,8 +184,6 @@
     backdrop.setAttribute('aria-hidden', 'true');
     backdrop.tabIndex = -1;
     document.body.appendChild(backdrop);
-
-    let isOpen = false;
 
     function setInert(element, value) {
         if (element && 'inert' in element) element.inert = value;
@@ -81,6 +212,8 @@
         backdrop.setAttribute('aria-hidden', 'false');
         document.body.classList.add('admin-sidebar-open');
         setInert(mainWrapper, true);
+        bindScrollTracking();
+        restoreScrollPosition({ force: true });
         window.requestAnimationFrame(() => {
             if (isOpen) closeButton.focus({ preventScroll: true });
         });
@@ -88,6 +221,8 @@
 
     function closeDrawer(restoreFocus = true) {
         if (!isOpen) return;
+        clearScheduledScrollPersist();
+        persistScrollPosition('drawer-close');
         isOpen = false;
         sidebar.classList.remove('is-open');
         sidebar.setAttribute('aria-hidden', 'true');
@@ -106,8 +241,17 @@
 
     sidebar.addEventListener('click', event => {
         const link = event.target.closest('a[href]');
+        if (link && !link.hasAttribute('data-bs-toggle')) {
+            clearScheduledScrollPersist();
+            persistScrollPosition('navigation');
+        }
         if (!link || link.hasAttribute('data-bs-toggle') || !mobileQuery.matches) return;
         closeDrawer(false);
+    });
+
+    window.addEventListener('pagehide', () => {
+        clearScheduledScrollPersist();
+        persistScrollPosition('pagehide');
     });
 
     document.addEventListener('keydown', event => {
@@ -128,6 +272,8 @@
                 setInert(sidebar, true);
             } else {
                 setDesktopState();
+                bindScrollTracking();
+                restoreScrollPosition({ force: true });
             }
         });
     } else {
@@ -139,5 +285,7 @@
             setInert(sidebar, true);
     } else {
         setDesktopState();
+        bindScrollTracking();
+        restoreScrollPosition({ force: true });
     }
 })();
