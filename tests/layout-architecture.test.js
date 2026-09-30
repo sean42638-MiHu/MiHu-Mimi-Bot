@@ -117,3 +117,12 @@ test('direct sidebar destinations use the same unique current-page contract', as
     assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
     assert.match(html, /href="\/system\/health"[^>]*class="menu-item active"[^>]*aria-current="page"/);
 });
+
+test('expanded sidebar groups do not receive selected text or icon styling', () => {
+    const sidebar = fs.readFileSync(path.join(__dirname, '..', 'views', 'partials', 'sidebar.ejs'), 'utf8');
+    assert.doesNotMatch(sidebar, /<span class="text-white fw-semibold">(?:營運總覽|會員管理|員工管理)<\/span>/);
+    const expandedRule = sidebar.match(/\.menu-item\[aria-expanded="true"\] \.collapse-arrow\s*\{([^}]*)\}/);
+    assert.ok(expandedRule);
+    assert.match(expandedRule[1], /transform:\s*rotate\(180deg\)/);
+    assert.doesNotMatch(expandedRule[1], /color|background|border|box-shadow/);
+});
