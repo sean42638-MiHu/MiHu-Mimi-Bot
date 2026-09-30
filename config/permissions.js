@@ -3,23 +3,23 @@
 const { PERMISSION_ALIASES } = require('./permissionAliases');
 
 const granularDefinitions = [
-    ['system_health.view', '查看系統狀態', '系統', 'read', 'low'],
+    ['system_health.view', '查看系統狀態', '系統資訊', 'read', 'low'],
     ['analytics.view', '查看營運統計', '營運分析', 'read', 'low'],
-    ['audit_logs.view', '查看操作紀錄', '稽核', 'read', 'medium'],
-    ['system_settings.view', '查看系統設定', '系統', 'read', 'medium'],
-    ['system_settings.manage', '管理系統設定', '系統', 'manage', 'high'],
-    ['discord_control.view', '查看 Discord 狀態', 'Discord', 'read', 'medium'],
+    ['audit_logs.view', '查看操作紀錄', '系統資訊', 'read', 'medium'],
+    ['system_settings.view', '查看系統基礎設定', '系統設定', 'read', 'medium'],
+    ['system_settings.manage', '管理系統基礎設定', '系統設定', 'manage', 'high'],
+    ['discord_control.view', '查看機器人設定', '系統管理', 'read', 'medium'],
     ['discord_commands.deploy_dev', '部署開發 Discord 指令', 'Discord', 'manage', 'high'],
     ['discord_commands.deploy_production', '部署正式 Discord 指令', 'Discord', 'manage', 'high'],
     ['members.view', '查看會員', '會員', 'read', 'low'],
     ['members.manage', '管理會員', '會員', 'manage', 'high'],
     ['member_ledger.view', '查看會員資金明細', '會員', 'read', 'high'],
-    ['roles.view', '查看身分管理', '身分', 'read', 'medium'],
+    ['roles.view', '查看身分管理', '系統管理', 'read', 'medium'],
     ['roles.manage', '管理身分與權限', '身分', 'manage', 'high'],
     ['staff.view', '查看員工', '員工', 'read', 'low'],
     ['staff.manage', '管理員工', '員工', 'manage', 'high'],
     ['staff.view_sensitive', '查看員工敏感資料', '員工', 'read', 'high'],
-    ['vip.view', '查看 VIP', 'VIP', 'read', 'low'],
+    ['vip.view', '查看 VIP 設定', '系統管理', 'read', 'low'],
     ['vip.manage', '管理 VIP', 'VIP', 'manage', 'high'],
     ['orders.view', '查看訂單', '訂單', 'read', 'low'],
     ['orders.manage', '管理訂單', '訂單', 'manage', 'high'],
@@ -27,7 +27,7 @@ const granularDefinitions = [
     ['orders.refund', '退款訂單', '訂單', 'manage', 'high'],
     ['orders.batch_delete', '批量刪除訂單並退款', '訂單', 'manage', 'high'],
     ['orders.refund_completed', '核准完成訂單退款', '訂單', 'manage', 'high'],
-    ['commission.view', '查看抽佣', '抽佣', 'read', 'medium'],
+    ['commission.view', '查看抽傭設定', '系統管理', 'read', 'medium'],
     ['commission.manage', '管理抽佣', '抽佣', 'manage', 'high'],
     ['payroll.view', '查看薪轉', '薪轉', 'read', 'high'],
     ['payroll.manage', '管理薪轉', '薪轉', 'manage', 'high'],
@@ -39,6 +39,27 @@ const granularDefinitions = [
 ];
 
 const supplementalDefinitions = [
+    [
+        "view_cat_system_settings",
+        "系統設定分類可見",
+        "側邊欄分類",
+        "read",
+        "low"
+    ],
+    [
+        "view_cat_system_manage",
+        "系統管理分類可見",
+        "側邊欄分類",
+        "read",
+        "low"
+    ],
+    [
+        "view_cat_system_info",
+        "系統資訊分類可見",
+        "側邊欄分類",
+        "read",
+        "low"
+    ],
     [
         "home",
         "首頁儀表板",

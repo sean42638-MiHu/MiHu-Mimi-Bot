@@ -10,15 +10,35 @@
     const hasMemberSection = canAccess('view_manage_members') || canAccess('view_member_ledger');
     const hasManageChildren = canAccess('action_view_analytics') || hasMemberSection || canAccess('view_manage_staff') || canAccess('view_staff_payroll') || canAccess('view_payout') || canAccess('view_manage_orders');
     const hasManageSection = canAccess('view_management') && hasManageChildren;
-    const canManageCommissionPage = canAccess('view_commission');
-    const hasSystemInfoChildren = canAccess('view_system_settings') || canAccess('action_view_audit_logs') || canAccess('view_system_health');
-    const hasSystemChildren = canManageCommissionPage || canAccess('view_vip') || canAccess('view_roles') || canAccess('view_discord_status') || hasSystemInfoChildren;
-    const hasSystemSection = canAccess('view_system') && hasSystemChildren;
+
     const currentPage = typeof activePage !== 'undefined' ? activePage : '';
+    const isBotPage = currentPage === 'bot_settings' || currentPage === 'bot-settings';
+    const canSystemSettingsEntry = canAccess('view_system_settings');
+    const canSystemBotEntry = canAccess('view_bot_settings') || canAccess('view_discord_status') || canAccess('action_system_management');
+    const canSystemCommissionEntry = canAccess('view_commission_settings') || canAccess('view_commission');
+    const canSystemVipEntry = canAccess('view_vip_settings') || canAccess('view_vip');
+    const canSystemRoleEntry = canAccess('view_role_management') || canAccess('view_roles');
+    const canSystemLogsEntry = canAccess('view_audit_logs') || canAccess('action_view_audit_logs');
+    const canSystemStatusEntry = canAccess('view_system_status') || canAccess('view_system_health');
+
+    const hasSystemSettingsChildren = canSystemSettingsEntry;
+    const hasSystemManageChildren = canSystemBotEntry || canSystemCommissionEntry || canSystemVipEntry || canSystemRoleEntry;
+    const hasSystemInfoChildren = canSystemLogsEntry || canSystemStatusEntry;
+
+    const canViewSystemSettingsCategory = canAccess('view_cat_system_settings') || hasSystemSettingsChildren;
+    const canViewSystemManageCategory = canAccess('view_cat_system_manage') || hasSystemManageChildren;
+    const canViewSystemInfoCategory = canAccess('view_cat_system_info') || hasSystemInfoChildren;
+
+    const hasSystemChildren = (canViewSystemSettingsCategory && hasSystemSettingsChildren)
+        || (canViewSystemManageCategory && hasSystemManageChildren)
+        || (canViewSystemInfoCategory && hasSystemInfoChildren);
+    const hasSystemSection = canAccess('view_system') && hasSystemChildren;
     const isAnalyticsPage = currentPage === 'analytics';
     const isMemberPage = currentPage === 'members' || currentPage === 'member_transactions';
     const isStaffPage = currentPage === 'staff' || currentPage === 'payroll';
-    const isSystemInfoPage = currentPage === 'system_settings' || currentPage === 'audit_logs' || currentPage === 'system_health';
+    const isSystemSettingsPage = currentPage === 'system_settings';
+    const isSystemManagePage = isBotPage || currentPage === 'commission' || currentPage === 'vip' || currentPage === 'roles';
+    const isSystemInfoPage = currentPage === 'audit_logs' || currentPage === 'system_health';
 %>
 
 <link rel="stylesheet" href="/css/vip-badge.css">
@@ -93,6 +113,7 @@
         padding: 10px 14px !important;
         border-radius: 12px !important;
         color: #9ca3af !important;
+        border-right: 3px solid transparent !important;
         text-decoration: none !important;
         font-size: 0.92rem !important;
         font-weight: 500 !important;
@@ -103,16 +124,37 @@
     .menu-item i { width: 18px; text-align: center; }
     .menu-item:hover, .menu-item.active {
         color: #fff !important;
-        background: rgba(168, 85, 247, 0.15) !important;
-        border: 1px solid rgba(168, 85, 247, 0.25) !important;
+        background: rgba(139, 92, 246, 0.14) !important;
+        border-right-color: rgba(192, 132, 252, 0.95) !important;
+        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.25), 0 8px 18px rgba(91, 33, 182, 0.26) !important;
+    }
+    .menu-item:not(.locked):hover i,
+    .menu-item:not(.locked):focus-visible i,
+    .menu-item:not(.locked).active i,
+    .submenu-item:not(.locked):hover i,
+    .submenu-item:not(.locked):focus-visible i,
+    .submenu-item:not(.locked).active-staff i {
+        color: #c084fc !important;
     }
     .menu-icon-home { color: #f59e0b; }
-    .menu-icon-personal-cyan { color: #38bdf8; }
-    .menu-icon-personal-pink { color: #ec4899; }
-    .menu-icon-manage-violet { color: #a855f7; }
-    .menu-icon-manage-green { color: #10b981; }
-    .menu-icon-bot { color: #06b6d4; }
-    .menu-icon-system-info { color: #c084fc; }
+    .menu-icon-profile { color: #ec4899; }
+    .menu-icon-wallet { color: #10b981; }
+    .menu-icon-income { color: #a855f7; }
+    .menu-icon-orders-personal { color: #f472b6; }
+    .menu-icon-manage-analytics { color: #a855f7; }
+    .menu-icon-manage-members { color: #38bdf8; }
+    .menu-icon-manage-staff { color: #10b981; }
+    .menu-icon-manage-orders { color: #ff4655; }
+    .menu-icon-system-settings-parent { color: #f97316; }
+    .menu-icon-system-settings-child { color: #f97316; }
+    .menu-icon-system-manage-parent { color: #38bdf8; }
+    .menu-icon-system-bot { color: #38bdf8; }
+    .menu-icon-system-commission { color: #a855f7; }
+    .menu-icon-system-vip { color: #f59e0b; }
+    .menu-icon-system-roles { color: #10b981; }
+    .menu-icon-system-info-parent { color: #22d3ee; }
+    .menu-icon-system-logs { color: #22d3ee; }
+    .menu-icon-system-status { color: #fb7185; }
     .menu-item.locked,
     .menu-item.locked.active,
     .submenu-item.locked,
@@ -149,16 +191,37 @@
         padding: 8px 12px;
         border-radius: 10px;
         color: #94a3b8;
+        border-right: 3px solid transparent;
         text-decoration: none;
         font-size: 0.86rem;
         font-weight: 500;
         transition: all 0.2s ease;
     }
     .submenu-item i { width: 16px; text-align: center; font-size: 0.8rem; }
-    .submenu-item:hover { color: #fff; background: rgba(168, 85, 247, 0.12); }
+    .submenu-item.system-manage-item {
+        color: #9ca3af;
+        font-size: 0.92rem;
+        font-weight: 500;
+        letter-spacing: normal;
+    }
+    .submenu-item.system-manage-item i {
+        width: 18px;
+        font-size: 0.9rem;
+    }
+    .submenu-item.system-manage-item > span {
+        font-weight: 600;
+    }
+    .submenu-item:hover {
+        color: #fff;
+        background: rgba(139, 92, 246, 0.12);
+        border-right-color: rgba(192, 132, 252, 0.85);
+        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.18);
+    }
     .submenu-item.active-staff {
         color: #ffffff !important;
-        background: rgba(16, 185, 129, 0.18) !important;
+        background: rgba(139, 92, 246, 0.2) !important;
+        border-right-color: rgba(196, 181, 253, 0.95) !important;
+        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.3), 0 8px 20px rgba(91, 33, 182, 0.28) !important;
         font-weight: 700 !important;
     }
 </style>
@@ -185,28 +248,28 @@
             
             <% if (canAccess('view_profile')) { %>
                 <a href="/profile" class="menu-item <%= currentPage === 'profile' ? 'active' : '' %>" <%- currentPage === 'profile' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-user-gear menu-icon-personal-pink"></i>
+                    <i class="fa-solid fa-user-gear menu-icon-profile"></i>
                     <span class="fw-semibold">個人檔案</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_wallet')) { %>
                 <a href="/wallet" class="menu-item <%= currentPage === 'wallet' ? 'active' : '' %>" <%- currentPage === 'wallet' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-wallet menu-icon-personal-cyan"></i>
+                    <i class="fa-solid fa-wallet menu-icon-wallet"></i>
                     <span class="fw-semibold">我的錢包</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_income')) { %>
                 <a href="/income" class="menu-item <%= currentPage === 'income' ? 'active' : '' %>" <%- currentPage === 'income' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-sack-dollar menu-icon-personal-cyan"></i>
+                    <i class="fa-solid fa-sack-dollar menu-icon-income"></i>
                     <span class="fw-semibold">我的收入</span>
                 </a>
             <% } %>
 
             <% if (canAccess('view_personal_orders')) { %>
                 <a href="/my-orders" class="menu-item <%= currentPage === 'my_orders' ? 'active' : '' %>" <%- currentPage === 'my_orders' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-receipt menu-icon-personal-pink"></i>
+                    <i class="fa-solid fa-receipt menu-icon-orders-personal"></i>
                     <span class="fw-semibold">我的訂單</span>
                 </a>
             <% } %>
@@ -219,7 +282,7 @@
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseOperation" class="menu-item d-flex justify-content-between align-items-center <%= isAnalyticsPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isAnalyticsPage ? 'true' : 'false' %>" aria-controls="collapseOperation">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-chart-pie menu-icon-manage-violet"></i>
+                            <i class="fa-solid fa-chart-pie menu-icon-manage-analytics"></i>
                             <span>營運總覽</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
@@ -239,7 +302,7 @@
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseMembers" class="menu-item d-flex justify-content-between align-items-center <%= isMemberPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isMemberPage ? 'true' : 'false' %>" aria-controls="collapseMembers">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-users menu-icon-manage-violet"></i>
+                            <i class="fa-solid fa-users menu-icon-manage-members"></i>
                             <span>會員管理</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
@@ -247,11 +310,11 @@
                     <div class="collapse <%= isMemberPage ? 'show' : '' %>" id="collapseMembers">
                         <div class="sidebar-submenu-items">
                             <% if (canAccess('view_manage_members')) { %><a href="/management/members" class="submenu-item <%= currentPage === 'members' ? 'active-staff' : '' %>" <%- currentPage === 'members' ? 'aria-current="page"' : '' %>>
-                                <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
+                                <i class="fa-solid fa-users menu-icon-manage-members"></i>
                                 <span>會員名單</span>
                             </a><% } %>
                             <% if (canAccess('view_member_ledger')) { %><a href="/management/members/transactions" class="submenu-item <%= currentPage === 'member_transactions' ? 'active-staff' : '' %>" <%- currentPage === 'member_transactions' ? 'aria-current="page"' : '' %>>
-                                <i class="fa-solid fa-wallet" style="color: #22d3ee;"></i>
+                                <i class="fa-solid fa-wallet menu-icon-system-logs"></i>
                                 <span>會員資金明細</span>
                             </a><% } %>
                         </div>
@@ -263,7 +326,7 @@
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseStaff" class="menu-item d-flex justify-content-between align-items-center <%= isStaffPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isStaffPage ? 'true' : 'false' %>" aria-controls="collapseStaff">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-id-badge menu-icon-manage-green"></i>
+                            <i class="fa-solid fa-id-badge menu-icon-manage-staff"></i>
                             <span>員工管理</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
@@ -272,14 +335,14 @@
                         <div class="sidebar-submenu-items">
                             <% if (canAccess('view_manage_staff')) { %>
                                 <a href="/management/staff" class="submenu-item <%= currentPage === 'staff' ? 'active-staff' : '' %>" <%- currentPage === 'staff' ? 'aria-current="page"' : '' %>>
-                                    <i class="fa-solid fa-users-gear" style="color: #10b981;"></i>
+                                    <i class="fa-solid fa-users-gear menu-icon-manage-staff"></i>
                                     <span>員工列表</span>
                                 </a>
                             <% } %>
                             <!-- 🚀 正式開放進入薪轉管理頁面 -->
                             <% if (canAccess('view_staff_payroll') || canAccess('view_payout')) { %>
                                 <a href="/management/payroll" class="submenu-item <%= currentPage === 'payroll' ? 'active-staff' : '' %>" <%- currentPage === 'payroll' ? 'aria-current="page"' : '' %>>
-                                    <i class="fa-solid fa-money-check-dollar" style="color: #fde047;"></i>
+                                    <i class="fa-solid fa-money-check-dollar menu-icon-system-vip"></i>
                                     <span>薪轉管理</span>
                                 </a>
                             <% } %>
@@ -290,7 +353,7 @@
 
             <% if (canAccess('view_manage_orders')) { %>
                 <a href="/management/orders" class="menu-item <%= currentPage === 'orders' ? 'active' : '' %>" <%- currentPage === 'orders' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-list-check menu-icon-manage-green"></i>
+                    <i class="fa-solid fa-list-check menu-icon-manage-orders"></i>
                     <span class="fw-semibold">訂單管理</span>
                 </a>
             <% } %>
@@ -299,62 +362,92 @@
         <% if (hasSystemSection) { %>
             <div class="menu-label">系統</div>
 
-            <% if (canAccess('action_system_management') || canAccess('view_discord_status')) { %>
-                <a href="/system/bot-settings" class="menu-item <%= currentPage === 'bot_settings' ? 'active' : '' %>" <%- currentPage === 'bot_settings' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-robot menu-icon-bot"></i>
-                    <span class="fw-semibold">機器人設定</span>
-                </a>
+            <% if (canViewSystemSettingsCategory && hasSystemSettingsChildren) { %>
+                <div class="sidebar-collapse-wrap">
+                    <a href="#collapseSystemSettings" class="menu-item d-flex justify-content-between align-items-center <%= isSystemSettingsPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isSystemSettingsPage ? 'true' : 'false' %>" aria-controls="collapseSystemSettings">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fa-solid fa-sliders menu-icon-system-settings-parent"></i>
+                            <span>系統設定</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
+                    </a>
+                    <div class="collapse <%= isSystemSettingsPage ? 'show' : '' %>" id="collapseSystemSettings">
+                        <div class="sidebar-submenu-items">
+                            <% if (canSystemSettingsEntry) { %>
+                                <a href="/system/settings" class="submenu-item <%= currentPage === 'system_settings' ? 'active-staff' : '' %>" <%- currentPage === 'system_settings' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-sliders menu-icon-system-settings-child"></i>
+                                    <span>系統基礎設定</span>
+                                </a>
+                            <% } %>
+                        </div>
+                    </div>
+                </div>
             <% } %>
 
-            <% if (canManageCommissionPage) { %>
-                <a href="/management/commission" class="menu-item <%= currentPage === 'commission' ? 'active' : '' %>" <%- currentPage === 'commission' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-percent menu-icon-manage-green"></i>
-                    <span class="fw-semibold">抽佣設定</span>
-                </a>
+            <% if (canViewSystemManageCategory && hasSystemManageChildren) { %>
+                <div class="sidebar-collapse-wrap">
+                    <a href="#collapseSystemManage" class="menu-item d-flex justify-content-between align-items-center <%= isSystemManagePage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isSystemManagePage ? 'true' : 'false' %>" aria-controls="collapseSystemManage">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fa-solid fa-screwdriver-wrench menu-icon-system-manage-parent"></i>
+                            <span>系統管理</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
+                    </a>
+                    <div class="collapse <%= isSystemManagePage ? 'show' : '' %>" id="collapseSystemManage">
+                        <div class="sidebar-submenu-items">
+                            <% if (canSystemBotEntry) { %>
+                                <a href="/system/bot" class="submenu-item system-manage-item <%= isBotPage ? 'active-staff' : '' %>" <%- isBotPage ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-robot menu-icon-system-bot"></i>
+                                    <span>機器人設定</span>
+                                </a>
+                            <% } %>
+
+                            <% if (canSystemCommissionEntry) { %>
+                                <a href="/system/commission" class="submenu-item system-manage-item <%= currentPage === 'commission' ? 'active-staff' : '' %>" <%- currentPage === 'commission' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-percent menu-icon-system-commission"></i>
+                                    <span>抽傭設定</span>
+                                </a>
+                            <% } %>
+
+                            <% if (canSystemVipEntry) { %>
+                                <a href="/system/vip" class="submenu-item system-manage-item <%= currentPage === 'vip' ? 'active-staff' : '' %>" <%- currentPage === 'vip' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-crown menu-icon-system-vip"></i>
+                                    <span>VIP設定</span>
+                                </a>
+                            <% } %>
+
+                            <% if (canSystemRoleEntry) { %>
+                                <a href="/system/roles" class="submenu-item system-manage-item <%= currentPage === 'roles' ? 'active-staff' : '' %>" <%- currentPage === 'roles' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-shield-halved menu-icon-system-roles"></i>
+                                    <span>身分管理</span>
+                                </a>
+                            <% } %>
+                        </div>
+                    </div>
+                </div>
             <% } %>
 
-            <% if (canAccess('view_vip')) { %>
-                <a href="/system/vip" class="menu-item <%= currentPage === 'vip' ? 'active' : '' %>" <%- currentPage === 'vip' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-crown menu-icon-manage-violet"></i>
-                    <span class="fw-semibold">VIP設定</span>
-                </a>
-            <% } %>
-
-            <% if (canAccess('view_roles')) { %>
-                <a href="/system/roles" class="menu-item <%= currentPage === 'roles' ? 'active' : '' %>" <%- currentPage === 'roles' ? 'aria-current="page"' : '' %>>
-                    <i class="fa-solid fa-shield-halved menu-icon-manage-green"></i>
-                    <span class="fw-semibold">身分管理</span>
-                </a>
-            <% } %>
-
-            <% if (hasSystemInfoChildren) { %>
+            <% if (canViewSystemInfoCategory && hasSystemInfoChildren) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseSystemInfo" class="menu-item d-flex justify-content-between align-items-center <%= isSystemInfoPage ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= isSystemInfoPage ? 'true' : 'false' %>" aria-controls="collapseSystemInfo">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fa-solid fa-circle-info menu-icon-system-info"></i>
+                            <i class="fa-solid fa-circle-info menu-icon-system-info-parent"></i>
                             <span>系統資訊</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
                     </a>
                     <div class="collapse <%= isSystemInfoPage ? 'show' : '' %>" id="collapseSystemInfo">
                         <div class="sidebar-submenu-items">
-                            <% if (canAccess('view_system_settings')) { %>
-                                <a href="/system/settings" class="submenu-item <%= currentPage === 'system_settings' ? 'active-staff' : '' %>" <%- currentPage === 'system_settings' ? 'aria-current="page"' : '' %>>
-                                    <i class="fa-solid fa-sliders"></i>
-                                    <span>系統設定</span>
-                                </a>
-                            <% } %>
-
-                            <% if (canAccess('action_view_audit_logs')) { %>
-                                <a href="/system/audit-logs" class="submenu-item <%= currentPage === 'audit_logs' ? 'active-staff' : '' %>" <%- currentPage === 'audit_logs' ? 'aria-current="page"' : '' %>>
-                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                            <% if (canSystemLogsEntry) { %>
+                                <a href="/system/logs" class="submenu-item <%= currentPage === 'audit_logs' ? 'active-staff' : '' %>" <%- currentPage === 'audit_logs' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-clock-rotate-left menu-icon-system-logs"></i>
                                     <span>操作紀錄</span>
                                 </a>
                             <% } %>
 
-                            <% if (canAccess('view_system_health')) { %>
-                                <a href="/system/health" class="submenu-item <%= currentPage === 'system_health' ? 'active-staff' : '' %>" <%- currentPage === 'system_health' ? 'aria-current="page"' : '' %>>
-                                    <i class="fa-solid fa-heart-pulse"></i>
+                            <% if (canSystemStatusEntry) { %>
+                                <a href="/system/status" class="submenu-item <%= currentPage === 'system_health' ? 'active-staff' : '' %>" <%- currentPage === 'system_health' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-heart-pulse menu-icon-system-status"></i>
                                     <span>系統狀態</span>
                                 </a>
                             <% } %>

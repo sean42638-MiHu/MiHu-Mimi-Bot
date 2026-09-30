@@ -58,5 +58,5 @@ test('Company Statistics sidebar is unlocked while Audit remains separate', () =
     const sidebar = read('views/partials/sidebar.ejs');
     assert.match(sidebar, /href="\/management\/analytics"/);
     assert.doesNotMatch(sidebar, /data-coming-soon data-coming-soon-feature="公司營運統計"/);
-    assert.match(sidebar, /href="\/system\/audit-logs"/);
+    assert.match(sidebar, /href="\/system\/logs"/);
 });

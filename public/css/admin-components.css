@@ -29,8 +29,33 @@ body.mihu-admin-page .members-table-scroll,
 body.mihu-admin-page .vip-scroll-container,
 body.mihu-admin-page .commission-page .commission-table-scroll,
 body.mihu-admin-page .commission-page .commission-category-scroll {
-	scrollbar-width: thin;
-	scrollbar-color: var(--mihu-scrollbar-thumb) var(--mihu-scrollbar-track);
+}
+
+@supports (-moz-appearance: none) {
+	body.mihu-admin-page .mihu-sidebar,
+	body.mihu-admin-page .main-wrapper,
+	body.mihu-admin-page .content-body,
+	body.mihu-admin-page .commission-page .commission-main,
+	body.mihu-admin-page .commission-main,
+	body.mihu-admin-page .mihu-sidebar + .main-wrapper,
+	.mihu-sidebar + .main-wrapper,
+	.mihu-sidebar ~ .main-wrapper,
+	.app-layout > .main-wrapper,
+	.app-layout > .main-wrapper > .content-body,
+	.commission-page .commission-main,
+	body.mihu-admin-page .admin-modal-body,
+	body.mihu-admin-page .admin-data-table-wrap,
+	body.mihu-admin-page .admin-table-wrap,
+	body.mihu-admin-page .roles-scroll-container,
+	body.mihu-admin-page .table-responsive-scroll,
+	body.mihu-admin-page .payroll-table-scroll,
+	body.mihu-admin-page .members-table-scroll,
+	body.mihu-admin-page .vip-scroll-container,
+	body.mihu-admin-page .commission-page .commission-table-scroll,
+	body.mihu-admin-page .commission-page .commission-category-scroll {
+		scrollbar-width: thin;
+		scrollbar-color: var(--mihu-scrollbar-thumb) var(--mihu-scrollbar-track);
+	}
 }
 
 body.mihu-admin-page .mihu-sidebar::-webkit-scrollbar,

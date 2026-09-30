@@ -60,10 +60,20 @@
             max-height: 260px;
             overflow-y: auto;
         }
-        .perm-tree-box::-webkit-scrollbar { width: 6px; }
+        .perm-tree-box::-webkit-scrollbar { width: 5px; height: 5px; }
+        .perm-tree-box::-webkit-scrollbar-track {
+            background: #130d1f;
+            border-radius: 999px;
+        }
         .perm-tree-box::-webkit-scrollbar-thumb {
-            background: rgba(168, 85, 247, 0.4);
-            border-radius: 6px;
+            background: rgba(192, 132, 252, 0.58);
+            border: 1px solid rgba(216, 180, 254, 0.4);
+            border-radius: 999px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.35);
+        }
+        .perm-tree-box::-webkit-scrollbar-thumb:hover {
+            background: rgba(216, 180, 254, 0.82);
+            box-shadow: 0 0 12px rgba(192, 132, 252, 0.45);
         }
 
         .form-check-input {
@@ -124,10 +134,18 @@
 
 /* Keep the role page aligned with other admin pages. */
 .roles-page.admin-page-content { padding: 20px 36px 32px 36px; background: #0b0914; }
-.roles-scroll-container { width: 100%; max-width: 100%; max-height: 380px; overflow: auto; scrollbar-color: #9333ea #171326; scrollbar-width: thin; }
-.roles-scroll-container::-webkit-scrollbar { width: 8px; height: 8px; }
-.roles-scroll-container::-webkit-scrollbar-track { background: #171326; border-radius: 8px; }
-.roles-scroll-container::-webkit-scrollbar-thumb { background: #9333ea; border-radius: 8px; }
+.roles-scroll-container { width: 100%; max-width: 100%; max-height: 380px; overflow: auto; }
+.roles-scroll-container::-webkit-scrollbar { width: 5px; height: 5px; }
+.roles-scroll-container::-webkit-scrollbar-track { background: #130d1f; border-radius: 999px; }
+.roles-scroll-container::-webkit-scrollbar-thumb { background: rgba(192, 132, 252, 0.58); border-radius: 999px; border: 1px solid rgba(216, 180, 254, 0.4); box-shadow: 0 0 10px rgba(0, 0, 0, 0.35); }
+.roles-scroll-container::-webkit-scrollbar-thumb:hover { background: rgba(216, 180, 254, 0.82); box-shadow: 0 0 12px rgba(192, 132, 252, 0.45); }
+@supports (-moz-appearance: none) {
+    .perm-tree-box,
+    .roles-scroll-container {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(192, 132, 252, 0.58) #130d1f;
+    }
+}
 .roles-scroll-container .mihu-table { min-width: 900px; }
 .roles-scroll-container .mihu-table thead th { position: sticky; top: 0; z-index: 10; background: #1b1630; }
 .roles-scroll-container .mihu-table td { white-space: nowrap; }
