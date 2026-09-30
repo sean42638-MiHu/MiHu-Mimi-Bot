@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database');
 const { syncUsersJsonFromDb, syncTalentsJsonFromDb } = require('../utils/dataSync');
-const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
+const { denyPermission, requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
 const { calculateCommissionByCategory, normalizeTalentShareRate } = require('../utils/commissionHelper');
 const { checkAndUpdateVipLevel } = require('../utils/vipHelper');
 const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../utils/vipColor');
@@ -14,6 +14,7 @@ const { getEmployeePayoutOverview } = require('../services/payoutService');
 const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
 
 const payrollProfileFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
+const PROFILE_NICKNAME_PERMISSION_DENIED = 'PROFILE_NICKNAME_PERMISSION_DENIED';
 
 function createVipInfo(tiers, level) {
     const numericLevel = parseVipLevel(level);
@@ -34,17 +35,37 @@ function createVipInfo(tiers, level) {
 router.get('/home', ensureAuth, (req, res) => res.redirect('/dashboard'));
 
 router.get('/dashboard', ensureAuth, checkPerm('view_dashboard'), (req, res) => {
-    db.get(`
-        SELECT u.*,
-            COALESCE(w.balance, 0) AS balance,
-            COALESCE(w.bonus_balance, 0) AS bonus_balance,
-            COALESCE(w.manual_spent, 0) AS manual_spent,
-            COALESCE(w.manual_deposited, 0) AS manual_deposited
-        FROM users u
-        LEFT JOIN user_wallets w ON w.user_id = u.id
-        WHERE u.id = ?
-    `, [req.user.id], (err, currentUser) => {
+    const canViewDashboardBanner = res.locals.hasPerm('view_dashboard_banner');
+    const canViewDashboardWallet = res.locals.hasPerm('view_dashboard_wallet');
+    const canViewDashboardInfo = res.locals.hasPerm('view_dashboard_info');
+    const userSql = canViewDashboardWallet
+        ? `SELECT u.*, COALESCE(w.balance, 0) AS balance, COALESCE(w.bonus_balance, 0) AS bonus_balance,
+            COALESCE(w.manual_spent, 0) AS manual_spent, COALESCE(w.manual_deposited, 0) AS manual_deposited
+           FROM users u LEFT JOIN user_wallets w ON w.user_id = u.id WHERE u.id = ?`
+        : 'SELECT u.* FROM users u WHERE u.id = ?';
+
+    db.get(userSql, [req.user.id], (err, currentUser) => {
         const dashboardUser = currentUser || req.user;
+        const renderDashboard = (vipInfo, announcement) => res.render('dashboard', {
+            user: dashboardUser,
+            vipInfo: vipInfo || null,
+            announcement: announcement || null,
+            canViewDashboardBanner,
+            canViewDashboardWallet,
+            canViewDashboardInfo,
+            hasDashboardBannerFeature: false,
+            error: req.query.error || null
+        });
+
+        const loadAnnouncement = callback => {
+            if (!canViewDashboardInfo) return callback(null, null);
+            db.get('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 1', (aErr, latestAnnouncement) => callback(aErr, latestAnnouncement || null));
+        };
+
+        if (!canViewDashboardWallet) {
+            return loadAnnouncement((aErr, latestAnnouncement) => renderDashboard(null, latestAnnouncement));
+        }
+
         db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', (vipError, vipTiers) => {
             const tiers = vipTiers || [];
             const vipLevel = resolveVipLevel({
@@ -54,14 +75,7 @@ router.get('/dashboard', ensureAuth, checkPerm('view_dashboard'), (req, res) => 
                 currentVip: dashboardUser.vip_level
             });
             const vipInfo = createVipInfo(tiers, vipLevel);
-            db.get('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 1', (aErr, latestAnnouncement) => {
-                res.render('dashboard', {
-                    user: dashboardUser,
-                    vipInfo,
-                    announcement: latestAnnouncement || null,
-                    error: req.query.error || null
-                });
-            });
+            loadAnnouncement((aErr, latestAnnouncement) => renderDashboard(vipInfo, latestAnnouncement));
         });
     });
 });
@@ -73,7 +87,12 @@ router.get('/profile', ensureAuth, checkPerm('view_profile'), (req, res) => {
     db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
         try {
             const user = currentUser ? decryptSensitiveFields(currentUser, payrollProfileFields) : req.user;
-            res.render('profile', { user, success: req.query.saved === '1' });
+            res.render('profile', {
+                user,
+                success: req.query.saved === '1',
+                canViewProfileDiscord: res.locals.hasPerm('view_profile_discord'),
+                canEditProfileNickname: res.locals.hasPerm('action_profile_nickname')
+            });
         } catch (error) {
             return res.status(503).send('目前無法安全載入個人薪轉資料');
         }
@@ -83,13 +102,23 @@ router.get('/profile', ensureAuth, checkPerm('view_profile'), (req, res) => {
 router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) => {
     const { email, custom_nickname, birthday, gender, age, mbti, real_name, bank_name, bank_code, bank_branch, bank_account } = req.body;
     try {
-        const encryptedPayrollFields = encryptSensitiveFields({
-            real_name: real_name || null,
-            bank_name: bank_name || null,
-            bank_code: bank_code || null,
-            bank_branch: bank_branch || null,
-            bank_account: bank_account || null
-        }, payrollProfileFields);
+        const canEditProfileNickname = res.locals.hasPerm('action_profile_nickname');
+        const hasNicknameField = Object.prototype.hasOwnProperty.call(req.body, 'custom_nickname');
+        const hasEmailField = Object.prototype.hasOwnProperty.call(req.body, 'email');
+        const hasBirthdayField = Object.prototype.hasOwnProperty.call(req.body, 'birthday');
+        const hasGenderField = Object.prototype.hasOwnProperty.call(req.body, 'gender');
+        const hasAgeField = Object.prototype.hasOwnProperty.call(req.body, 'age');
+        const hasMbtiField = Object.prototype.hasOwnProperty.call(req.body, 'mbti');
+        const hasRealNameField = Object.prototype.hasOwnProperty.call(req.body, 'real_name');
+        const hasBankNameField = Object.prototype.hasOwnProperty.call(req.body, 'bank_name');
+        const hasBankCodeField = Object.prototype.hasOwnProperty.call(req.body, 'bank_code');
+        const hasBankBranchField = Object.prototype.hasOwnProperty.call(req.body, 'bank_branch');
+        const hasBankAccountField = Object.prototype.hasOwnProperty.call(req.body, 'bank_account');
+        if (hasNicknameField && !canEditProfileNickname) {
+            return denyPermission(req, res, ['action_profile_nickname'], { kind: 'action', feature: '變更暱稱' });
+        }
+        const normalizedAge = age ? parseInt(age, 10) : null;
+
         await withTransactionGate(async () => {
         await dbRun('BEGIN IMMEDIATE');
         try {
@@ -99,20 +128,47 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
             FROM users WHERE id = ?
         `, [req.user.id]);
         if (!currentUser) throw new Error('找不到會員資料');
-        const normalizedEmail = String(email || '').trim().toLowerCase() || null;
+
+        const currentNickname = currentUser.custom_nickname === null || currentUser.custom_nickname === undefined
+            ? null
+            : String(currentUser.custom_nickname);
+        const requestedNickname = hasNicknameField ? (String(custom_nickname || '').trim() || null) : currentNickname;
+        if (hasNicknameField && requestedNickname !== currentNickname && !canEditProfileNickname) {
+            const permissionError = new Error('變更暱稱需要額外授權');
+            permissionError.code = PROFILE_NICKNAME_PERMISSION_DENIED;
+            throw permissionError;
+        }
+
         const previousEmail = String(currentUser.email || '').trim().toLowerCase() || null;
-        const emailChanged = normalizedEmail !== previousEmail;
+        const normalizedEmail = hasEmailField ? (String(email || '').trim().toLowerCase() || null) : previousEmail;
+        const emailChanged = hasEmailField && normalizedEmail !== previousEmail;
+        const encryptedPayrollFields = encryptSensitiveFields({
+            real_name: hasRealNameField ? (real_name || null) : null,
+            bank_name: hasBankNameField ? (bank_name || null) : null,
+            bank_code: hasBankCodeField ? (bank_code || null) : null,
+            bank_branch: hasBankBranchField ? (bank_branch || null) : null,
+            bank_account: hasBankAccountField ? (bank_account || null) : null
+        }, payrollProfileFields);
+        const nextBirthday = hasBirthdayField ? (birthday || null) : currentUser.birthday;
+        const nextGender = hasGenderField ? (gender || null) : currentUser.gender;
+        const nextAge = hasAgeField ? normalizedAge : currentUser.age;
+        const nextMbti = hasMbtiField ? (mbti || null) : currentUser.mbti;
+        const nextRealName = hasRealNameField ? encryptedPayrollFields.real_name : currentUser.real_name;
+        const nextBankName = hasBankNameField ? encryptedPayrollFields.bank_name : currentUser.bank_name;
+        const nextBankCode = hasBankCodeField ? encryptedPayrollFields.bank_code : currentUser.bank_code;
+        const nextBankBranch = hasBankBranchField ? encryptedPayrollFields.bank_branch : currentUser.bank_branch;
+        const nextBankAccount = hasBankAccountField ? encryptedPayrollFields.bank_account : currentUser.bank_account;
         const query = `UPDATE users SET email = ?, email_verified = CASE WHEN ? THEN 0 ELSE email_verified END, email_verified_at = CASE WHEN ? THEN NULL ELSE email_verified_at END, custom_nickname = ?, birthday = ?, gender = ?, age = ?, mbti = ?, real_name = ?, bank_name = ?, bank_code = ?, bank_branch = ?, bank_account = ? WHERE id = ?`;
         await dbRun(query, [
             normalizedEmail, emailChanged ? 1 : 0, emailChanged ? 1 : 0,
-            custom_nickname || null, birthday || null, gender || null, age ? parseInt(age, 10) : null, mbti || null,
-            encryptedPayrollFields.real_name, encryptedPayrollFields.bank_name,
-            encryptedPayrollFields.bank_code, encryptedPayrollFields.bank_branch, encryptedPayrollFields.bank_account,
+            requestedNickname, nextBirthday, nextGender, nextAge, nextMbti,
+            nextRealName, nextBankName,
+            nextBankCode, nextBankBranch, nextBankAccount,
             req.user.id
         ]);
         if (emailChanged) await dbRun('DELETE FROM email_verifications WHERE user_id = ?', [req.user.id]);
         const bankInfoPresent = Boolean(currentUser.bank_name || currentUser.bank_code || currentUser.bank_branch || currentUser.bank_account);
-        const nextBankInfoPresent = Boolean(bank_name || bank_code || bank_branch || bank_account);
+        const nextBankInfoPresent = Boolean(nextBankName || nextBankCode || nextBankBranch || nextBankAccount);
         await writeAuditLog({
             operatorId: req.user.id,
             studioId: req.user.studio_id ?? null,
@@ -129,11 +185,11 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
                 bank_info_present: bankInfoPresent
             },
             after: {
-                custom_nickname: custom_nickname || null,
-                birthday: birthday || null,
-                gender: gender || null,
-                age: age ? parseInt(age, 10) : null,
-                mbti: mbti || null,
+                custom_nickname: requestedNickname,
+                birthday: nextBirthday,
+                gender: nextGender,
+                age: nextAge,
+                mbti: nextMbti,
                 email_changed: emailChanged,
                 email_verified: emailChanged ? false : Boolean(currentUser.email_verified),
                 bank_info_present: nextBankInfoPresent
@@ -149,6 +205,9 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
         syncUsersJsonFromDb();
         return res.redirect('/profile?saved=1');
     } catch (error) {
+        if (error.code === PROFILE_NICKNAME_PERMISSION_DENIED) {
+            return denyPermission(req, res, ['action_profile_nickname'], { kind: 'action', feature: '變更暱稱' });
+        }
         return res.redirect('/profile?error=' + encodeURIComponent('更新失敗'));
     }
 });
@@ -405,7 +464,7 @@ router.get('/income', ensureAuth, checkPerm('view_income'), async (req, res) => 
 // =========================================================================
 // 5. 我的訂單 (My Orders)
 // =========================================================================
-router.get('/my-orders', ensureAuth, (req, res) => {
+router.get('/my-orders', ensureAuth, checkPerm('view_personal_orders'), (req, res) => {
     const currentUserId = req.user.id;
     const studioId = Number(req.user.studio_id);
     if (!Number.isInteger(studioId) || studioId <= 0) return res.status(403).send('找不到已授權的工作室範圍');
@@ -444,7 +503,7 @@ router.get('/my-orders', ensureAuth, (req, res) => {
         res.render('my_orders', {
             user: req.user,
             orders: orders || [],
-            activePage: 'my-orders'
+            activePage: 'my_orders'
         });
     });
 });

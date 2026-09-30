@@ -66,7 +66,7 @@ test('role editor reloads checkbox state from stored raw permissions rather than
     assert.match(script, /checkbox\.dataset\.explicitChecked === 'true'/);
     assert.match(script, /legacyPermissionImplications\[source\]/);
     assert.match(script, /checkbox\.disabled = checkbox\.dataset\.inactive === \'true\' \|\| !canDelegate \|\| Boolean\(source && !explicit\.has\(checkbox\.value\)\)/);
-    assert.match(script, /由權限 \$\{source\} 啟用/);
+    assert.match(script, /由「\$\{sourceLabel\}」推導啟用/);
     const rolesPage = fs.readFileSync(path.join(root, 'views/roles.ejs'), 'utf8');
     assert.match(rolesPage, /legacyPermissionImplications: typeof legacyPermissionImplications !== 'undefined'/);
 });
@@ -110,9 +110,12 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     assert.match(table, /hasPerm\('action_order_refund_completed'\)/);
     assert.match(table, /o\.status !== 'completed' \|\| canRefundCompleted/);
     assert.match(ordersPage, /window\.currentOrderCanAdjustPrice = !!data\.canAdjustPrice/);
+    assert.match(ordersPage, /window\.currentOrderCanReassign = !!data\.canReassign/);
     assert.match(ordersPage, /window\.currentOrderCanRefund = !!data\.canRefund/);
     assert.match(modal, /data-price-field/);
+    assert.match(modal, /data-reassign-field/);
     assert.match(modal, /!window\.currentOrderCanAdjustPrice/);
+    assert.match(modal, /!window\.currentOrderCanReassign/);
     assert.match(modal, /btnDeleteOrderModal && window\.currentOrderCanRefund/);
     assert.match(modal, /全額退款並取消/);
     assert.doesNotMatch(modal, /徹底刪除訂單/);

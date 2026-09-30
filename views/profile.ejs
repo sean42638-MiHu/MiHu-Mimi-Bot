@@ -178,7 +178,7 @@
                 <form action="/profile" method="POST">
                     
                     <!-- 1. 模組化：個人基本資料區塊 -->
-                    <%- include('partials/profile_basic_info', { user: user }) %>
+                    <%- include('partials/profile_basic_info', { user: user, canViewProfileDiscord: Boolean(canViewProfileDiscord), canEditProfileNickname: Boolean(canEditProfileNickname) }) %>
 
                     <!-- 2. 模組化：個人資料 (含薪轉個資) 區塊 -->
                     <%- include('partials/profile_bank_info', { user: user }) %>

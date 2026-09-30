@@ -2,6 +2,7 @@
     let viewRoleModal, editRoleInfoModal;
     const delegatablePermissionKeys = new Set(window.rolePageConfig.delegatablePermissions);
     const legacyPermissionImplications = window.rolePageConfig.legacyPermissionImplications || {};
+    const permissionLabelMap = window.rolePageConfig.permissionLabels || {};
     const canGrantWildcard = window.rolePageConfig.canGrantWildcard;
 
     function syncImpliedPermissions(scope = document.getElementById('editRolePermsModal')) {
@@ -29,11 +30,13 @@
                 || delegatablePermissionKeys.has(checkbox.value);
             checkbox.checked = explicit.has(checkbox.value) || Boolean(source);
             checkbox.disabled = checkbox.dataset.inactive === 'true' || !canDelegate || Boolean(source && !explicit.has(checkbox.value));
-            checkbox.title = source ? `由權限 ${source} 啟用` : (!canDelegate ? '你沒有權限授予此項目' : '');
+            const sourceLabel = source ? (permissionLabelMap[source] || checkbox.dataset.permissionLabel || source) : '';
+            checkbox.title = source ? `由「${sourceLabel}」推導啟用` : (!canDelegate ? '你沒有權限授予此項目' : '');
 
             const label = checkbox.closest('label') || document.querySelector(`label[for="${checkbox.id}"]`);
             if (!label) return;
             let lock = label.querySelector('.permission-lock-indicator');
+            let hint = label.querySelector('.permission-implied-hint');
             if (checkbox.disabled && !lock) {
                 lock = document.createElement('i');
                 lock.className = 'fa-solid fa-lock text-secondary permission-lock-indicator';
@@ -46,6 +49,14 @@
                     lock.setAttribute('aria-label', checkbox.title);
                 }
             }
+            if (source && !hint) {
+                hint = document.createElement('small');
+                hint.className = 'permission-implied-hint d-block text-secondary';
+                const nameNode = label.querySelector('.admin-permission-name');
+                if (nameNode) nameNode.append(hint);
+            }
+            if (!source && hint) hint.remove();
+            if (source && hint) hint.textContent = `由「${sourceLabel}」推導啟用`;
         });
     }
 

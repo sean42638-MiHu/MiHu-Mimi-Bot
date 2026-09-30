@@ -57,11 +57,32 @@
     <%- include('partials/navbar', { activePage: 'dashboard' }) %>
 
     <div class="content-body">
-        <%- include('partials/dashboard_announcement', { announcement: typeof announcement !== 'undefined' ? announcement : null }) %>
+        <% if (canViewDashboardInfo) { %>
+            <%- include('partials/dashboard_announcement', { announcement: typeof announcement !== 'undefined' ? announcement : null }) %>
+        <% } %>
+
+        <% if (canViewDashboardBanner && hasDashboardBannerFeature) { %>
+            <!-- 目前沒有獨立 Banner/輪播模組；功能實作後再依權限呈現。 -->
+        <% } %>
 
         <div class="dashboard-grid">
-            <%- include('partials/dashboard_wallet_card', { user: typeof user !== 'undefined' && user ? user : currentUser, vipInfo: vipInfo }) %>
-            <%- include('partials/dashboard_user_info', { user: typeof user !== 'undefined' && user ? user : currentUser }) %>
+            <% if (canViewDashboardWallet) { %>
+                <%- include('partials/dashboard_wallet_card', { user: typeof user !== 'undefined' && user ? user : currentUser, vipInfo: vipInfo }) %>
+            <% } %>
+            <% if (canViewDashboardInfo) { %>
+                <%- include('partials/dashboard_user_info', { user: typeof user !== 'undefined' && user ? user : currentUser }) %>
+            <% } %>
+            <% if (!canViewDashboardWallet && !canViewDashboardInfo) { %>
+                <div class="home-card-glass">
+                    <div class="home-card-header">
+                        <i class="fa-solid fa-shield-halved text-warning fs-5"></i>
+                        <div>
+                            <div class="home-card-title">首頁內容受限</div>
+                            <div class="text-secondary small">目前身分尚未授權首頁卡片與資訊區塊</div>
+                        </div>
+                    </div>
+                </div>
+            <% } %>
         </div>
     </div>
 </div>

@@ -155,6 +155,7 @@
                         const originalPrice = totalAmount + discount;
 
                         const canEdit = typeof hasPerm === 'function' && hasPerm('action_order_manage');
+                        const canReassign = typeof hasPerm === 'function' && hasPerm('action_order_reassign');
                         const canAdjustPrice = typeof hasPerm === 'function' && hasPerm('action_order_price');
                         const canRefund = typeof hasPerm === 'function' && hasPerm('action_order_refund');
                         const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
@@ -191,6 +192,7 @@
                             endTime: o.end_time || '尚未結束',
                             createdAt: o.created_at || o.created_time || o.order_date || '未記錄時間',
                             canEdit: canEdit,
+                            canReassign: canReassign,
                             canAdjustPrice: canAdjustPrice,
                             canRefund: canRefund,
                             canRefundCompleted: canRefundCompleted

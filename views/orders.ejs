@@ -218,6 +218,7 @@
         if (!data) return;
 
         window.currentOrderCanEdit = !!data.canEdit;
+        window.currentOrderCanReassign = !!data.canReassign;
         window.currentOrderCanAdjustPrice = !!data.canAdjustPrice;
         window.currentOrderCanRefund = !!data.canRefund
             && !['cancelled', 'refunded'].includes(data.status)
@@ -243,6 +244,7 @@
         setVal('editContentTier', data.contentTier);
         setVal('editDuration', data.duration || 1);
         setVal('editUnit', data.unit || '小時');
+        setVal('editTalentId', data.talentId || '');
         setVal('editOrderStatus', data.status || 'pending');
         setVal('editTalentMessage', data.talentMessage);
         setVal('editNote', data.note);

@@ -58,6 +58,58 @@ function requirePriceAdjustment(priceChanged, allowPriceAdjustment) {
     }
 }
 
+function normalizeAssignee(value) {
+    const normalized = String(value || '').trim();
+    return normalized || null;
+}
+
+function hasOwnField(input, key) {
+    return Boolean(input && Object.prototype.hasOwnProperty.call(input, key));
+}
+
+function resolveAssigneeUpdate(input, order) {
+    const originalTalent = normalizeAssignee(order && order.talent_id);
+    const originalStaff = normalizeAssignee(order && order.staff_id);
+
+    const hasTalentIdField = hasOwnField(input, 'talent_id');
+    const hasTalentAliasField = hasOwnField(input, 'talentId');
+    const hasTalentInput = hasTalentIdField || hasTalentAliasField;
+
+    const hasStaffIdField = hasOwnField(input, 'staff_id');
+    const hasStaffAliasField = hasOwnField(input, 'staffId');
+    const hasStaffInput = hasStaffIdField || hasStaffAliasField;
+
+    let talentId = originalTalent;
+    let staffId = originalStaff;
+
+    if (hasTalentInput) {
+        const requestedTalentRaw = hasTalentIdField ? input.talent_id : input.talentId;
+        talentId = normalizeAssignee(requestedTalentRaw);
+    }
+
+    if (hasStaffInput) {
+        const requestedStaffRaw = hasStaffIdField ? input.staff_id : input.staffId;
+        staffId = normalizeAssignee(requestedStaffRaw);
+    } else if (hasTalentInput) {
+        // Explicit rule: when caller submits talent but omits staff, align staff to talent.
+        staffId = talentId;
+    }
+
+    return {
+        talentId,
+        staffId,
+        changed: talentId !== originalTalent || staffId !== originalStaff
+    };
+}
+
+function requireReassignmentPermission(assigneeUpdate, allowReassignment) {
+    if (!assigneeUpdate.changed) return;
+    if (allowReassignment === true) return;
+    const error = new Error('改派訂單需要 orders_edit_and_reassign 權限');
+    error.code = 'ORDER_REASSIGNMENT_FORBIDDEN';
+    throw error;
+}
+
 function createOrder(input = {}) {
     return withTransactionGate(() => createOrderInternal(input));
 }
@@ -166,88 +218,102 @@ async function createOrderInternal(input = {}) {
     }
 }
 
-function updateOrder(orderIdentifier, input = {}, { allowPriceAdjustment = false } = {}) {
-    return withTransactionGate(() => updateOrderInternal(orderIdentifier, input, { allowPriceAdjustment }));
+function updateOrder(orderIdentifier, input = {}, { allowPriceAdjustment = false, allowReassignment = false } = {}) {
+    return withTransactionGate(() => updateOrderInternal(orderIdentifier, input, { allowPriceAdjustment, allowReassignment }));
 }
 
-async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdjustment = false } = {}) {
-    const order = await getOrder(orderIdentifier);
-    if (!order) throw new Error('找不到目標訂單');
-    const currentStatus = String(order.status || '').toLowerCase();
-    if (['completed', 'cancelled', 'refunded'].includes(currentStatus)) {
-        throw new Error('已完成或已取消訂單不可編輯');
-    }
+async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdjustment = false, allowReassignment = false } = {}) {
+    await dbRun('BEGIN IMMEDIATE');
+    try {
+        const order = await getOrder(orderIdentifier);
+        if (!order) throw new Error('找不到目標訂單');
+        const currentStatus = String(order.status || '').toLowerCase();
+        if (['completed', 'cancelled', 'refunded'].includes(currentStatus)) {
+            throw new Error('已完成或已取消訂單不可編輯');
+        }
 
-    const studioId = Number(input.studio_id ?? order.studio_id);
-    if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('訂單缺少有效工作室');
+        const studioId = Number(input.studio_id ?? order.studio_id);
+        if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('訂單缺少有效工作室');
 
-    const category = input.category ?? order.category ?? '陪玩單';
-    const game = input.game ?? order.game;
-    const duration = Number(input.duration ?? order.duration ?? 1);
-    const unitPrice = Number(input.unit_price ?? order.unit_price ?? 0);
-    const rawPrice = input.original_price !== undefined && input.original_price !== null
-        ? Number(input.original_price)
-        : (unitPrice > 0 ? unitPrice * duration : Number(input.total_amount ?? order.total_amount ?? 0) + Number(order.discount || 0));
-    const rawDiscount = Number(input.discount ?? order.discount ?? 0);
-    if (![duration, unitPrice, rawPrice, rawDiscount].every(Number.isFinite)
-        || duration <= 0 || unitPrice < 0 || rawPrice < 0 || rawDiscount < 0) {
-        throw new Error('訂單金額、折扣或時長無效');
-    }
-    const { finalAmount, discountAmount } = calculateDiscount(rawPrice, rawDiscount);
-    requirePriceAdjustment(priceTermsChanged(order, { duration, unitPrice, rawPrice, discountAmount, finalAmount }), allowPriceAdjustment);
-    const talentId = input.talent_id !== undefined ? (input.talent_id || null) : order.talent_id;
-    const bossId = input.boss_id !== undefined ? input.boss_id : order.boss_id;
-    const boss = await new Promise((resolve, reject) => {
-        db.get('SELECT studio_id FROM users WHERE id = ?', [bossId], (error, row) => {
-            if (error) return reject(error);
-            resolve(row || null);
-        });
-    });
-    if (!boss || Number(boss.studio_id) !== studioId) throw new Error('訂單會員不屬於此工作室');
-    if (talentId) {
-        const talent = await new Promise((resolve, reject) => {
-            db.get('SELECT studio_id FROM users WHERE id = ?', [talentId], (error, row) => {
+        const category = input.category ?? order.category ?? '陪玩單';
+        const game = input.game ?? order.game;
+        const duration = Number(input.duration ?? order.duration ?? 1);
+        const unitPrice = Number(input.unit_price ?? order.unit_price ?? 0);
+        const rawPrice = input.original_price !== undefined && input.original_price !== null
+            ? Number(input.original_price)
+            : (unitPrice > 0 ? unitPrice * duration : Number(input.total_amount ?? order.total_amount ?? 0) + Number(order.discount || 0));
+        const rawDiscount = Number(input.discount ?? order.discount ?? 0);
+        if (![duration, unitPrice, rawPrice, rawDiscount].every(Number.isFinite)
+            || duration <= 0 || unitPrice < 0 || rawPrice < 0 || rawDiscount < 0) {
+            throw new Error('訂單金額、折扣或時長無效');
+        }
+        const { finalAmount, discountAmount } = calculateDiscount(rawPrice, rawDiscount);
+        requirePriceAdjustment(priceTermsChanged(order, { duration, unitPrice, rawPrice, discountAmount, finalAmount }), allowPriceAdjustment);
+
+        const assigneeUpdate = resolveAssigneeUpdate(input, order);
+        requireReassignmentPermission(assigneeUpdate, allowReassignment);
+        const talentId = assigneeUpdate.talentId;
+        const staffId = assigneeUpdate.staffId;
+
+        const bossId = input.boss_id !== undefined ? input.boss_id : order.boss_id;
+        const boss = await new Promise((resolve, reject) => {
+            db.get('SELECT studio_id FROM users WHERE id = ?', [bossId], (error, row) => {
                 if (error) return reject(error);
                 resolve(row || null);
             });
         });
-        if (!talent || Number(talent.studio_id) !== studioId) throw new Error('陪玩師不屬於此訂單的工作室');
-    }
+        if (!boss || Number(boss.studio_id) !== studioId) throw new Error('訂單會員不屬於此工作室');
+        if (talentId) {
+            const talent = await new Promise((resolve, reject) => {
+                db.get('SELECT studio_id FROM users WHERE id = ?', [talentId], (error, row) => {
+                    if (error) return reject(error);
+                    resolve(row || null);
+                });
+            });
+            if (!talent || Number(talent.studio_id) !== studioId) throw new Error('陪玩師不屬於此訂單的工作室');
+        }
+        if (staffId) {
+            const staff = await new Promise((resolve, reject) => {
+                db.get('SELECT studio_id FROM users WHERE id = ?', [staffId], (error, row) => {
+                    if (error) return reject(error);
+                    resolve(row || null);
+                });
+            });
+            if (!staff || Number(staff.studio_id) !== studioId) throw new Error('接單者不屬於此訂單的工作室');
+        }
 
-    const serviceId = await resolveServiceId(studioId, game, category);
-    const personalRate = talentId ? await getPersonalTalentShareRate(talentId) : null;
-    const commission = await calculateCommissionByCategory(
-        category, finalAmount, rawPrice > 0 ? rawPrice : finalAmount, personalRate, { studioId, serviceId }
-    );
-    const status = input.status ?? order.status;
-    const requestedStatus = String(status || '').toLowerCase();
-    if (requestedStatus !== currentStatus && !(currentStatus === 'pending' && requestedStatus === 'accepted')) {
-        throw new Error('訂單狀態變更必須使用專用 lifecycle operation');
-    }
-    if (['completed', 'cancelled', 'refunded'].includes(String(order.status || '').toLowerCase())
-        && Math.abs(Number(order.total_amount || 0) - finalAmount) > 0.000001) {
-        throw new Error('終結訂單的價格異動需要人工財務處理');
-    }
-    if (String(bossId) !== String(order.boss_id)) throw new Error('更換訂單會員需要人工財務處理');
-    const walletDelta = Number(order.total_amount || 0) - finalAmount;
-    assertNoWalletCredit(walletDelta);
-    if (walletDelta !== 0 && !(await hasLinkedPayment(order))) {
-        throw new Error('找不到可追蹤付款 Ledger，禁止調整歷史訂單金額');
-    }
-    const tag = input.tag ?? order.tag;
-    const extra = input.extra ?? order.extra;
-    const staffId = input.staff_id !== undefined ? input.staff_id : (talentId || order.staff_id);
+        const serviceId = await resolveServiceId(studioId, game, category);
+        const personalRate = talentId ? await getPersonalTalentShareRate(talentId) : null;
+        const commission = await calculateCommissionByCategory(
+            category, finalAmount, rawPrice > 0 ? rawPrice : finalAmount, personalRate, { studioId, serviceId }
+        );
+        const status = input.status ?? order.status;
+        const requestedStatus = String(status || '').toLowerCase();
+        if (requestedStatus !== currentStatus && !(currentStatus === 'pending' && requestedStatus === 'accepted')) {
+            throw new Error('訂單狀態變更必須使用專用 lifecycle operation');
+        }
+        if (['completed', 'cancelled', 'refunded'].includes(String(order.status || '').toLowerCase())
+            && Math.abs(Number(order.total_amount || 0) - finalAmount) > 0.000001) {
+            throw new Error('終結訂單的價格異動需要人工財務處理');
+        }
+        if (String(bossId) !== String(order.boss_id)) throw new Error('更換訂單會員需要人工財務處理');
+        const walletDelta = Number(order.total_amount || 0) - finalAmount;
+        assertNoWalletCredit(walletDelta);
+        if (walletDelta !== 0 && !(await hasLinkedPayment(order))) {
+            throw new Error('找不到可追蹤付款 Ledger，禁止調整歷史訂單金額');
+        }
+        const tag = input.tag ?? order.tag;
+        const extra = input.extra ?? order.extra;
 
-    const after = {
-        boss_id: bossId, category, game, content_tier: input.content_tier ?? order.content_tier ?? '', duration,
-        unit: input.unit ?? order.unit ?? '小時', unit_price: unitPrice, tag, extra,
-        discount: discountAmount, total_amount: finalAmount, talent_id: talentId, status,
-        commission_rate_snapshot: commission.talentShareRate,
-        platform_commission: commission.platformCommission,
-        talent_earning: commission.talentNetEarning
-    };
-    await dbRun('BEGIN IMMEDIATE');
-    try {
+        const after = {
+            boss_id: bossId, category, game, content_tier: input.content_tier ?? order.content_tier ?? '', duration,
+            unit: input.unit ?? order.unit ?? '小時', unit_price: unitPrice, tag, extra,
+            discount: discountAmount, total_amount: finalAmount, talent_id: talentId, staff_id: staffId, status,
+            commission_rate_snapshot: commission.talentShareRate,
+            platform_commission: commission.platformCommission,
+            talent_earning: commission.talentNetEarning
+        };
+
         if (walletDelta !== 0) {
             await applyWalletDeltaInTransaction({
                 userId: order.boss_id,
@@ -284,7 +350,7 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
             targetType: 'order',
             targetId: order.id,
             before: {
-                status: order.status, boss_id: order.boss_id, talent_id: order.talent_id,
+                status: order.status, boss_id: order.boss_id, talent_id: order.talent_id, staff_id: order.staff_id,
                 total_amount: order.total_amount, discount: order.discount, unit_price: order.unit_price,
                 commission_rate_snapshot: order.commission_rate_snapshot,
                 platform_commission: order.platform_commission,

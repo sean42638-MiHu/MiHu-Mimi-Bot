@@ -67,7 +67,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             target_id TEXT, before_data TEXT, after_data TEXT, metadata TEXT, ip_address TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )`);
-        await run("INSERT INTO users (id,studio_id,balance) VALUES ('boss',1,1000),('talent',1,0)");
+        await run("INSERT INTO users (id,studio_id,balance) VALUES ('boss',1,1000),('talent',1,0),('talent2',1,0)");
         await run("INSERT INTO user_wallets VALUES ('boss',1000,0,0,1000,CURRENT_TIMESTAMP),('talent',0,0,0,0,CURRENT_TIMESTAMP)");
         await run("INSERT INTO commission_settings VALUES ('陪玩單',0.8)");
 
@@ -109,6 +109,60 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         assert.equal(updated.total_amount, 275);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 725);
         assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'order_adjustment'")).count, 2);
+
+        const reassignmentAttemptInput = {
+            original_price: 275,
+            unit_price: 275,
+            duration: 1,
+            discount: 0,
+            status: 'accepted',
+            talent_id: 'talent2',
+            operatorId: 'operator',
+            source: 'test-reassignment-default-deny'
+        };
+        for (const optionsVariant of [undefined, {}, { allowReassignment: false }, { allowReassignment: 'true' }]) {
+            const beforeDeniedReassignment = {
+                snapshot: await snapshot(),
+                order: await get("SELECT talent_id, staff_id, total_amount, note FROM orders WHERE order_no = 'TEST-ORDER-1'")
+            };
+            const invoke = () => optionsVariant === undefined
+                ? updateOrder('TEST-ORDER-1', reassignmentAttemptInput)
+                : updateOrder('TEST-ORDER-1', reassignmentAttemptInput, optionsVariant);
+            await assert.rejects(invoke(), error => error.code === 'ORDER_REASSIGNMENT_FORBIDDEN');
+            assert.deepEqual(await snapshot(), beforeDeniedReassignment.snapshot);
+            assert.deepEqual(await get("SELECT talent_id, staff_id, total_amount, note FROM orders WHERE order_no = 'TEST-ORDER-1'"), beforeDeniedReassignment.order);
+        }
+
+        await updateOrder('TEST-ORDER-1', reassignmentAttemptInput, {
+            allowPriceAdjustment: true,
+            allowReassignment: true
+        });
+        assert.deepEqual(
+            await get("SELECT talent_id, staff_id FROM orders WHERE order_no = 'TEST-ORDER-1'"),
+            { talent_id: 'talent2', staff_id: 'talent2' }
+        );
+
+        const preservedAssigneeOrder = await createOrder({
+            ...input,
+            orderNo: 'TEST-ASSIGNEE-PRESERVE',
+            finalAmount: 80,
+            originalAmount: 80,
+            unitPrice: 80,
+            walletDelta: 0,
+            talentId: 'talent',
+            status: 'accepted'
+        });
+        await run("UPDATE orders SET staff_id = ? WHERE id = ?", ['talent2', preservedAssigneeOrder.id]);
+        const beforeNoteOnlyUpdate = await get('SELECT talent_id, staff_id FROM orders WHERE id = ?', [preservedAssigneeOrder.id]);
+        await updateOrder(preservedAssigneeOrder.id, {
+            note: 'note-only update without assignee fields',
+            operatorId: 'operator',
+            source: 'test-preserve-assignee'
+        }, { allowPriceAdjustment: true });
+        assert.deepEqual(
+            await get('SELECT talent_id, staff_id FROM orders WHERE id = ?', [preservedAssigneeOrder.id]),
+            beforeNoteOnlyUpdate
+        );
 
         const beforeUnauthorizedIncrease = await snapshot();
         await assert.rejects(updateOrder('TEST-ORDER-1', {
@@ -152,10 +206,10 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             WHEN NEW.action = 'order_create'
             BEGIN SELECT RAISE(ABORT, 'injected order audit failure'); END`);
         await assert.rejects(createOrder({ ...input, orderNo: 'TEST-ORDER-FAIL', walletDelta: -100 }));
-        assert.equal((await get('SELECT COUNT(*) AS count FROM orders')).count, 2);
+        assert.equal((await get('SELECT COUNT(*) AS count FROM orders')).count, 3);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 725);
         assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions')).count, 3);
-        assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 8);
+        assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 11);
         await run('DROP TRIGGER fail_order_create_audit');
 
         const stableState = await snapshot();

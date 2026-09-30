@@ -8,9 +8,11 @@
 
     const hasPersonalSection = canAccess('view_personal') || canAccess('view_profile') || canAccess('view_wallet') || canAccess('view_income') || canAccess('view_personal_orders');
     const hasMemberSection = canAccess('view_manage_members') || canAccess('view_member_ledger');
-    const hasManageSection = canAccess('action_view_analytics') || hasMemberSection || canAccess('view_manage_staff') || canAccess('view_staff_payroll') || canAccess('view_payout') || canAccess('view_manage_orders');
+    const hasManageChildren = canAccess('action_view_analytics') || hasMemberSection || canAccess('view_manage_staff') || canAccess('view_staff_payroll') || canAccess('view_payout') || canAccess('view_manage_orders');
+    const hasManageSection = canAccess('view_management') && hasManageChildren;
     const canManageCommissionPage = canAccess('view_commission');
-    const hasSystemSection = canManageCommissionPage || canAccess('view_vip') || canAccess('view_roles') || canAccess('action_view_audit_logs') || canAccess('view_system_settings') || canAccess('view_discord_status') || canAccess('view_system_health');
+    const hasSystemChildren = canManageCommissionPage || canAccess('view_vip') || canAccess('view_roles') || canAccess('action_view_audit_logs') || canAccess('view_system_settings') || canAccess('view_discord_status') || canAccess('view_system_health');
+    const hasSystemSection = canAccess('view_system') && hasSystemChildren;
     const currentPage = typeof activePage !== 'undefined' ? activePage : '';
     const isAnalyticsPage = currentPage === 'analytics';
     const isMemberPage = currentPage === 'members' || currentPage === 'member_transactions';

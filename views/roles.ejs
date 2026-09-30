@@ -34,7 +34,7 @@
 <%- include('modals/role_info_modal') %>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>window.rolePageConfig = <%- JSON.stringify({ delegatablePermissions: delegatablePermissions || [], legacyPermissionImplications: typeof legacyPermissionImplications !== 'undefined' ? legacyPermissionImplications : {}, canGrantWildcard: Boolean(canGrantWildcard) }).replace(/</g, "\\u003c") %>;</script>
+<script>window.rolePageConfig = <%- JSON.stringify({ delegatablePermissions: delegatablePermissions || [], legacyPermissionImplications: typeof legacyPermissionImplications !== 'undefined' ? legacyPermissionImplications : {}, canGrantWildcard: Boolean(canGrantWildcard), permissionLabels: Object.fromEntries(Object.entries(permissionMetadata || {}).map(([key, item]) => [key, item.label])) }).replace(/</g, "\\u003c") %>;</script>
 <script src="/js/roles-page.js" defer></script>
 </body>
 </html>

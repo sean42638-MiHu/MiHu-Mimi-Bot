@@ -72,11 +72,12 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     const run = (sql, params = []) => new Promise((resolve, reject) => setup.run(sql, params, error => error ? reject(error) : resolve()));
     await run(`CREATE TABLE users (
         id TEXT PRIMARY KEY, username TEXT, global_name TEXT, custom_nickname TEXT, avatar TEXT,
+        email TEXT, email_verified INTEGER DEFAULT 0, email_verified_at TEXT,
         role TEXT, balance REAL DEFAULT 0, bonus_balance REAL DEFAULT 0, manual_spent REAL DEFAULT 0,
         manual_deposited REAL DEFAULT 0, vip_level INTEGER DEFAULT 0, studio_id INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP, status TEXT, commission_rate REAL, staff_channel_id TEXT,
         real_name TEXT, bank_name TEXT, bank_code TEXT, bank_branch TEXT, bank_account TEXT,
-        birthday TEXT, gender TEXT, mbti TEXT
+        birthday TEXT, gender TEXT, age INTEGER, mbti TEXT
     )`);
     await run('CREATE TABLE roles (id INTEGER PRIMARY KEY, role_key TEXT, name TEXT, permissions TEXT, category TEXT, tier_level INTEGER, color_badge TEXT, description TEXT, updated_at TEXT)');
     await run('CREATE TABLE studios (id INTEGER PRIMARY KEY, name TEXT, owner_user_id TEXT)');
@@ -135,7 +136,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ('star-actor','star-actor','star_actor',1)`);
     await run(`INSERT INTO roles (id,role_key,name,permissions) VALUES
         (1,'member','Member','["view_income","view_profile"]'),(2,'staff','Staff','["view_payout"]'),
-        (3,'manager','Manager','["action_order_management","action_member_management","action_member_balance","action_member_role_vip","action_staff_payroll_details","action_staff_management","action_system_management","action_role_management","view_payout","action_payout_sensitive","action_payout_export","action_payout_mark_paid","action_payout_reject"]'),
+        (3,'manager','Manager','["view_management","action_order_management","action_member_management","action_member_balance","action_member_role_vip","action_staff_payroll_details","action_staff_management","action_system_management","action_role_management","view_payout","action_payout_sensitive","action_payout_export","action_payout_mark_paid","action_payout_reject"]'),
         (4,'limited_staff_manager','Limited Staff Manager','["action_staff_management","view_payout"]'),
         (5,'settings_viewer','Settings Viewer','["view_system_settings"]'),(6,'roles_viewer','Roles Viewer','["view_roles"]'),
         (7,'legacy_roles','Legacy Roles','["action_role_management"]'),(8,'security_self','Self Editor','["action_role_manage"]'),
@@ -144,8 +145,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (11,'legacy_security','Legacy Security','["action_role_management"]'),
         (12,'assignment_manager','Assignment Manager','["action_staff_manage","action_member_role_vip","view_manage_members","view_manage_staff"]'),
         (13,'star_actor','Star Actor','["*"]'),
-        (21,'ledger_viewer','Ledger Viewer','["view_member_ledger"]'),
-        (22,'payroll_viewer','Payroll Viewer','["view_staff_payroll"]'),
+        (21,'ledger_viewer','Ledger Viewer','["view_management","view_member_ledger"]'),
+        (22,'payroll_viewer','Payroll Viewer','["view_management","view_staff_payroll"]'),
         (17,'admin','店長','["view_manage_orders","action_order_manage","action_order_price","action_order_refund","action_order_refund_completed"]'),
         (18,'cs','客服','["view_manage_orders","action_order_manage","action_order_reassign"]'),
         (19,'legacy_order_manager','Legacy Order Manager','["action_order_management"]'),
@@ -309,7 +310,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(systemSettings.status, 200);
         assert.match(systemSettings.body, /薪資提款設定/);
         assert.match(systemSettings.body, /配置全站核心運作參數/);
-        assert.match(systemSettings.body, /href="\/system\/settings"[^>]*class="menu-item active"/);
+        assert.doesNotMatch(systemSettings.body, /href="\/system\/settings"[^>]*class="menu-item active"/);
         assert.match(systemSettings.body, /action="\/system\/settings"/);
         assert.match(systemSettings.body, /name="start_day"/);
         assert.match(systemSettings.body, /name="minimum_amount"/);
@@ -319,7 +320,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: settingsViewer.cookie
         });
         assert.equal(settingsViewerPage.status, 200, settingsViewerPage.body);
-        assert.match(settingsViewerPage.body, /href="\/system\/settings"/);
+        assert.doesNotMatch(settingsViewerPage.body, /href="\/system\/settings"/);
         assert.doesNotMatch(settingsViewerPage.body, /href="\/system\/roles"/);
         assert.doesNotMatch(settingsViewerPage.body, /儲存設定/);
         const settingsViewerPost = await createRequest(port, 'POST', '/system/settings', {
@@ -332,7 +333,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: rolesViewer.cookie
         });
         assert.equal(rolesViewerPage.status, 200, rolesViewerPage.body);
-        assert.match(rolesViewerPage.body, /href="\/system\/roles"/);
+        assert.doesNotMatch(rolesViewerPage.body, /href="\/system\/roles"/);
         assert.doesNotMatch(rolesViewerPage.body, /href="\/system\/settings"/);
         assert.doesNotMatch(rolesViewerPage.body, /新增身分組|編輯資料|編輯權限/);
         const rolesViewerPost = await createRequest(port, 'POST', '/system/roles/add', {
@@ -695,11 +696,74 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         }
 
         const memberA = await createSession('member-a');
+
+        const deniedMyOrders = await createRequest(port, 'GET', '/my-orders', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(deniedMyOrders.status, 403);
+
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify(['view_income', 'view_profile', 'view_dashboard']), 'member'], error => error ? reject(error) : resolve()));
+        await new Promise((resolve, reject) => db.run("INSERT INTO announcements (title, content, created_at) VALUES ('fixture', 'E2E-DASHBOARD-ANNOUNCEMENT', CURRENT_TIMESTAMP)", error => error ? reject(error) : resolve()));
+        const restrictedDashboard = await createRequest(port, 'GET', '/dashboard', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(restrictedDashboard.status, 200, restrictedDashboard.body);
+        assert.doesNotMatch(restrictedDashboard.body, /home-card-title">我的錢包/);
+        assert.doesNotMatch(restrictedDashboard.body, /home-card-title">我的信息/);
+        assert.doesNotMatch(restrictedDashboard.body, /E2E-DASHBOARD-ANNOUNCEMENT/);
+        assert.doesNotMatch(restrictedDashboard.body, /manual_spent|manual_deposited|bonus_balance/);
+        assert.doesNotMatch(restrictedDashboard.body, /vip-premium-card-frame|walletBalance|depositTotal/);
+
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify(['view_income', 'view_profile', 'view_dashboard', 'view_dashboard_info']), 'member'], error => error ? reject(error) : resolve()));
+        const infoOnlyDashboard = await createRequest(port, 'GET', '/dashboard', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(infoOnlyDashboard.status, 200, infoOnlyDashboard.body);
+        assert.match(infoOnlyDashboard.body, /home-card-title">我的信息/);
+        assert.match(infoOnlyDashboard.body, /E2E-DASHBOARD-ANNOUNCEMENT/);
+        assert.doesNotMatch(infoOnlyDashboard.body, /home-card-title">我的錢包/);
+
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify(['view_income', 'view_profile', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'], error => error ? reject(error) : resolve()));
+        const fullDashboard = await createRequest(port, 'GET', '/dashboard', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(fullDashboard.status, 200, fullDashboard.body);
+        assert.match(fullDashboard.body, /home-card-title">我的錢包/);
+        const grantedMyOrders = await createRequest(port, 'GET', '/my-orders', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(grantedMyOrders.status, 200, grantedMyOrders.body);
+
         const profilePage = await createRequest(port, 'GET', '/profile', {
             Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
         });
         assert.equal(profilePage.status, 200);
         assert.match(profilePage.body, /123456789/);
+        assert.match(profilePage.body, /Discord 綁定資訊目前未授權顯示/);
+        assert.doesNotMatch(profilePage.body, /Discord ID \(唯讀\)/);
+        assert.doesNotMatch(profilePage.body, /value="member-a"[^>]*Discord ID/);
+        assert.doesNotMatch(profilePage.body, /data-[a-z-]*discord|window\.[^<]*discord/i);
+
+        const beforeDeniedNickname = await new Promise((resolve, reject) => db.get("SELECT custom_nickname, birthday FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row)));
+        const deniedNicknameUpdate = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'custom_nickname=forged-nickname&birthday=2001-01-01');
+        assert.equal(deniedNicknameUpdate.status, 403, deniedNicknameUpdate.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT custom_nickname, birthday FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row))), beforeDeniedNickname);
+
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify(['view_income', 'view_profile', 'view_profile_discord', 'action_profile_nickname', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'], error => error ? reject(error) : resolve()));
+        const profileWithDiscord = await createRequest(port, 'GET', '/profile', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
+        });
+        assert.equal(profileWithDiscord.status, 200, profileWithDiscord.body);
+        assert.match(profileWithDiscord.body, /Discord ID \(唯讀\)/);
+        const allowedNicknameUpdate = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'custom_nickname=member-a-renamed&birthday=2001-01-02');
+        assert.equal(allowedNicknameUpdate.status, 302, allowedNicknameUpdate.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT custom_nickname FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row.custom_nickname))), 'member-a-renamed');
         const payoutOverview = await createRequest(port, 'GET', '/api/withdrawals', {
             Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
         });
@@ -1075,6 +1139,54 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         }
 
         const csSession = orderStaff[0].session;
+        const managerReassignDeniedSnapshot = await orderSecuritySnapshot(101);
+        const managerReassignDenied = await orderPost(managerA, '/management/orders/update/101', {
+            talent_id: 'talent-a', note: 'manager reassign', status: 'pending'
+        });
+        assert.equal(managerReassignDenied.status, 403, managerReassignDenied.headers.location || managerReassignDenied.body);
+        assert.deepEqual(await orderSecuritySnapshot(101), managerReassignDeniedSnapshot);
+
+        const managerReassignViaStaffDeniedSnapshot = await orderSecuritySnapshot(101);
+        const managerReassignViaStaffDenied = await orderPost(managerA, '/management/orders/update/101', {
+            staff_id: 'talent-a', note: 'manager reassign via staff', status: 'pending'
+        });
+        assert.equal(managerReassignViaStaffDenied.status, 403, managerReassignViaStaffDenied.headers.location || managerReassignViaStaffDenied.body);
+        assert.deepEqual(await orderSecuritySnapshot(101), managerReassignViaStaffDeniedSnapshot);
+
+        const managerReassignBothDeniedSnapshot = await orderSecuritySnapshot(101);
+        const managerReassignBothDenied = await orderPost(managerA, '/management/orders/update/101', {
+            talent_id: 'talent-a', staff_id: 'talent-a', note: 'manager reassign both', status: 'pending'
+        });
+        assert.equal(managerReassignBothDenied.status, 403, managerReassignBothDenied.headers.location || managerReassignBothDenied.body);
+        assert.deepEqual(await orderSecuritySnapshot(101), managerReassignBothDeniedSnapshot);
+
+        const managerReassignViaTalentAliasDeniedSnapshot = await orderSecuritySnapshot(101);
+        const managerReassignViaTalentAliasDenied = await orderPost(managerA, '/management/orders/update/101', {
+            talentId: 'talent-a', note: 'manager reassign talent alias', status: 'pending'
+        });
+        assert.equal(managerReassignViaTalentAliasDenied.status, 403, managerReassignViaTalentAliasDenied.headers.location || managerReassignViaTalentAliasDenied.body);
+        assert.deepEqual(await orderSecuritySnapshot(101), managerReassignViaTalentAliasDeniedSnapshot);
+
+        const managerReassignViaStaffAliasDeniedSnapshot = await orderSecuritySnapshot(101);
+        const managerReassignViaStaffAliasDenied = await orderPost(managerA, '/management/orders/update/101', {
+            staffId: 'talent-a', note: 'manager reassign staff alias', status: 'pending'
+        });
+        assert.equal(managerReassignViaStaffAliasDenied.status, 403, managerReassignViaStaffAliasDenied.headers.location || managerReassignViaStaffAliasDenied.body);
+        assert.deepEqual(await orderSecuritySnapshot(101), managerReassignViaStaffAliasDeniedSnapshot);
+
+        const managerReassignMixedAliasDeniedSnapshot = await orderSecuritySnapshot(101);
+        const managerReassignMixedAliasDenied = await orderPost(managerA, '/management/orders/update/101', {
+            talentId: 'talent-a', staff_id: 'talent-a', note: 'manager reassign mixed alias', status: 'pending'
+        });
+        assert.equal(managerReassignMixedAliasDenied.status, 403, managerReassignMixedAliasDenied.headers.location || managerReassignMixedAliasDenied.body);
+        assert.deepEqual(await orderSecuritySnapshot(101), managerReassignMixedAliasDeniedSnapshot);
+
+        const managerOrdersPage = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(managerOrdersPage.status, 200, managerOrdersPage.body);
+        assert.match(managerOrdersPage.body, /"canReassign":false/);
+
         const reassign = await orderPost(csSession, '/management/orders/update/101', {
             talent_id: 'talent-a', note: 'cs reassign', status: 'pending'
         });

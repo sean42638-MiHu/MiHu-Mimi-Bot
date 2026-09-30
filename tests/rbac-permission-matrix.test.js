@@ -120,7 +120,15 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
 test('Role editor uses centralized metadata and permission delegation is validated server-side', () => {
     const rolesView = read('views/roles.ejs');
     const system = read('routes/system.js');
-    assert.match(read("views/modals/role_permission_modal.ejs"), /permissionMetadata/);
-    assert.match(read("views/modals/role_permission_modal.ejs"), /admin-permission-grid/);
+    const rolePermissionModal = read('views/modals/role_permission_modal.ejs');
+    assert.match(rolePermissionModal, /permissionMetadata/);
+    assert.match(rolePermissionModal, /admin-permission-grid/);
+    assert.doesNotMatch(rolePermissionModal, /role-permission-key/);
     assert.match(system, /validatePermissionGrant/);
+    const permissions = require('../config/permissions').PERMISSION_METADATA;
+    for (const key of ['view_dashboard_wallet', 'view_dashboard_info', 'view_profile_discord', 'action_profile_nickname', 'view_management', 'view_system', 'action_order_reassign']) {
+        assert.equal(permissions[key].implemented, true, key);
+    }
+    assert.equal(permissions.view_dashboard_banner.implemented, false);
+    assert.equal(permissions.view_system_logs.implemented, false);
 });

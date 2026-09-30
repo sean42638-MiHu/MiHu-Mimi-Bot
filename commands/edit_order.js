@@ -112,7 +112,10 @@ module.exports = {
                     status: newStatus,
                     operatorId: interaction.user.id,
                     source: 'discord-edit-order-command'
-                }, { allowPriceAdjustment: checkDiscordAdminPermission(interaction) });
+                }, {
+                    allowPriceAdjustment: checkDiscordAdminPermission(interaction),
+                    allowReassignment: checkDiscordAdminPermission(interaction)
+                });
             } catch (updateError) {
                 return interaction.editReply({ content: `❌ 修改訂單資料失敗：${updateError.message}` });
             }

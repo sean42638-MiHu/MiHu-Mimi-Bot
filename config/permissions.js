@@ -222,9 +222,7 @@ const supplementalDefinitions = [
     ]
 ];
 
-const inactiveKeys = new Set(['view_dashboard_banner', 'view_dashboard_wallet', 'view_dashboard_info',
-    'view_profile_discord', 'action_profile_nickname', 'view_management', 'view_system',
-    'view_system_logs', 'action_order_reassign']);
+const inactiveKeys = new Set(['view_dashboard_banner', 'view_system_logs']);
 
 const PERMISSIONS = Object.freeze([...granularDefinitions, ...supplementalDefinitions].map(([alias, label, group, mode, risk]) => {
     const key = PERMISSION_ALIASES[alias];

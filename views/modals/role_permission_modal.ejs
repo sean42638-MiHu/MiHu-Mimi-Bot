@@ -53,9 +53,8 @@
                         <div class="admin-permission-grid">
                         <% Object.values(permissionMetadata || {}).filter(item => item.section === section.number).forEach(permission => { %>
                             <label class="admin-permission-item">
-                                <input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" data-inactive="<%= permission.implemented === false %>" name="permissions" value="<%= permission.key %>" id="role_permission_<%= permission.key %>" <%= permission.implemented !== false && (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>>
+                                <input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" data-inactive="<%= permission.implemented === false %>" data-permission-label="<%= permission.label %>" name="permissions" value="<%= permission.key %>" id="role_permission_<%= permission.key %>" <%= permission.implemented !== false && (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>>
                                 <span class="admin-permission-name"><%= permission.label %><% if (permission.implemented === false) { %><small class="d-block text-secondary">尚未實作獨立權限檢查（唯讀保留）</small><% } %></span>
-                                <span class="admin-badge admin-badge-purple role-permission-key"><%= permission.key %></span>
                             </label>
                         <% }) %>
                         </div>

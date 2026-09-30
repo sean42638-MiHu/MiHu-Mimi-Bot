@@ -117,6 +117,12 @@
                             <input type="text" id="editContentTier" name="content_tier" class="form-control form-control-glass" disabled>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="small text-secondary mb-1">改派陪陪 Discord ID</label>
+                            <input type="text" id="editTalentId" name="talent_id" class="form-control form-control-glass font-monospace" data-reassign-field disabled placeholder="留空表示未指派">
+                            <small class="d-block text-secondary mt-1">改派需額外授權，且仍受訂單狀態與工作室隔離限制。</small>
+                        </div>
+
                         <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <label class="small text-secondary mb-1">數量 / 時長</label>
@@ -222,6 +228,9 @@
             inputs.forEach(input => input.disabled = false);
             if (!window.currentOrderCanAdjustPrice) {
                 document.querySelectorAll('#orderDetailModal [data-price-field]').forEach(input => input.disabled = true);
+            }
+            if (!window.currentOrderCanReassign) {
+                document.querySelectorAll('#orderDetailModal [data-reassign-field]').forEach(input => input.disabled = true);
             }
             if (headerTitle) headerTitle.textContent = '編輯訂單規格與狀態';
             if (formCard) {

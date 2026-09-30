@@ -2,6 +2,8 @@
 <%
     const currentUserData = typeof user !== 'undefined' && user ? user : {};
     const isEmailVerified = currentUserData.email_verified === 1;
+    const allowDiscordInfo = Boolean(typeof canViewProfileDiscord !== 'undefined' ? canViewProfileDiscord : false);
+    const allowNicknameEdit = Boolean(typeof canEditProfileNickname !== 'undefined' ? canEditProfileNickname : false);
     const mbtiOptions = [
         'INTJ', 'INTP', 'ENTJ', 'ENTP',
         'INFJ', 'INFP', 'ENFJ', 'ENFP',
@@ -19,6 +21,7 @@
         <span class="small text-secondary">社群與個人特徵呈現</span>
     </div>
 
+    <% if (allowDiscordInfo) { %>
     <!-- 1. Discord 帳號資訊 (唯讀) -->
     <div class="row g-3 mb-3">
         <div class="col-md-6 col-12">
@@ -34,6 +37,18 @@
             <input type="text" class="form-control form-control-glass" value="<%= currentUserData.username || '' %>" disabled>
         </div>
     </div>
+    <% } else { %>
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="p-3 rounded-3" style="background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.25);">
+                <div class="small text-secondary d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-lock"></i>
+                    <span>Discord 綁定資訊目前未授權顯示</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <% } %>
 
     <!-- 2. 自定義暱稱與聯絡管道 -->
     <div class="row g-3 mb-3">
@@ -41,7 +56,8 @@
             <label class="field-label text-warning">
                 <i class="fa-solid fa-signature"></i>自定義暱稱 (顯示用)
             </label>
-            <input type="text" name="custom_nickname" class="form-control form-control-glass" value="<%= currentUserData.custom_nickname || currentUserData.global_name || '' %>" placeholder="例如：小米">
+            <input type="text" name="custom_nickname" class="form-control form-control-glass" value="<%= currentUserData.custom_nickname || currentUserData.global_name || '' %>" placeholder="例如：小米" <%= allowNicknameEdit ? '' : 'disabled' %>>
+            <% if (!allowNicknameEdit) { %><small class="d-block text-secondary mt-1">目前身分不可修改暱稱</small><% } %>
         </div>
 
         <!-- 📱 手機號碼 (選填) -->

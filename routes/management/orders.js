@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../../database');
 const { syncOrdersJsonFromDb, syncUsersJsonFromDb } = require('../../utils/dataSync');
-const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../../middleware/auth');
+const { denyPermission, requireAuth: ensureAuth, requirePerm: checkPerm } = require('../../middleware/auth');
 const { refundOrder, refundOrders } = require('../../utils/walletService');
 const { getOrder, updateOrder, completeOrder } = require('../../utils/orderService');
 const { hasResolvedPermission } = require('../../utils/permissionResolver');
@@ -31,6 +31,28 @@ function canApproveCompletedRefund(res) {
 
 function canAdjustOrderPrice(res) {
     return hasResolvedPermission(res.locals.userPerms, 'action_order_price');
+}
+
+function canReassignOrder(res) {
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_reassign');
+}
+
+function normalizeAssignee(value) {
+    const normalized = String(value || '').trim();
+    return normalized || null;
+}
+
+function hasOwn(body, key) {
+    return Boolean(body && Object.prototype.hasOwnProperty.call(body, key));
+}
+
+function isReassignmentRequest(body, order) {
+    if (!body) return false;
+    const currentTalent = normalizeAssignee(order && order.talent_id);
+    const currentStaff = normalizeAssignee(order && order.staff_id);
+    const talent = normalizeAssignee(hasOwn(body, 'talent_id') ? body.talent_id : (hasOwn(body, 'talentId') ? body.talentId : currentTalent));
+    const staff = normalizeAssignee(hasOwn(body, 'staff_id') ? body.staff_id : (hasOwn(body, 'staffId') ? body.staffId : (talent || currentStaff)));
+    return talent !== currentTalent || staff !== currentStaff;
 }
 
 // =========================================================================
@@ -109,8 +131,12 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
         }
         if (!order) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權修改其他工作室訂單');
+        if (isReassignmentRequest(req.body, order) && !canReassignOrder(res)) {
+            return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
+        }
         await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'management-order-route' }, {
-            allowPriceAdjustment: canAdjustOrderPrice(res)
+            allowPriceAdjustment: canAdjustOrderPrice(res),
+            allowReassignment: canReassignOrder(res)
         });
 
         try {
@@ -121,6 +147,9 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
         res.redirect('/management/orders?saved=1');
     } catch (err) {
         if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
+        if (err.code === 'ORDER_REASSIGNMENT_FORBIDDEN') {
+            return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
+        }
         console.error('❌ 更新訂單失敗:', err);
         res.redirect('/management/orders?error=' + encodeURIComponent('更新失敗'));
     }

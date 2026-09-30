@@ -158,5 +158,3 @@
 #editRolePermsModal .admin-permission-item .form-switch-input::after { content: ''; display: block; width: .9rem; height: .9rem; border-radius: 50%; background: #fff; position: absolute; top: .13rem; left: .15rem; transition: transform .15s ease; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 #editRolePermsModal .admin-permission-item .form-switch-input:checked::after { transform: translateX(1rem); }
 #editRolePermsModal .admin-permission-item .form-switch-input:focus-visible { outline: 2px solid #e9d5ff; outline-offset: 3px; }
-
-.role-permission-key { overflow-wrap: anywhere; white-space: normal; font-family: monospace; }

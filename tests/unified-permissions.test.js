@@ -58,8 +58,9 @@ test('save canonical explicit grants while retaining unknown values without gran
 
 
 test('unimplemented independent gates remain read-only and survive an otherwise empty save', () => {
-    const old = '["home_banner","profile_nickname","orders_edit_and_reassign"]';
+    const old = '["home_banner","system"]';
     const saved = serializePermissionGrant([], old);
-    assert.deepEqual(JSON.parse(saved), ['view_dashboard_banner', 'action_profile_nickname', 'action_order_reassign']);
+    assert.deepEqual(JSON.parse(saved), ['view_dashboard_banner']);
     for (const key of JSON.parse(saved)) assert.equal(PERMISSION_METADATA[key].implemented, false);
+    assert.equal(PERMISSION_METADATA.view_system.implemented, true);
 });
