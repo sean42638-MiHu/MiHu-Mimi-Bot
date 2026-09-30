@@ -359,6 +359,9 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('action_member_balance'
         if (err && err.code === 'MISSING_OPERATION_ID') {
             return res.redirect('/management/members?error=' + encodeURIComponent('操作識別遺失，請重新開啟調帳視窗再試。'));
         }
+        if (err && err.code === 'MIXED_BALANCE_INPUT') {
+            return res.redirect('/management/members?error=' + encodeURIComponent(err.message));
+        }
         if (err && err.code === 'IDEMPOTENCY_CONFLICT') {
             return res.redirect('/management/members?error=' + encodeURIComponent(err.message));
         }

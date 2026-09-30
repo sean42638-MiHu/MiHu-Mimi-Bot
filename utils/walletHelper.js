@@ -244,7 +244,7 @@ async function adjustUserWalletInternal({
 
     const parsedAddAmountCents = parseOptionalMoneyToCents(addAmount, '充值/扣款金額');
     const parsedBonusChangeCents = parseOptionalMoneyToCents(bonusChange, '贈送金調整');
-    const parsedOverrideBalanceCents = parseOptionalMoneyToCents(overrideBalance, '設定主餘額');
+    const parsedOverrideBalanceCents = parseOptionalMoneyToCents(overrideBalance, '設定目前總餘額');
     const parsedOverrideSpentCents = parseOptionalMoneyToCents(overrideSpent, '設定累積消費');
     const parsedOverrideDepositedCents = parseOptionalMoneyToCents(overrideDeposited, '設定累積實充');
 
@@ -256,6 +256,10 @@ async function adjustUserWalletInternal({
     const hasManualSpent = parsedOverrideSpentCents !== null;
     const hasManualDeposited = parsedOverrideDepositedCents !== null;
     const hasManualBalance = parsedOverrideBalanceCents !== null;
+
+    if (hasManualBalance && (parsedAddAmountCents !== null || parsedBonusChangeCents !== null)) {
+        throw createWalletError('「設定目前總餘額」不可與「本次充值金額」或「贈送金調整」同時輸入，請擇一操作', 'MIXED_BALANCE_INPUT');
+    }
 
     const operationPayload = {
         mode: normalizedMode,
@@ -356,7 +360,22 @@ async function adjustUserWalletInternal({
             if (hasManualSpent) newSpentCents = parsedOverrideSpentCents;
 
             if (hasManualBalance) {
-                newBalanceCents = parsedOverrideBalanceCents;
+                const targetTotalCents = parsedOverrideBalanceCents;
+                if (targetTotalCents < 0) {
+                    throw new Error('設定目前總餘額不得為負數！');
+                }
+                const currentTotalCents = currBalanceCents + currBonusCents;
+                if (targetTotalCents > currentTotalCents) {
+                    const delta = targetTotalCents - currentTotalCents;
+                    newBalanceCents = currBalanceCents + delta;
+                    newBonusCents = currBonusCents;
+                } else if (targetTotalCents < currentTotalCents) {
+                    const delta = currentTotalCents - targetTotalCents;
+                    const bonusDeduct = Math.min(currBonusCents, delta);
+                    const remainDeduct = delta - bonusDeduct;
+                    newBonusCents = currBonusCents - bonusDeduct;
+                    newBalanceCents = currBalanceCents - remainDeduct;
+                }
             } else if (parsedAddAmountCents !== null) {
                 newBalanceCents = currBalanceCents + parsedAddAmountCents;
                 if (normalizedMode === 'topup' && parsedAddAmountCents > 0) {
@@ -410,7 +429,10 @@ async function adjustUserWalletInternal({
                 : MEMBER_ADJUSTMENT_LEDGER_TYPE;
             const referenceType = normalizedMode === 'admin_adjustment' ? MEMBER_ADJUSTMENT_REFERENCE_TYPE : 'wallet';
             const referenceId = normalizedMode === 'admin_adjustment' ? normalizedOperationId : null;
-            const balanceDelta = moneyFromCents(newBalanceCents - currBalanceCents);
+            const ledgerAmountCents = normalizedMode === 'admin_adjustment'
+                ? ((newBalanceCents + newBonusCents) - (currBalanceCents + currBonusCents))
+                : (newBalanceCents - currBalanceCents);
+            const balanceDelta = moneyFromCents(ledgerAmountCents);
 
             try {
                 await dbRunAsync(`

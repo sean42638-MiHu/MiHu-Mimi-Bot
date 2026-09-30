@@ -197,7 +197,7 @@ test('admin adjustment semantics: add/deduct/set do not create topups or change 
         await adjustUserWallet(memberAdjustInput({ operationId: 'op_admin_003', overrideBalance: 200 }));
 
         const wallet = await get(db, "SELECT balance, bonus_balance, manual_spent, manual_deposited FROM user_wallets WHERE user_id='member-a'");
-        assert.equal(wallet.balance, 200);
+        assert.equal(wallet.balance, 180);
         assert.equal(wallet.bonus_balance, 20);
         assert.equal(wallet.manual_spent, 10);
         assert.equal(wallet.manual_deposited, 30);
@@ -209,6 +209,40 @@ test('admin adjustment semantics: add/deduct/set do not create topups or change 
         assert.equal(ledgerRows.count, 3);
         const wrongLedgerType = await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='order_payment' AND reference_type='member_adjustment'");
         assert.equal(wrongLedgerType.count, 0);
+    });
+});
+
+test('set current total balance distributes delta correctly and never creates topup/deposited side effects', async () => {
+    await withFixture(async ({ db, adjustUserWallet }) => {
+        await run(db, "UPDATE user_wallets SET balance = 100, bonus_balance = 50, manual_deposited = 30 WHERE user_id='member-a'");
+        await run(db, "UPDATE users SET balance = 100, bonus_balance = 50, manual_deposited = 30 WHERE id='member-a'");
+
+        const verify = async (operationId, targetTotal, expectedBalance, expectedBonus) => {
+            const result = await adjustUserWallet(memberAdjustInput({
+                operationId,
+                overrideBalance: targetTotal,
+                reason: `set total ${targetTotal}`
+            }));
+            assert.equal(result.idempotent, false);
+            const wallet = await get(db, "SELECT balance, bonus_balance, manual_deposited FROM user_wallets WHERE user_id='member-a'");
+            assert.equal(wallet.balance, expectedBalance);
+            assert.equal(wallet.bonus_balance, expectedBonus);
+            assert.equal(wallet.manual_deposited, 30);
+            const tx = await get(db, 'SELECT amount, balance_before, balance_after FROM wallet_transactions WHERE reference_type=\'member_adjustment\' AND reference_id = ? AND type = \'admin_adjustment\'', [operationId]);
+            assert.equal(tx.balance_after, expectedBalance);
+            assert.equal(tx.amount, Number((targetTotal - 150).toFixed(2)));
+            await run(db, "UPDATE user_wallets SET balance = 100, bonus_balance = 50, manual_deposited = 30 WHERE user_id='member-a'");
+            await run(db, "UPDATE users SET balance = 100, bonus_balance = 50, manual_deposited = 30 WHERE id='member-a'");
+        };
+
+        await verify('op_total_180', 180, 130, 50);
+        await verify('op_total_120', 120, 100, 20);
+        await verify('op_total_080', 80, 80, 0);
+        await verify('op_total_000', 0, 0, 0);
+        await verify('op_total_150', 150, 100, 50);
+
+        const topupCount = await get(db, 'SELECT COUNT(*) AS count FROM topups');
+        assert.equal(topupCount.count, 0);
     });
 });
 
@@ -257,6 +291,38 @@ test('idempotency: same operation id replay and parallel submission execute only
 
         const wallet = await get(db, "SELECT balance FROM user_wallets WHERE user_id='member-a'");
         assert.equal(wallet.balance, 125);
+    });
+});
+
+test('blank total override does not change balances; mixed total/add or total/bonus is rejected and unchanged', async () => {
+    await withFixture(async ({ db, adjustUserWallet }) => {
+        await run(db, "UPDATE user_wallets SET balance = 100, bonus_balance = 50 WHERE user_id='member-a'");
+        await run(db, "UPDATE users SET balance = 100, bonus_balance = 50 WHERE id='member-a'");
+
+        const blankResult = await adjustUserWallet(memberAdjustInput({ operationId: 'op_blank_total', overrideBalance: '' }));
+        assert.equal(blankResult.idempotent, false);
+        let wallet = await get(db, "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'");
+        assert.equal(wallet.balance, 100);
+        assert.equal(wallet.bonus_balance, 50);
+
+        const snapshot = await get(db, "SELECT balance, bonus_balance, manual_spent, manual_deposited FROM user_wallets WHERE user_id='member-a'");
+        await assert.rejects(
+            adjustUserWallet(memberAdjustInput({ operationId: 'op_mix_001', overrideBalance: 160, addAmount: 10 })),
+            error => error && error.code === 'MIXED_BALANCE_INPUT'
+        );
+        await assert.rejects(
+            adjustUserWallet(memberAdjustInput({ operationId: 'op_mix_002', overrideBalance: 160, bonusChange: 10 })),
+            error => error && error.code === 'MIXED_BALANCE_INPUT'
+        );
+
+        wallet = await get(db, "SELECT balance, bonus_balance, manual_spent, manual_deposited FROM user_wallets WHERE user_id='member-a'");
+        assert.equal(wallet.balance, snapshot.balance);
+        assert.equal(wallet.bonus_balance, snapshot.bonus_balance);
+        assert.equal(wallet.manual_spent, snapshot.manual_spent);
+        assert.equal(wallet.manual_deposited, snapshot.manual_deposited);
+
+        const mixTx = await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE reference_id IN ('op_mix_001','op_mix_002')");
+        assert.equal(mixTx.count, 0);
     });
 });
 
@@ -309,7 +375,7 @@ test('overrideBalance replay with same operation id is idempotent', async () => 
         assert.equal(first.idempotent, false);
         assert.equal(replay.idempotent, true);
         const wallet = await get(db, "SELECT balance FROM user_wallets WHERE user_id='member-a'");
-        assert.equal(wallet.balance, 250);
+        assert.equal(wallet.balance, 230);
         const tx = await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE reference_type='member_adjustment' AND reference_id='op_override_001'");
         assert.equal(tx.count, 1);
     });
@@ -385,6 +451,7 @@ test('strict decimal parsing accepts 0.29/1.15/-0.29 and rejects invalid formats
         const wallet = await get(db, "SELECT balance FROM user_wallets WHERE user_id='member-a'");
         assert.equal(wallet.balance, 101.15);
 
+        const before = await get(db, "SELECT balance, bonus_balance, manual_spent, manual_deposited FROM user_wallets WHERE user_id='member-a'");
         for (const [opId, bad] of [
             ['op_bad_001', '1e3'],
             ['op_bad_002', '0x10'],
@@ -392,10 +459,20 @@ test('strict decimal parsing accepts 0.29/1.15/-0.29 and rejects invalid formats
             ['op_bad_004', '1.234']
         ]) {
             await assert.rejects(
-                adjustUserWallet(memberAdjustInput({ operationId: opId, addAmount: bad })),
+                adjustUserWallet(memberAdjustInput({ operationId: opId, overrideBalance: bad })),
                 /格式無效/
             );
         }
+        await assert.rejects(
+            adjustUserWallet(memberAdjustInput({ operationId: 'op_bad_005', overrideBalance: '-1' })),
+            /不得為負數/
+        );
+
+        const after = await get(db, "SELECT balance, bonus_balance, manual_spent, manual_deposited FROM user_wallets WHERE user_id='member-a'");
+        assert.equal(after.balance, before.balance);
+        assert.equal(after.bonus_balance, before.bonus_balance);
+        assert.equal(after.manual_spent, before.manual_spent);
+        assert.equal(after.manual_deposited, before.manual_deposited);
     });
 });
 
@@ -403,14 +480,14 @@ test('permission revocation and actor studio change are rejected inside transact
     await withFixture(async ({ db, adjustUserWallet }) => {
         await run(db, "UPDATE roles SET permissions='[]' WHERE role_key='manager'");
         await assert.rejects(
-            adjustUserWallet(memberAdjustInput({ operationId: 'op_perm_revoked', addAmount: 1 })),
+            adjustUserWallet(memberAdjustInput({ operationId: 'op_perm_revoked', overrideBalance: 180 })),
             error => error && error.code === 'PERMISSION_DENIED'
         );
 
         await run(db, "UPDATE roles SET permissions='[\"action_member_balance\"]' WHERE role_key='manager'");
         await run(db, "UPDATE users SET studio_id = 2 WHERE id='operator-a'");
         await assert.rejects(
-            adjustUserWallet(memberAdjustInput({ operationId: 'op_studio_changed', addAmount: 1 })),
+            adjustUserWallet(memberAdjustInput({ operationId: 'op_studio_changed', overrideBalance: 180 })),
             error => error && error.code === 'PERMISSION_DENIED'
         );
 

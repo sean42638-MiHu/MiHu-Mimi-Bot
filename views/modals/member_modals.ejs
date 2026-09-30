@@ -104,9 +104,10 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="small text-secondary fw-semibold mb-1">調整目前餘額 ($)</label>
+                        <label class="small text-secondary fw-semibold mb-1">設定目前總餘額 ($)</label>
                         <input type="number" step="any" name="balance" id="modalBalance" class="form-control form-control-glass" placeholder="不修改請留空">
-                        <div class="text-secondary" style="font-size: 0.72rem; margin-top: 2px;">直接數字覆蓋目前實充餘額</div>
+                        <div class="text-secondary" style="font-size: 0.72rem; margin-top: 2px;">增加差額加入實充；扣減優先使用贈送金。</div>
+                        <div class="text-secondary" style="font-size: 0.72rem; margin-top: 2px;">目前實充：<span id="modalCurrentBalanceText">$0</span>｜贈送：<span id="modalCurrentBonusText">$0</span>｜總餘額：<span id="modalCurrentTotalText">$0</span></div>
                     </div>
 
                     <div class="row g-2 mb-3">

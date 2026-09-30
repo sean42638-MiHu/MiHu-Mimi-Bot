@@ -291,6 +291,13 @@
             const hiddenBonus = document.getElementById('hiddenCurrentBonus');
             if (hiddenBonus) hiddenBonus.value = window.currentMemberBonus;
 
+            const currentBalanceText = document.getElementById('modalCurrentBalanceText');
+            if (currentBalanceText) currentBalanceText.textContent = `$${window.currentMemberBalance.toLocaleString()}`;
+            const currentBonusText = document.getElementById('modalCurrentBonusText');
+            if (currentBonusText) currentBonusText.textContent = `$${window.currentMemberBonus.toLocaleString()}`;
+            const currentTotalText = document.getElementById('modalCurrentTotalText');
+            if (currentTotalText) currentTotalText.textContent = `$${(window.currentMemberBalance + window.currentMemberBonus).toLocaleString()}`;
+
             const operationIdInput = document.getElementById('balanceOperationId');
             if (operationIdInput) operationIdInput.value = generateBalanceOperationId();
 
@@ -406,12 +413,35 @@
                 const directBalanceVal = document.getElementById('modalBalance').value.trim();
                 const totalSpentVal = document.getElementById('modalSpent').value.trim();
                 const totalDepositedVal = document.getElementById('modalDeposited').value.trim();
+                const hasTotalOverride = directBalanceVal !== '';
+                const hasAddAmount = addAmountVal !== '';
+                const hasBonusChange = bonusChangeVal !== '';
 
                 let finalBalance = currBalance;
                 let finalBonus = currBonus;
 
-                if (directBalanceVal !== '') {
-                    finalBalance = Number(directBalanceVal);
+                if (hasTotalOverride && (hasAddAmount || hasBonusChange)) {
+                    e.preventDefault();
+                    if (submitButton) submitButton.disabled = false;
+                    const errTextEl = document.getElementById('negativeErrorText');
+                    if (errTextEl) errTextEl.textContent = '「設定目前總餘額」不可與「本次充值金額」或「贈送金調整」同時輸入，請擇一操作。';
+                    if (negativeErrorModal) negativeErrorModal.show();
+                    return;
+                }
+
+                if (hasTotalOverride) {
+                    const targetTotal = Number(directBalanceVal);
+                    const currentTotal = currBalance + currBonus;
+                    if (targetTotal > currentTotal) {
+                        finalBalance = currBalance + (targetTotal - currentTotal);
+                        finalBonus = currBonus;
+                    } else if (targetTotal < currentTotal) {
+                        const needDeduct = currentTotal - targetTotal;
+                        const deductBonus = Math.min(currBonus, needDeduct);
+                        const remainDeduct = needDeduct - deductBonus;
+                        finalBonus = currBonus - deductBonus;
+                        finalBalance = currBalance - remainDeduct;
+                    }
                 } else if (addAmountVal !== '') {
                     finalBalance = currBalance + Number(addAmountVal);
                 }
