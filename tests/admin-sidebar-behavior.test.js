@@ -67,6 +67,7 @@ function createElement({ id = '', classes = [], overflowY = 'visible', clientHei
         setAttribute(name, value) { attributes.set(name, String(value)); },
         getAttribute(name) { return attributes.has(name) ? attributes.get(name) : null; },
         hasAttribute(name) { return attributes.has(name); },
+        removeAttribute(name) { attributes.delete(name); },
         focus() {},
         closest() { return null; },
         querySelector() { return null; },
@@ -402,4 +403,52 @@ test('storage failures do not break collapse initialization', () => {
     const harness = createHarness({ storageFail: true });
     harness.flushAnimationFrames(2);
     assert.equal(harness.toggle.getAttribute('aria-expanded'), 'true');
+});
+
+test('rapid collapse toggle clicks are ignored while transitioning', () => {
+    const harness = createHarness({});
+    const event = {
+        prevented: false,
+        stopped: false,
+        preventDefault() { this.prevented = true; },
+        stopPropagation() { this.stopped = true; }
+    };
+
+    harness.collapse.dispatch('show.bs.collapse', {});
+    harness.toggle.dispatch('click', event);
+
+    assert.equal(event.prevented, true);
+    assert.equal(event.stopped, true);
+    assert.equal(harness.toggle.classList.contains('is-collapsing'), true);
+
+    harness.collapse.dispatch('shown.bs.collapse', {});
+    assert.equal(harness.toggle.classList.contains('is-collapsing'), false);
+});
+
+test('collapse toggle click remains allowed when section is stable', () => {
+    const harness = createHarness({});
+    const event = {
+        prevented: false,
+        stopped: false,
+        preventDefault() { this.prevented = true; },
+        stopPropagation() { this.stopped = true; }
+    };
+
+    harness.toggle.dispatch('click', event);
+
+    assert.equal(event.prevented, false);
+    assert.equal(event.stopped, false);
+});
+
+test('collapse transition lock auto-releases by timeout fallback', () => {
+    const harness = createHarness({});
+
+    harness.collapse.dispatch('hide.bs.collapse', {});
+    assert.equal(harness.toggle.classList.contains('is-collapsing'), true);
+    assert.equal(harness.toggle.getAttribute('aria-disabled'), 'true');
+
+    harness.flushTimers();
+
+    assert.equal(harness.toggle.classList.contains('is-collapsing'), false);
+    assert.equal(harness.toggle.getAttribute('aria-disabled'), null);
 });
