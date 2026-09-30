@@ -15,6 +15,7 @@ const { getRoleInfo } = require('./utils/roleHelper');
 const orderStatus = require('./utils/orderStatus');
 const passport = require('./config/passport');
 const { sameOriginGuard } = require('./middleware/csrf');
+const { preventBackCache } = require('./middleware/preventBackCache');
 const { initializationWindowGuard, isRbacInitializationWindow } = require('./middleware/initializationWindowGuard');
 const { isPlatformSuperuserId, resolvePermissions, hasResolvedPermission } = require('./utils/permissionResolver');
 
@@ -42,27 +43,36 @@ if (sessionStore) sessionStore.on('error', () => console.error('Session storage 
 app.locals.sessionStore = sessionStore;
 app.locals.sessionStoreReady = sessionStore ? sessionStore.ready : Promise.resolve();
 
+const sessionCookieName = 'connect.sid';
+const sessionCookieOptions = {
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: productionRuntime
+};
+app.locals.sessionCookieName = sessionCookieName;
+app.locals.sessionCookieOptions = sessionCookieOptions;
+
 app.use(session({
+    name: sessionCookieName,
     ...(sessionStore ? { store: sessionStore } : {}),
     secret: process.env.SESSION_SECRET || 'mihu_gaming_secret_2026',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: productionRuntime
-    }
+    cookie: sessionCookieOptions
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(preventBackCache);
 app.use(sameOriginGuard);
 
 app.use((req, res, next) => {
     res.locals.getRoleInfo = getRoleInfo;
     res.locals.orderStatus = orderStatus;
     res.locals.orderStatusFilters = orderStatus.getOrderStatusFilterOptions();
+    res.locals.requestMethod = String(req.method || '').toUpperCase();
 
     if (req.isAuthenticated() && req.user) {
         db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (userError, freshUser) => {

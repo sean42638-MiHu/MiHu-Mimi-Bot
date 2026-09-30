@@ -23,7 +23,9 @@
 <link rel="stylesheet" href="/css/wallet_card.css">
 <link rel="stylesheet" href="/css/admin-layout.css">
 <link rel="stylesheet" href="/css/admin-components.css">
+<div id="mihu-request-context" data-request-method="<%= typeof requestMethod === 'string' ? requestMethod : '' %>" hidden></div>
 <script src="/js/csrf.js" defer></script>
+<script src="/js/protected-page-guard.js" defer></script>
 <script src="/js/adminSidebar.js" defer></script>
 <script src="/js/admin-feedback.js" defer></script>
 <style>

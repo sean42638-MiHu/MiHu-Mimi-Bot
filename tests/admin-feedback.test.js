@@ -13,6 +13,7 @@ test('shared feedback infrastructure is mounted once and preserves Coming Soon s
     assert.equal((sidebar.match(/admin_toast_container/g) || []).length, 1);
     assert.equal((sidebar.match(/admin_access_denied_modal/g) || []).length, 1);
     assert.match(sidebar, /admin-feedback\.js/);
+    assert.match(sidebar, /protected-page-guard\.js/);
     assert.match(sidebar, /coming_soon_modal/);
     assert.match(sidebar, /coming-soon\.js/);
 });
@@ -44,6 +45,10 @@ test('feedback module exposes safe APIs and accessibility behavior', () => {
     assert.match(script, /permissionDeniedResponses\.add\(response\)/);
     assert.match(script, /isPermissionDeniedResponse/);
     assert.match(script, /操作遭到拒絕/);
+    assert.match(script, /form\.requestSubmit\(/);
+    assert.match(script, /window\.AdminFeedback\s*=\s*window\.MiHuFeedback/);
+    assert.match(script, /pagehide/);
+    assert.doesNotMatch(script, /form\.submit\(\)/);
     assert.doesNotMatch(script, /message\.innerHTML|title\.innerHTML/);
 });
 

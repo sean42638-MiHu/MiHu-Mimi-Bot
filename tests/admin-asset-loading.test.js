@@ -9,7 +9,7 @@ const migratedPages = ['income.ejs', 'members.ejs', 'member_transactions.ejs', '
 
 test('canonical sidebar owns shared Admin CSS, feedback, drawer and Coming Soon assets once', () => {
     const sidebar = read('views/partials/sidebar.ejs');
-    for (const asset of ['/css/admin-components.css', '/js/admin-feedback.js', '/js/adminSidebar.js', '/js/coming-soon.js']) {
+    for (const asset of ['/css/admin-components.css', '/js/protected-page-guard.js', '/js/admin-feedback.js', '/js/adminSidebar.js', '/js/coming-soon.js']) {
         assert.equal((sidebar.match(new RegExp(asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1, asset);
     }
     assert.equal((sidebar.match(/admin_confirm_modal/g) || []).length, 1);

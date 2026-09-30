@@ -200,7 +200,7 @@ test('initialization window blocks every other Web route over HTTP on an isolate
         ]);
 
         const assigned = await post(`/management/members/update-vip/${BREAK_GLASS_ID}`, breakGlass, { role: 'admin', vip_level: '0' });
-        assert.equal(assigned.status, 302);
+        assert.equal(assigned.status, 303);
         assert.match(assigned.headers.location, /success=1/);
         assert.deepEqual(await all('SELECT id, role, vip_level FROM users ORDER BY id'), [
             { id: BREAK_GLASS_ID, role: 'admin', vip_level: 0 },

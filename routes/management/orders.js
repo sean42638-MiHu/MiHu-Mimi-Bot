@@ -132,7 +132,7 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
     try {
         const order = await getOrder(req.params.id);
         if (req.body.is_delete === '1') {
-            if (!order) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
+            if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
             if (!canManageOrderStudio(req, res, order.studio_id)) {
                 return res.status(403).send('無權修改其他工作室訂單');
             }
@@ -142,9 +142,9 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
                 if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
             } catch (e) {}
 
-            return res.redirect('/management/orders?successMsg=' + encodeURIComponent('訂單已退款並標記取消！'));
+            return res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent('訂單已退款並標記取消！'));
         }
-        if (!order) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
+        if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權修改其他工作室訂單');
         if (isReassignmentRequest(req.body, order) && !canReassignOrder(res)) {
             return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
@@ -159,14 +159,14 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
             if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
         } catch (e) {}
 
-        res.redirect('/management/orders?saved=1');
+        res.redirect(303, '/management/orders?saved=1');
     } catch (err) {
         if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
         if (err.code === 'ORDER_REASSIGNMENT_FORBIDDEN') {
             return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
         }
         console.error('❌ 更新訂單失敗:', err);
-        res.redirect('/management/orders?error=' + encodeURIComponent('更新失敗'));
+        res.redirect(303, '/management/orders?error=' + encodeURIComponent('更新失敗'));
     }
 });
 
@@ -209,7 +209,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_batch_delete'),
         const successMsg = `✅ 成功批量刪除並退款 ${result.summary.deletedCount} 筆訂單！`;
         const redirectUrl = '/management/orders?successMsg=' + encodeURIComponent(successMsg);
         if (wantsJson(req)) return res.json({ success: true, redirect: redirectUrl, successMsg });
-        return res.redirect(redirectUrl);
+        return res.redirect(303, redirectUrl);
 
     } catch (err) {
         if (err.statusCode === 403 || err.code === 'PERMISSION_DENIED') {
@@ -217,7 +217,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_batch_delete'),
         }
         if (err.statusCode === 400) {
             if (wantsJson(req)) return res.status(400).json({ success: false, error: err.message, code: err.code || 'INVALID_INPUT' });
-            return res.redirect('/management/orders?error=' + encodeURIComponent(err.message));
+            return res.redirect(303, '/management/orders?error=' + encodeURIComponent(err.message));
         }
         if (err.statusCode === 409) {
             if (wantsJson(req)) {
@@ -228,12 +228,12 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_batch_delete'),
                     details: err.details || null
                 });
             }
-            return res.redirect('/management/orders?error=' + encodeURIComponent(err.message));
+            return res.redirect(303, '/management/orders?error=' + encodeURIComponent(err.message));
         }
 
         console.error('❌ 批量刪除訂單出錯:', err);
         if (wantsJson(req)) return res.status(500).json({ success: false, error: '批量刪除失敗，請稍後再試。' });
-        return res.redirect('/management/orders?error=' + encodeURIComponent('批量刪除失敗，請稍後再試。'));
+        return res.redirect(303, '/management/orders?error=' + encodeURIComponent('批量刪除失敗，請稍後再試。'));
     }
 });
 
@@ -245,16 +245,16 @@ router.post('/cancel/:id', ensureAuth, checkPerm('action_order_refund'), (req, r
 
     db.get('SELECT * FROM orders WHERE id = ? OR order_no = ?', [orderId, orderId], (err, order) => {
         if (err || !order) {
-            return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
+            return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         }
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權取消其他工作室訂單');
 
         refundOrder(order.id, req.user.id, '後台作廢', { allowCompleted: canApproveCompletedRefund(res) }).then(result => {
             try { syncOrdersJsonFromDb(); } catch (e) {}
-            res.redirect('/management/orders?successMsg=' + encodeURIComponent(`訂單 ${order.order_no} 已成功退款 $${result.refundAmount} NTD 並標記取消！`));
+            res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent(`訂單 ${order.order_no} 已成功退款 $${result.refundAmount} NTD 並標記取消！`));
         }).catch((rErr) => {
             console.error('❌ 退款處理出錯:', rErr.message);
-            res.redirect('/management/orders?error=' + encodeURIComponent(rErr.message || '退款處理失敗'));
+            res.redirect(303, '/management/orders?error=' + encodeURIComponent(rErr.message || '退款處理失敗'));
         });
     });
 });
@@ -265,14 +265,14 @@ router.post('/cancel/:id', ensureAuth, checkPerm('action_order_refund'), (req, r
 router.post('/complete/:id', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
     try {
         const order = await getOrder(req.params.id);
-        if (!order) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
+        if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權結算其他工作室訂單');
         await completeOrder(req.params.id, req.user.id);
         try { syncOrdersJsonFromDb(); } catch (e) {}
-        return res.redirect('/management/orders?successMsg=' + encodeURIComponent('訂單已成功標記為完成並完成原價分潤計算！'));
+        return res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent('訂單已成功標記為完成並完成原價分潤計算！'));
     } catch (error) {
         console.error('❌ 標記完成失敗:', error);
-        return res.redirect('/management/orders?error=' + encodeURIComponent(error.message || '標記完成失敗'));
+        return res.redirect(303, '/management/orders?error=' + encodeURIComponent(error.message || '標記完成失敗'));
     }
 });
 

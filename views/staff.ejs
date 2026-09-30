@@ -268,8 +268,8 @@
             const generation = detailViewGeneration;
             const displayName = currentDetailStaff.displayName || currentDetailStaff.username || String(staffId);
             const confirmMessage = `即將查看員工${displayName}的本名與薪轉帳戶資料。本次查看將記錄於系統日誌。`;
-            const confirmed = await (window.AdminFeedback && typeof window.AdminFeedback.confirm === 'function'
-                ? window.AdminFeedback.confirm({
+            const confirmed = await (window.MiHuFeedback && typeof window.MiHuFeedback.confirm === 'function'
+                ? window.MiHuFeedback.confirm({
                     title: '查看敏感資料確認',
                     message: confirmMessage,
                     confirmText: '確認查看',
@@ -433,6 +433,11 @@
         }
 
         window.addEventListener('pagehide', () => {
+            detailViewActive = false;
+            resetSensitiveView({ invalidate: true, clearTarget: true });
+        });
+
+        window.addEventListener('mihu:protected-page-reset', () => {
             detailViewActive = false;
             resetSensitiveView({ invalidate: true, clearTarget: true });
         });

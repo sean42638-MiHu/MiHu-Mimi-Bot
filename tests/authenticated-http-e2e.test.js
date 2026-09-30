@@ -249,10 +249,18 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const anonymous = await createRequest(port, 'GET', '/management/reconciliation');
         assert.equal(anonymous.status, 302);
         assert.match(anonymous.headers.location, /^\/login/);
+        assert.equal(anonymous.headers['cache-control'], 'no-store, no-cache, must-revalidate, private');
+        assert.equal(anonymous.headers.pragma, 'no-cache');
+        assert.equal(anonymous.headers.expires, '0');
+
+        const staticAsset = await createRequest(port, 'GET', '/css/admin-layout.css');
+        assert.equal(staticAsset.status, 200, staticAsset.body);
+        assert.equal(String(staticAsset.headers['cache-control'] || '').includes('no-store'), false);
 
         const member = await createSession('member-a');
         const deniedMember = await createRequest(port, 'GET', '/management/reconciliation', { Host: `127.0.0.1:${port}`, Cookie: member.cookie });
         assert.equal(deniedMember.status, 403);
+        assert.equal(deniedMember.headers['cache-control'], 'no-store, no-cache, must-revalidate, private');
 
         const staff = await createSession('staff-a');
         const deniedStaff = await createRequest(port, 'GET', '/management/reconciliation', { Host: `127.0.0.1:${port}`, Cookie: staff.cookie });
@@ -273,6 +281,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'X-CSRF-Token': member.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
         }, '{}');
         assert.equal(deniedMemberAction.status, 403);
+        assert.equal(deniedMemberAction.headers['cache-control'], 'no-store, no-cache, must-revalidate, private');
         assert.deepEqual(JSON.parse(deniedMemberAction.body), {
             success: false, code: 403, reason: 'PERMISSION_DENIED', message: '您沒有權限執行此操作', feature: '標記提款已匯款'
         });
@@ -406,7 +415,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             ['name', 'Allowed Delegation'], ['category', '一般職位'], ['tier_level', '60'], ['description', 'fixture'],
             ['permissions', 'view_manage_members'], ['permissions', 'view_manage_staff']
         ]).toString());
-        assert.equal(allowedRoleCreate.status, 302);
+        assert.equal(allowedRoleCreate.status, 303);
         const createdDelegatedRole = await new Promise((resolve, reject) => db.get("SELECT role_key, permissions FROM roles WHERE name='Allowed Delegation'", (error, row) => error ? reject(error) : resolve(row)));
         assert.deepEqual(JSON.parse(createdDelegatedRole.permissions), ['view_manage_members', 'view_manage_staff']);
         const createdRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, before_data, after_data, metadata FROM audit_logs WHERE action='ROLE_CREATED' AND target_id=?", [createdDelegatedRole.role_key], (error, row) => error ? reject(error) : resolve(row)));
@@ -431,7 +440,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
                 Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
                 'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
             }, fields.toString());
-            assert.equal(response.status, 302, `${roleKey}: ${response.body}`);
+            assert.equal(response.status, 303, `${roleKey}: ${response.body}`);
         };
         const storedRolePermissions = async roleKey => JSON.parse(await new Promise((resolve, reject) => db.get(
             'SELECT permissions FROM roles WHERE role_key = ?', [roleKey], (error, row) => error ? reject(error) : resolve(row.permissions)
@@ -442,7 +451,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: settingsViewer.cookie,
             'X-CSRF-Token': settingsViewer.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'start_day=1&end_day=31&minimum_amount=100');
-        assert.equal(newlyAuthorizedSettingsPost.status, 302, newlyAuthorizedSettingsPost.body);
+        assert.equal(newlyAuthorizedSettingsPost.status, 303, newlyAuthorizedSettingsPost.body);
         const permissionsBeforeSave = {};
         for (const roleKey of ['cs', 'manager', 'admin']) {
             const permissions = await storedRolePermissions(roleKey);
@@ -480,7 +489,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             ['name', 'Superuser Delegation'], ['category', '最高權限'], ['tier_level', '100'], ['description', 'fixture'],
             ['permissions', 'action_payout_sensitive'], ['permissions', 'action_bot_deploy_production']
         ]).toString());
-        assert.equal(superuserCreate.status, 302);
+        assert.equal(superuserCreate.status, 303);
         const assignedAdminRole = await new Promise((resolve, reject) => db.get("SELECT id FROM roles WHERE role_key='admin'", (error, row) => error ? reject(error) : resolve(row)));
         const deniedAssignedRoleDelete = await createRequest(port, 'POST', `/system/roles/delete/${assignedAdminRole.id}`, {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie, Accept: 'application/json',
@@ -493,7 +502,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         });
-        assert.equal(deletedRole.status, 302, deletedRole.body);
+        assert.equal(deletedRole.status, 303, deletedRole.body);
         const rolesAfterDelete = await createRequest(port, 'GET', '/management/members/role-options', {
             Host: `127.0.0.1:${port}`, Cookie: starActor.cookie, Accept: 'application/json'
         });
@@ -503,7 +512,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams([['role', 'protected_deployer'], ['permissions', 'action_system_config']]).toString());
-        assert.equal(superuserProtectedRoleEdit.status, 302);
+        assert.equal(superuserProtectedRoleEdit.status, 303);
         const superuserRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, metadata FROM audit_logs WHERE action='ROLE_UPDATED' AND target_id='protected_deployer'", (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(superuserRoleAudit.action, 'ROLE_UPDATED');
         assert.deepEqual(JSON.parse(superuserRoleAudit.metadata).permissionDiff, {
@@ -608,7 +617,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             restoreUsersSync();
             restoreTalentsSync();
         }
-        assert.equal(allowedStaffAssignment.status, 302, allowedStaffAssignment.body);
+        assert.equal(allowedStaffAssignment.status, 303, allowedStaffAssignment.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'delegatable_target');
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(Number(row.count || 0)))), talentCountBeforeRoleOnlyUpdate);
 
@@ -633,7 +642,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'role=staff');
-        assert.equal(roleOnlyWithExistingTalent.status, 302, roleOnlyWithExistingTalent.body);
+        assert.equal(roleOnlyWithExistingTalent.status, 303, roleOnlyWithExistingTalent.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role))), 'staff');
         assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row))), seededTalent);
 
@@ -641,7 +650,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'status=leave&commission_rate=0.75&staff_channel_id=chan-new');
-        assert.equal(explicitTalentUpdate.status, 302, explicitTalentUpdate.body);
+        assert.equal(explicitTalentUpdate.status, 303, explicitTalentUpdate.body);
         const afterExplicitTalentUpdate = await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(afterExplicitTalentUpdate.status, 'leave');
         assert.equal(afterExplicitTalentUpdate.commission_rate, 0.75);
@@ -662,7 +671,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'commission_rate=&staff_channel_id=');
-        assert.equal(explicitTalentClear.status, 302, explicitTalentClear.body);
+        assert.equal(explicitTalentClear.status, 303, explicitTalentClear.body);
         const afterExplicitTalentClear = await new Promise((resolve, reject) => db.get("SELECT status, commission_rate, staff_channel_id FROM talents WHERE user_id='assignment-target'", (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(afterExplicitTalentClear.status, 'leave');
         assert.equal(afterExplicitTalentClear.commission_rate, null);
@@ -686,7 +695,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'role=delegatable_target');
-        assert.equal(returnToDelegatableRole.status, 302, returnToDelegatableRole.body);
+        assert.equal(returnToDelegatableRole.status, 303, returnToDelegatableRole.body);
         const missingCsrfSettings = await createRequest(port, 'POST', '/system/settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -846,7 +855,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
             'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'custom_nickname=member-a-renamed&birthday=2001-01-02');
-        assert.equal(allowedNicknameUpdate.status, 302, allowedNicknameUpdate.body);
+        assert.equal(allowedNicknameUpdate.status, 303, allowedNicknameUpdate.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT custom_nickname FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row.custom_nickname))), 'member-a-renamed');
         const payoutOverview = await createRequest(port, 'GET', '/api/withdrawals', {
             Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
@@ -1046,26 +1055,26 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'start_day=28&end_day=3&minimum_amount=100&time_zone=Asia%2FTaipei');
-        assert.equal(invalidSettings.status, 302);
+        assert.equal(invalidSettings.status, 303);
         assert.match(invalidSettings.headers.location, /error=/);
         const validSettings = await createRequest(port, 'POST', '/system/payout-settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'start_day=3&end_day=5&minimum_amount=200&time_zone=Asia%2FTaipei');
-        assert.equal(validSettings.status, 302);
+        assert.equal(validSettings.status, 303);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT setting_value FROM system_settings WHERE setting_key='withdrawal_start_day'", (error, row) => error ? reject(error) : resolve(row.setting_value))), '3');
 
         const invalidSystemSettings = await createRequest(port, 'POST', '/system/settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'start_day=0&end_day=6&minimum_amount=100&PAYROLL_DATA_ENCRYPTION_KEY=attempt');
-        assert.equal(invalidSystemSettings.status, 302);
+        assert.equal(invalidSystemSettings.status, 303);
         assert.match(invalidSystemSettings.headers.location, /error=/);
         const validSystemSettings = await createRequest(port, 'POST', '/system/settings', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'start_day=3&end_day=7&minimum_amount=500&PAYROLL_DATA_ENCRYPTION_KEY=attempt');
-        assert.equal(validSystemSettings.status, 302);
+        assert.equal(validSystemSettings.status, 303);
         assert.match(validSystemSettings.headers.location, /saved=1/);
         const updatedSettings = await new Promise((resolve, reject) => db.all("SELECT setting_key,setting_value FROM system_settings WHERE setting_key IN ('withdrawal_start_day','withdrawal_end_day','withdrawal_min_amount') ORDER BY setting_key", (error, rows) => error ? reject(error) : resolve(rows)));
         assert.deepEqual(updatedSettings.map(row => [row.setting_key, row.setting_value]), [
@@ -1219,7 +1228,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: admin.cookie,
             'X-CSRF-Token': admin.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'name=Delegatable+Target&category=%E4%B8%BB%E7%AE%A1%E8%81%B7%E4%BD%8D&tier_level=95&description=Sorted');
-        assert.equal(updateDelegatableTier.status, 302, updateDelegatableTier.body);
+        assert.equal(updateDelegatableTier.status, 303, updateDelegatableTier.body);
         const reorderedRoles = await createRequest(port, 'GET', '/system/roles', {
             Host: `127.0.0.1:${port}`, Cookie: admin.cookie
         });
@@ -1319,7 +1328,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
 
             const beforeNoteEdit = await orderSecuritySnapshot(101);
             const noteEdit = await orderPost(session, '/management/orders/update/101', { note: `${name} note`, status: 'pending' });
-            assert.equal(noteEdit.status, 302, `${name}: ${noteEdit.headers.location}`);
+            assert.equal(noteEdit.status, 303, `${name}: ${noteEdit.headers.location}`);
             const afterNoteEdit = await orderSecuritySnapshot(101);
             assert.equal(afterNoteEdit.wallet_balance, beforeNoteEdit.wallet_balance);
             assert.equal(afterNoteEdit.ledger_count, beforeNoteEdit.ledger_count);
@@ -1407,7 +1416,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const reassign = await orderPost(csSession, '/management/orders/update/101', {
             talent_id: 'talent-a', note: 'cs reassign', status: 'pending'
         });
-        assert.equal(reassign.status, 302, reassign.headers.location);
+        assert.equal(reassign.status, 303, reassign.headers.location);
         assert.equal(await new Promise((resolve, reject) => db.get('SELECT talent_id FROM orders WHERE id=101', (error, row) => error ? reject(error) : resolve(row.talent_id))), 'talent-a');
         const afterReassignSnapshot = await orderSecuritySnapshot(101);
         assert.equal(afterReassignSnapshot.wallet_balance, managerReassignMixedAliasDeniedSnapshot.wallet_balance);
@@ -1418,7 +1427,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const aftersalesSession = await createSession('aftersales-orders');
         const beforeOpenRefund = await orderSecuritySnapshot(606);
         const aftersalesOpenRefund = await orderPost(aftersalesSession, '/management/orders/cancel/606', {});
-        assert.equal(aftersalesOpenRefund.status, 302);
+        assert.equal(aftersalesOpenRefund.status, 303);
         const afterOpenRefund = await orderSecuritySnapshot(606);
         assert.equal(afterOpenRefund.status, 'cancelled');
         assert.equal(afterOpenRefund.wallet_balance, beforeOpenRefund.wallet_balance + 45);
@@ -1426,12 +1435,12 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
 
         const beforeCompletedAfterSales = await orderSecuritySnapshot(607);
         const deniedCompletedRefund = await orderPost(aftersalesSession, '/management/orders/cancel/607', {});
-        assert.equal(deniedCompletedRefund.status, 302);
+        assert.equal(deniedCompletedRefund.status, 303);
         assert.match(deniedCompletedRefund.headers.location, /error=/);
         assert.deepEqual(await orderSecuritySnapshot(607), beforeCompletedAfterSales);
 
         const adminCompletedRefund = await orderPost(ordinaryAdmin, '/management/orders/cancel/607', {});
-        assert.equal(adminCompletedRefund.status, 302);
+        assert.equal(adminCompletedRefund.status, 303);
         const afterAdminRefund = await orderSecuritySnapshot(607);
         assert.equal(afterAdminRefund.status, 'cancelled');
         assert.equal(afterAdminRefund.wallet_balance, beforeCompletedAfterSales.wallet_balance + 35);
@@ -1441,7 +1450,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const adminPriceChange = await orderPost(ordinaryAdmin, '/management/orders/update/101', {
             original_price: '125', unit_price: '125', duration: '1', discount: '0', status: 'pending'
         });
-        assert.equal(adminPriceChange.status, 302);
+        assert.equal(adminPriceChange.status, 303);
         const afterAdminPriceChange = await orderSecuritySnapshot(101);
         assert.equal(afterAdminPriceChange.wallet_balance, beforeAdminPriceChange.wallet_balance - 25);
         assert.equal(afterAdminPriceChange.total_amount, 125);
@@ -1477,6 +1486,26 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: settingsViewer.cookie, Accept: 'text/html'
         });
         assert.equal(malformedRolePage.status, 403);
+
+        const logoutProbe = await createSession('member-a');
+        const logoutResponse = await createRequest(port, 'GET', '/logout', {
+            Host: `127.0.0.1:${port}`, Cookie: logoutProbe.cookie
+        });
+        assert.equal(logoutResponse.status, 303, logoutResponse.body);
+        assert.equal(logoutResponse.headers.location, '/login');
+        assert.equal(logoutResponse.headers['cache-control'], 'no-store, no-cache, must-revalidate, private');
+        assert.equal(logoutResponse.headers.pragma, 'no-cache');
+        assert.equal(logoutResponse.headers.expires, '0');
+        const logoutSetCookies = logoutResponse.headers['set-cookie'] || [];
+        assert.ok(logoutSetCookies.some(value => value.startsWith('connect.sid=')), 'logout should clear session cookie');
+
+        const oldCookieAfterLogout = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: logoutProbe.cookie
+        });
+        assert.equal(oldCookieAfterLogout.status, 302);
+        assert.match(String(oldCookieAfterLogout.headers.location || ''), /^\/login/);
+        assert.equal(oldCookieAfterLogout.headers['cache-control'], 'no-store, no-cache, must-revalidate, private');
+
         assert.deepEqual(effects, { login: 0, rest: 0, smtp: 0 });
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));

@@ -190,6 +190,58 @@
         }
     }
 
+    function getEventSubmitter(event, form) {
+        if (event && event.submitter && form.contains(event.submitter)) return event.submitter;
+        return form.querySelector('button[type="submit"], input[type="submit"]');
+    }
+
+    function resetSubmitState(form) {
+        if (!form) return;
+        delete form.dataset.submitPending;
+        delete form.dataset.confirmPending;
+        delete form.dataset.confirmBypass;
+        const submitterShadow = form.querySelector('input[data-mihu-submitter-shadow="true"]');
+        if (submitterShadow) submitterShadow.remove();
+        const loadingButton = form.querySelector('button.is-loading, input.is-loading');
+        if (loadingButton) setButtonLoading(loadingButton, { loading: false });
+    }
+
+    function preserveSubmitterValue(form, submitter) {
+        const existing = form.querySelector('input[data-mihu-submitter-shadow="true"]');
+        if (existing) existing.remove();
+        if (!submitter || !form.contains(submitter)) return;
+        const name = String(submitter.name || '').trim();
+        if (!name) return;
+        const shadow = document.createElement('input');
+        shadow.type = 'hidden';
+        shadow.name = name;
+        shadow.value = String(submitter.value || '');
+        shadow.dataset.mihuSubmitterShadow = 'true';
+        form.appendChild(shadow);
+    }
+
+    function replayConfirmedSubmit(form, submitter) {
+        if (typeof form.requestSubmit !== 'function') {
+            toast({ type: 'error', message: '瀏覽器不支援安全提交流程，請重新整理後再試。' });
+            resetSubmitState(form);
+            return;
+        }
+
+        form.dataset.confirmBypass = 'true';
+        if (submitter && form.contains(submitter) && !submitter.disabled) {
+            form.requestSubmit(submitter);
+        } else {
+            form.requestSubmit();
+        }
+
+        // requestSubmit may be blocked by native form validation before submit event dispatch.
+        queueMicrotask(() => {
+            if (form.dataset.confirmBypass === 'true') {
+                resetSubmitState(form);
+            }
+        });
+    }
+
     window.MiHuFeedback = {
         toast,
         success: (message, options = {}) => toast({ ...options, type: 'success', message }),
@@ -199,38 +251,84 @@
         confirm,
         accessDenied,
         isPermissionDeniedResponse: response => permissionDeniedResponses.has(response),
-        setButtonLoading
+        setButtonLoading,
+        resetSubmitState
     };
+    window.AdminFeedback = window.MiHuFeedback;
 
     document.addEventListener('submit', event => {
-        const loadingForm = event.target.closest('form[data-admin-submit-loading]');
-        if (loadingForm && !loadingForm.hasAttribute('data-admin-confirm') && loadingForm.dataset.submitPending !== 'true') {
-            const submitButton = loadingForm.querySelector('button[type="submit"], input[type="submit"]');
-            if (submitButton) {
+        if (event.defaultPrevented) return;
+
+        const form = event.target.closest('form');
+        if (!form) return;
+        const submitter = getEventSubmitter(event, form);
+        const loadingForm = form.hasAttribute('data-admin-submit-loading') ? form : null;
+        const confirmForm = form.hasAttribute('data-admin-confirm') ? form : null;
+
+        if ((loadingForm || confirmForm) && form.dataset.submitPending === 'true') {
+            event.preventDefault();
+            return;
+        }
+
+        if (loadingForm && loadingForm.dataset.submitPending !== 'true') {
+            const hasConfirm = loadingForm.hasAttribute('data-admin-confirm');
+            const confirmed = loadingForm.dataset.confirmBypass === 'true';
+            if (!hasConfirm || confirmed) {
+                const submitButton = submitter && loadingForm.contains(submitter)
+                    ? submitter
+                    : loadingForm.querySelector('button[type="submit"], input[type="submit"]');
+                if (submitButton) preserveSubmitterValue(loadingForm, submitter);
                 loadingForm.dataset.submitPending = 'true';
-                setButtonLoading(submitButton, { text: loadingForm.dataset.submitLoadingText || '儲存中...' });
+                if (submitButton) {
+                    setButtonLoading(submitButton, { text: loadingForm.dataset.submitLoadingText || '儲存中...' });
+                }
             }
         }
-        const form = event.target.closest('form[data-admin-confirm]');
-        if (!form || form.dataset.confirmPending === 'true') return;
-        event.preventDefault();
-        form.dataset.confirmPending = 'true';
-        confirm({
-            title: form.dataset.confirmTitle,
-            message: form.dataset.confirmMessage,
-            confirmText: form.dataset.confirmConfirmText,
-            cancelText: form.dataset.confirmCancelText,
-            variant: form.dataset.confirmVariant
-        }).then(confirmed => {
-            form.dataset.confirmPending = 'false';
-            if (confirmed) {
-                const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
-                if (submitButton && form.hasAttribute('data-admin-submit-loading')) {
-                    setButtonLoading(submitButton, { text: form.dataset.submitLoadingText || '儲存中...' });
+
+        if (!confirmForm) {
+            queueMicrotask(() => {
+                if (event.defaultPrevented && form.dataset.submitPending === 'true' && form.dataset.confirmPending !== 'true') {
+                    resetSubmitState(form);
                 }
-                form.submit();
+            });
+            return;
+        }
+
+        if (confirmForm.dataset.confirmBypass === 'true') {
+            delete confirmForm.dataset.confirmBypass;
+            queueMicrotask(() => {
+                if (event.defaultPrevented && confirmForm.dataset.submitPending === 'true') {
+                    resetSubmitState(confirmForm);
+                }
+            });
+            return;
+        }
+
+        if (confirmForm.dataset.confirmPending === 'true') {
+            event.preventDefault();
+            return;
+        }
+
+        event.preventDefault();
+        confirmForm.dataset.confirmPending = 'true';
+        confirm({
+            title: confirmForm.dataset.confirmTitle,
+            message: confirmForm.dataset.confirmMessage,
+            confirmText: confirmForm.dataset.confirmConfirmText,
+            cancelText: confirmForm.dataset.confirmCancelText,
+            variant: confirmForm.dataset.confirmVariant
+        }).then(confirmed => {
+            delete confirmForm.dataset.confirmPending;
+            if (confirmed) {
+                replayConfirmedSubmit(confirmForm, submitter);
+                return;
             }
+            resetSubmitState(confirmForm);
         });
+    });
+
+    window.addEventListener('pagehide', () => {
+        document.querySelectorAll('form[data-admin-submit-loading], form[data-admin-confirm]').forEach(resetSubmitState);
     });
 
     const nativeFetch = window.fetch.bind(window);

@@ -128,9 +128,9 @@ router.post('/update-single', ensureAuth, checkPerm('action_commission_config'),
 		});
 
 		await syncCommissionJson();
-		res.redirect('/management/commission?saved=1');
+		res.redirect(303, '/management/commission?saved=1');
 	} catch (err) {
-		res.redirect('/management/commission?error=' + encodeURIComponent(err.message || '更新類別比例失敗'));
+		res.redirect(303, '/management/commission?error=' + encodeURIComponent(err.message || '更新類別比例失敗'));
 	}
 });
 
@@ -181,9 +181,9 @@ router.post('/update-rates', ensureAuth, checkPerm('action_commission_config'), 
 		});
 
 		await syncCommissionJson();
-		res.redirect('/management/commission?saved=1');
+		res.redirect(303, '/management/commission?saved=1');
 	} catch (err) {
-		res.redirect('/management/commission?error=' + encodeURIComponent(err.message || '更新比例失敗'));
+		res.redirect(303, '/management/commission?error=' + encodeURIComponent(err.message || '更新比例失敗'));
 	}
 });
 
@@ -192,7 +192,7 @@ router.post('/add-category', ensureAuth, checkPerm('action_commission_config'), 
 	const rate = normalizeTalentShareRate(req.body.rate);
 
 	if (!category || category.length > 60 || rate === null) {
-		return res.redirect('/management/commission?error=' + encodeURIComponent('請輸入有效類別名稱與 0–100% 實拿比例'));
+		return res.redirect(303, '/management/commission?error=' + encodeURIComponent('請輸入有效類別名稱與 0–100% 實拿比例'));
 	}
 
 	try {
@@ -220,12 +220,12 @@ router.post('/add-category', ensureAuth, checkPerm('action_commission_config'), 
 			}
 		});
 		await syncCommissionJson();
-		res.redirect('/management/commission?saved=1');
+		res.redirect(303, '/management/commission?saved=1');
 	} catch (err) {
 		const message = String(err.message || '').includes('UNIQUE')
 			? `類別「${category}」已存在`
 			: (err.message || '新增類別失敗');
-		res.redirect('/management/commission?error=' + encodeURIComponent(message));
+		res.redirect(303, '/management/commission?error=' + encodeURIComponent(message));
 	}
 });
 
@@ -233,7 +233,7 @@ router.post('/delete-category', ensureAuth, checkPerm('action_commission_config'
 	const submittedCategory = req.body.category_name ?? req.body.category;
 	const categoryValue = Array.isArray(submittedCategory) ? submittedCategory[0] : submittedCategory;
 	const category = canonicalCategory(String(categoryValue || '').trim());
-	if (!category) return res.redirect('/management/commission?error=' + encodeURIComponent('缺少要刪除的類別'));
+	if (!category) return res.redirect(303, '/management/commission?error=' + encodeURIComponent('缺少要刪除的類別'));
 
 	try {
 		const storedCategories = categoryStorageKeys(category);
@@ -268,9 +268,9 @@ router.post('/delete-category', ensureAuth, checkPerm('action_commission_config'
 			}
 		});
 		await syncCommissionJson();
-		res.redirect('/management/commission?saved=1');
+		res.redirect(303, '/management/commission?saved=1');
 	} catch (err) {
-		res.redirect('/management/commission?error=' + encodeURIComponent(err.message || '刪除類別失敗'));
+		res.redirect(303, '/management/commission?error=' + encodeURIComponent(err.message || '刪除類別失敗'));
 	}
 });
 

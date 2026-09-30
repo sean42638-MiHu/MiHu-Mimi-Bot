@@ -68,9 +68,6 @@ router.get('/', ensureAuth, checkPerm('view_manage_staff'), async (req, res, nex
 
 // 2.1.1 二次確認後載入單一員工敏感資料 (對應 /management/staff/:id/sensitive-data)
 router.post('/:id/sensitive-data', ensureAuth, async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Pragma', 'no-cache');
-
     const confirmed = req.body && req.body.confirmSensitiveView === true;
     if (!confirmed) {
         return res.status(400).json({ success: false, message: '未確認查看敏感資料' });
@@ -154,7 +151,7 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
     if (!canManageStaff) return res.status(403).send('無權管理員工');
 
     const targetUser = await dbGet('SELECT id, studio_id FROM users WHERE id = ?', [targetStaffId]);
-    if (!targetUser) return res.redirect('/management/staff?error=' + encodeURIComponent('找不到員工'));
+        if (!targetUser) return res.redirect(303, '/management/staff?error=' + encodeURIComponent('找不到員工'));
     const actorStudioId = Number(req.user && req.user.studio_id);
     const targetStudioId = Number(targetUser.studio_id);
     if (!isPlatformSuperuser && (!Number.isInteger(actorStudioId) || actorStudioId <= 0
@@ -299,12 +296,13 @@ router.post('/update/:id', ensureAuth, checkPerm('action_staff_manage'), async (
             syncUsersJsonFromDb();
             syncTalentsJsonFromDb();
         } catch (e) {}
-        return res.redirect('/management/staff?success=1');
+            return res.redirect(303, '/management/staff?success=1');
     } catch (error) {
         if (error && error.name === 'PermissionDeniedError') return rejectUnauthorizedCommission();
         if (error && Number(error.statusCode) === 403) return res.status(403).send(error.message || '無權管理員工');
         if (isRoleDelegationError(error)) return res.status(403).send(error.message);
         return res.redirect('/management/staff?error=' + encodeURIComponent('員工更新失敗'));
+            return res.redirect(303, '/management/staff?error=' + encodeURIComponent('員工更新失敗'));
     }
 });
 

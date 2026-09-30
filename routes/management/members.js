@@ -289,10 +289,10 @@ router.post('/sync/:id', ensureAuth, checkPerm('action_member_manage'), async (r
             }
         });
         syncUsersJsonFromDb();
-        res.redirect('/management/members?success=1');
+        res.redirect(303, '/management/members?success=1');
     } catch (error) {
         console.error('Discord member identity sync failed:', error && error.code ? error.code : 'sync failure');
-        res.redirect('/management/members?error=' + encodeURIComponent('同步失敗'));
+        res.redirect(303, '/management/members?error=' + encodeURIComponent('同步失敗'));
     }
 });
 
@@ -348,25 +348,25 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('action_member_balance'
         } catch (e) {}
 
         if (adjustResult && adjustResult.vipUpdateStatus === 'failed') {
-            return res.redirect('/management/members?success=1&warning=' + encodeURIComponent(adjustResult.vipUpdateMessage || '帳務已成功更新，但 VIP 同步失敗'));
+            return res.redirect(303, '/management/members?success=1&warning=' + encodeURIComponent(adjustResult.vipUpdateMessage || '帳務已成功更新，但 VIP 同步失敗'));
         }
 
-        res.redirect('/management/members?success=1');
+        res.redirect(303, '/management/members?success=1');
     } catch (err) {
         if (err && err.code === 'PERMISSION_DENIED') {
             return denyPermission(req, res, ['action_member_balance'], { kind: 'action', feature: '會員帳務調整' });
         }
         if (err && err.code === 'MISSING_OPERATION_ID') {
-            return res.redirect('/management/members?error=' + encodeURIComponent('操作識別遺失，請重新開啟調帳視窗再試。'));
+            return res.redirect(303, '/management/members?error=' + encodeURIComponent('操作識別遺失，請重新開啟調帳視窗再試。'));
         }
         if (err && err.code === 'MIXED_BALANCE_INPUT') {
-            return res.redirect('/management/members?error=' + encodeURIComponent(err.message));
+            return res.redirect(303, '/management/members?error=' + encodeURIComponent(err.message));
         }
         if (err && err.code === 'IDEMPOTENCY_CONFLICT') {
-            return res.redirect('/management/members?error=' + encodeURIComponent(err.message));
+            return res.redirect(303, '/management/members?error=' + encodeURIComponent(err.message));
         }
         console.error('❌ 帳務調整失敗:', err.message);
-        res.redirect('/management/members?error=' + encodeURIComponent(err.message));
+        res.redirect(303, '/management/members?error=' + encodeURIComponent(err.message));
     }
 });
 
@@ -438,12 +438,12 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('action_member_role_vip'), 
             const { syncUsersJsonFromDb } = require('../../utils/dataSync');
             syncUsersJsonFromDb();
         } catch (e) {}
-        return res.redirect('/management/members?success=1');
+        return res.redirect(303, '/management/members?success=1');
     } catch (error) {
         if (isRoleDelegationError(error) || error.message === '無權調整其他工作室會員') {
             return denyPermission(req, res, ['action_member_role_vip'], { kind: 'action', feature: '會員身分與 VIP 調整' });
         }
-        return res.redirect('/management/members?error=' + encodeURIComponent(error.message || '更新身分失敗'));
+        return res.redirect(303, '/management/members?error=' + encodeURIComponent(error.message || '更新身分失敗'));
     }
 });
 

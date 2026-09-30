@@ -2,6 +2,7 @@
 
 const { PERMISSION_METADATA } = require('../config/permissions');
 const { hasResolvedPermission } = require('../utils/permissionResolver');
+const { applyNoStoreHeaders } = require('./preventBackCache');
 
 const permissionNames = Object.freeze({
     home: '首頁',
@@ -32,6 +33,7 @@ function expectsJson(req) {
 }
 
 function denyPermission(req, res, permissions, options = {}) {
+    applyNoStoreHeaders(res);
     const feature = options.feature || permissions.map(permissionName).join(' / ');
     if (expectsJson(req)) {
         return res.status(403).json({ success: false, code: 403, reason: 'PERMISSION_DENIED', message: '您沒有權限執行此操作', feature });
@@ -48,7 +50,8 @@ function denyPermission(req, res, permissions, options = {}) {
 // 1. 確保已登入中間件
 function requireAuth(req, res, next) {
     if (req.isAuthenticated()) return next();
-    res.redirect('/login?error=' + encodeURIComponent('請先登入後臺'));
+    applyNoStoreHeaders(res);
+    res.redirect(302, '/login?error=' + encodeURIComponent('請先登入後臺'));
 }
 
 // 2. 節點權限檢查中間件

@@ -75,5 +75,7 @@ test('Submit loading is explicit and does not globally intercept forms', () => {
     assert.match(script, /form\[data-admin-submit-loading\]/);
     assert.match(script, /submitPending/);
     assert.match(script, /setButtonLoading\(submitButton/);
+    assert.match(script, /requestSubmit/);
+    assert.doesNotMatch(script, /form\.submit\(\)/);
     assert.doesNotMatch(script, /document\.querySelectorAll\(['"]form['"]\)/);
 });

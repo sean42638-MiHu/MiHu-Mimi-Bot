@@ -2,6 +2,7 @@ const express = require('express');
 const passport = require('passport');
 const router = express.Router();
 const { ensureAuth } = require('../middleware/auth');
+const { applyNoStoreHeaders } = require('../middleware/preventBackCache');
 
 function safeInternalDestination(value) {
     const fallback = '/dashboard';
@@ -58,10 +59,36 @@ router.get('/auth/login-transition', ensureAuth, (req, res) => {
 });
 
 router.get('/logout', (req, res, next) => {
+    applyNoStoreHeaders(res);
     if (req.session) delete req.session.loginTransition;
-    req.logout((err) => {
+    const sessionRecord = req.session;
+    req.logout(err => {
         if (err) return next(err);
-        res.redirect('/login');
+
+        const clearSessionCookie = () => {
+            const cookieOptions = req.app && req.app.locals
+                ? (req.app.locals.sessionCookieOptions || {})
+                : {};
+            const clearOptions = {
+                path: cookieOptions.path || '/',
+                httpOnly: cookieOptions.httpOnly !== false,
+                sameSite: cookieOptions.sameSite || 'lax',
+                secure: Boolean(cookieOptions.secure)
+            };
+            if (cookieOptions.domain) clearOptions.domain = cookieOptions.domain;
+            const cookieName = (req.app && req.app.locals && req.app.locals.sessionCookieName) || 'connect.sid';
+            res.clearCookie(cookieName, clearOptions);
+            return res.redirect(303, '/login');
+        };
+
+        if (!sessionRecord || typeof sessionRecord.destroy !== 'function') {
+            return clearSessionCookie();
+        }
+
+        return sessionRecord.destroy(destroyError => {
+            if (destroyError) return next(destroyError);
+            return clearSessionCookie();
+        });
     });
 });
 

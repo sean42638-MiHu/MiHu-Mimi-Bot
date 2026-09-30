@@ -203,12 +203,12 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
         }
         });
         syncUsersJsonFromDb();
-        return res.redirect('/profile?saved=1');
+        return res.redirect(303, '/profile?saved=1');
     } catch (error) {
         if (error.code === PROFILE_NICKNAME_PERMISSION_DENIED) {
             return denyPermission(req, res, ['action_profile_nickname'], { kind: 'action', feature: '變更暱稱' });
         }
-        return res.redirect('/profile?error=' + encodeURIComponent('更新失敗'));
+        return res.redirect(303, '/profile?error=' + encodeURIComponent('更新失敗'));
     }
 });
 

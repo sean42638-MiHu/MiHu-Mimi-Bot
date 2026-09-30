@@ -135,7 +135,7 @@ router.get('/orders', ensureAuth, checkPerm('view_manage_orders'), (req, res) =>
 router.post('/orders/update/:id', ensureAuth, requireUpdatePermission, async (req, res) => {
     try {
         const existingOrder = await getOrder(req.params.id);
-        if (!existingOrder) return res.redirect('/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
+        if (!existingOrder) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!isPlatformSuperuser(res) && Number(existingOrder.studio_id) !== Number(req.user.studio_id)) {
             return res.status(403).send('無權修改其他工作室訂單');
         }
@@ -144,21 +144,21 @@ router.post('/orders/update/:id', ensureAuth, requireUpdatePermission, async (re
         }
         if (req.body.is_delete === '1') {
             await cancelOrder(req.params.id, req.user.id, 'legacy-order-route', { allowCompleted: canApproveCompletedRefund(res) });
-            return res.redirect('/management/orders?saved=1');
+            return res.redirect(303, '/management/orders?saved=1');
         }
         await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'legacy-order-route' }, {
             allowPriceAdjustment: canAdjustOrderPrice(res),
             allowReassignment: canReassignOrder(res)
         });
         syncOrdersJsonFromDb();
-        res.redirect('/management/orders?saved=1');
+        res.redirect(303, '/management/orders?saved=1');
     } catch (err) {
         if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
         if (err.code === 'ORDER_REASSIGNMENT_FORBIDDEN') {
             return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
         }
         console.error('❌ 更新訂單失敗:', err);
-        res.redirect('/management/orders?error=' + encodeURIComponent('更新失敗'));
+        res.redirect(303, '/management/orders?error=' + encodeURIComponent('更新失敗'));
     }
 });
 

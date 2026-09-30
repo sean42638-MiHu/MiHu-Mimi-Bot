@@ -287,10 +287,10 @@ router.get('/system/audit-logs', ensureAuth, checkPerm('action_view_audit_logs')
 router.post('/system/settings', ensureAuth, checkPerm('action_system_config'), async (req, res) => {
     try {
         await updateWithdrawalSettings(req);
-        return res.redirect('/system/settings?saved=1');
+        return res.redirect(303, '/system/settings?saved=1');
     } catch (error) {
         console.error('提款設定更新失敗:', error.message);
-        return res.redirect('/system/settings?error=' + encodeURIComponent(error.message === '提款日期或最低金額設定無效' ? error.message : '系統設定儲存失敗，請稍後再試。'));
+        return res.redirect(303, '/system/settings?error=' + encodeURIComponent(error.message === '提款日期或最低金額設定無效' ? error.message : '系統設定儲存失敗，請稍後再試。'));
     }
 });
 
@@ -298,16 +298,16 @@ router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('actio
     const target = String(req.body.target || '').trim();
     const isDevelopment = String(process.env.APP_ENV || '').trim().toLowerCase() === 'development';
     const requiredPermission = target === 'production' ? 'action_bot_deploy_production' : 'action_bot_deploy_dev';
-    if (!res.locals.hasPerm(requiredPermission)) return res.redirect('/system/settings?discordDeploy=error');
+    if (!res.locals.hasPerm(requiredPermission)) return res.redirect(303, '/system/settings?discordDeploy=error');
     if (!['development', 'production'].includes(target)
         || (target === 'development' && (!isDevelopment || !String(process.env.GUILD_DEV_ID || '').trim()))
         || (target === 'production' && (!getDiscordControlStatus().productionGateOpen || isDevelopment))) {
-        return res.redirect('/system/settings?discordDeploy=error');
+        return res.redirect(303, '/system/settings?discordDeploy=error');
     }
 
     const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
     const applicationId = process.env.DISCORD_CLIENT_ID;
-    if (!token || !applicationId) return res.redirect('/system/settings?discordDeploy=error');
+    if (!token || !applicationId) return res.redirect(303, '/system/settings?discordDeploy=error');
 
     try {
         const { REST } = require('discord.js');
@@ -319,7 +319,7 @@ router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('actio
             commandCollection: client.commands,
             env: { ...process.env, DISCORD_COMMAND_REGISTRATION_ENABLED: 'true' }
         });
-        if (!result.success) return res.redirect('/system/settings?discordDeploy=error');
+        if (!result.success) return res.redirect(303, '/system/settings?discordDeploy=error');
         await writeAuditLog({
             operatorId: req.user.id,
             studioId: req.user.studio_id ?? null,
@@ -329,10 +329,10 @@ router.post('/system/settings/discord/deploy', ensureAuth, requireAnyPerm('actio
             after: { target, commandCount: result.commandCount, success: true },
             metadata: { environment: target === 'development' ? 'development' : 'production', commandCount: result.commandCount }
         });
-        return res.redirect('/system/settings?discordDeploy=success');
+        return res.redirect(303, '/system/settings?discordDeploy=success');
     } catch (error) {
         console.error('Discord command deployment failed:', error.code || error.message);
-        return res.redirect('/system/settings?discordDeploy=error');
+        return res.redirect(303, '/system/settings?discordDeploy=error');
     }
 });
 
@@ -427,9 +427,9 @@ router.get('/system/payout-settings', ensureAuth, checkPerm('view_system_setting
 router.post('/system/payout-settings', ensureAuth, checkPerm('action_system_config'), async (req, res) => {
     try {
         await updateWithdrawalSettings(req);
-        return res.redirect('/system/payout-settings?saved=1');
+        return res.redirect(303, '/system/payout-settings?saved=1');
     } catch (error) {
-        return res.redirect('/system/payout-settings?error=' + encodeURIComponent('儲存提款設定失敗'));
+        return res.redirect(303, '/system/payout-settings?error=' + encodeURIComponent('儲存提款設定失敗'));
     }
 });
 
@@ -455,7 +455,7 @@ router.post('/system/vip/update/:level', ensureAuth, checkPerm('action_vip_confi
     if (!Array.isArray(rewards)) rewards = [rewards];
     rewards = rewards.map(r => r.trim()).filter(Boolean);
     if (color !== undefined && color !== null && String(color).trim() !== '' && !isValidVipColor(color)) {
-        return res.redirect('/system/vip?error=VIP色碼格式無效');
+        return res.redirect(303, '/system/vip?error=VIP色碼格式無效');
     }
     const normalizedColor = normalizeVipColor(color, DEFAULT_VIP_COLOR);
 
@@ -463,7 +463,7 @@ router.post('/system/vip/update/:level', ensureAuth, checkPerm('action_vip_confi
         'SELECT level, name, spent_threshold, deposit_threshold, rewards, color FROM vip_tiers WHERE level = ?',
         [level], (error, row) => error ? reject(error) : resolve(row || null)
     ));
-    if (!before) return res.redirect('/system/vip?error=找不到VIP等級');
+    if (!before) return res.redirect(303, '/system/vip?error=找不到VIP等級');
     try {
         await runSystemTransaction(async () => {
         await runSql('UPDATE vip_tiers SET spent_threshold = ?, deposit_threshold = ?, rewards = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE level = ?',
@@ -479,9 +479,9 @@ router.post('/system/vip/update/:level', ensureAuth, checkPerm('action_vip_confi
         });
         });
         saveVipJsonFromDb();
-        return res.redirect('/system/vip?saved=1');
+        return res.redirect(303, '/system/vip?saved=1');
     } catch (error) {
-        return res.redirect('/system/vip?error=更新失敗');
+        return res.redirect(303, '/system/vip?error=更新失敗');
     }
 });
 
@@ -489,7 +489,7 @@ router.post('/system/vip/add', ensureAuth, checkPerm('action_vip_config'), async
     const { level, name, spent_threshold, deposit_threshold, initial_reward, color } = req.body;
     const rewards = initial_reward ? [initial_reward.trim()] : [];
     if (color !== undefined && color !== null && String(color).trim() !== '' && !isValidVipColor(color)) {
-        return res.redirect('/system/vip?error=VIP色碼格式無效');
+        return res.redirect(303, '/system/vip?error=VIP色碼格式無效');
     }
     const normalizedColor = normalizeVipColor(color, DEFAULT_VIP_COLOR);
 
@@ -508,9 +508,9 @@ router.post('/system/vip/add', ensureAuth, checkPerm('action_vip_config'), async
         });
         });
         saveVipJsonFromDb();
-        return res.redirect('/system/vip?saved=1');
+        return res.redirect(303, '/system/vip?saved=1');
     } catch (error) {
-        return res.redirect('/system/vip?error=新增失敗');
+        return res.redirect(303, '/system/vip?error=新增失敗');
     }
 });
 
@@ -520,11 +520,11 @@ router.get('/system/commission', ensureAuth, checkPerm('view_commission'), (req,
 });
 
 router.post('/system/commission/update', ensureAuth, checkPerm('action_commission_config'), (req, res) => {
-    res.redirect('/management/commission');
+    res.redirect(303, '/management/commission');
 });
 
 router.post('/system/commission/services', ensureAuth, checkPerm('action_commission_config'), (req, res) => {
-    res.redirect('/management/commission');
+    res.redirect(303, '/management/commission');
 });
 
 // 身分權限管理
@@ -569,11 +569,11 @@ router.post('/system/roles/update-permissions', ensureAuth, checkPerm('action_ro
                 metadata: { source: 'system-role-route', permissionDiff: permissionDiff(parsePermissionData(before.permissions).keys, parsePermissionData(storedPermissions).keys) }
             });
         });
-        return res.redirect('/system/roles?saved=1');
+        return res.redirect(303, '/system/roles?saved=1');
     } catch (err) {
         if (err.statusCode === 404) return res.status(404).send(err.message);
         if (isRoleDelegationError(err)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '角色權限修改' });
-        return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
+        return res.redirect(303, '/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
 
@@ -599,11 +599,11 @@ router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('action_role_
                 metadata: { source: 'system-role-route', changedFields: ['name', 'category', 'tier_level', 'description'] }
             });
         });
-        return res.redirect('/system/roles?saved=1');
+        return res.redirect(303, '/system/roles?saved=1');
     } catch (error) {
         if (error.statusCode === 404) return res.status(404).send(error.message);
         if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '角色資料修改' });
-        return res.redirect('/system/roles?error=' + encodeURIComponent('身分組更新失敗'));
+        return res.redirect(303, '/system/roles?error=' + encodeURIComponent('身分組更新失敗'));
     }
 });
 
@@ -629,11 +629,11 @@ router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('action_role
                 metadata: { source: 'system-role-route', permissionDiff: permissionDiff(parsePermissionData(before.permissions).keys, parsePermissionData(storedPermissions).keys) }
             });
         });
-        return res.redirect('/system/roles?saved=1');
+        return res.redirect(303, '/system/roles?saved=1');
     } catch (error) {
         if (error.statusCode === 404) return res.status(404).send(error.message);
         if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '角色權限修改' });
-        return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
+        return res.redirect(303, '/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
 
@@ -662,10 +662,10 @@ router.post('/system/roles/add', ensureAuth, checkPerm('action_role_manage'), as
                 metadata: { source: 'system-role-route', permissionDiff: permissionDiff([], permissions) }
             });
         });
-        return res.redirect('/system/roles?saved=1');
+        return res.redirect(303, '/system/roles?saved=1');
     } catch (error) {
         if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '新增身分組' });
-        return res.redirect('/system/roles?error=' + encodeURIComponent('新增身分組失敗'));
+        return res.redirect(303, '/system/roles?error=' + encodeURIComponent('新增身分組失敗'));
     }
 });
 
@@ -691,11 +691,11 @@ router.post('/system/roles/delete/:id', ensureAuth, checkPerm('action_role_manag
                 metadata: { source: 'system-role-route', deletedRole: { role_key: before.role_key, name: before.name, tier_level: before.tier_level } }
             });
         });
-        return res.redirect('/system/roles?saved=1');
+        return res.redirect(303, '/system/roles?saved=1');
     } catch (error) {
         if ([404, 409].includes(error.statusCode)) return res.status(error.statusCode).send(error.message);
         if (isRoleDelegationError(error)) return denyPermission(req, res, ['action_role_manage'], { kind: 'action', feature: '刪除身分組' });
-        return res.redirect('/system/roles?error=' + encodeURIComponent('身分組刪除失敗'));
+        return res.redirect(303, '/system/roles?error=' + encodeURIComponent('身分組刪除失敗'));
     }
 });
 

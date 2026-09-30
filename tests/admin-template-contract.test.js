@@ -55,8 +55,10 @@ test('Staff sensitive unlock uses confirmation intent and one-time in-memory vie
     assert.match(source, /if \(!isCurrentDetailView\(staffId, generation\)\) return;\s*\n\s*maskSensitiveFields\(\);/);
     assert.match(source, /if \(requestId === sensitiveRequestId && isCurrentDetailView\(staffId, generation\) && unlockSensitiveDataBtn\)/);
     assert.match(modalSource, /modal-footer[\s\S]*unlockSensitiveDataBtn[\s\S]*data-bs-dismiss="modal">關閉/);
-    assert.match(modalSource, /id="detailRealName">限制查看</);
-    assert.match(modalSource, /id="detailBankAccount">限制查看</);
+    assert.match(modalSource, /id="detailRealName"[^>]*>限制查看</);
+    assert.match(modalSource, /id="detailBankAccount"[^>]*>限制查看</);
+    assert.match(modalSource, /data-sensitive-surface/);
+    assert.match(modalSource, /data-sensitive-placeholder="限制查看"/);
     assert.doesNotMatch(source, /localStorage|sessionStorage/);
 });
 
