@@ -89,6 +89,7 @@
             flex-direction: column;
         }
         .modal-body { overflow-y: auto; }
+        .modal-content.role-modal-content { background: rgba(15, 23, 42, 0.95); }
 
         .form-control-glass {
             background-color: rgba(255, 255, 255, 0.05) !important;
@@ -123,11 +124,13 @@
 
 /* Keep the role page aligned with other admin pages. */
 .roles-page.admin-page-content { padding: 20px 36px 32px 36px; background: #0b0914; }
-.roles-scroll-container { max-height: 380px; overflow-y: auto; scrollbar-color: #9333ea #171326; scrollbar-width: thin; }
+.roles-scroll-container { width: 100%; max-width: 100%; max-height: 380px; overflow: auto; scrollbar-color: #9333ea #171326; scrollbar-width: thin; }
 .roles-scroll-container::-webkit-scrollbar { width: 8px; height: 8px; }
 .roles-scroll-container::-webkit-scrollbar-track { background: #171326; border-radius: 8px; }
 .roles-scroll-container::-webkit-scrollbar-thumb { background: #9333ea; border-radius: 8px; }
-.roles-scroll-container .mihu-table thead th { position: sticky; top: 0; z-index: 2; background: #1b1630; }
+.roles-scroll-container .mihu-table { min-width: 900px; }
+.roles-scroll-container .mihu-table thead th { position: sticky; top: 0; z-index: 10; background: #1b1630; }
+.roles-scroll-container .mihu-table td { white-space: nowrap; }
 .roles-scroll-container .mihu-table tbody tr { height: 66px; }
 #editRolePermsModal .admin-permission-item .form-switch-input { appearance: none; width: 2.25rem; height: 1.25rem; border: 1px solid #6b5a84; border-radius: 1rem; background: #403556; background-image: none !important; position: relative; flex: 0 0 auto; }
 #editRolePermsModal .admin-permission-item .form-switch-input:checked { background: #9333ea; border-color: #c084fc; box-shadow: 0 0 12px rgba(168, 85, 247, .45); }
@@ -144,6 +147,14 @@
 #viewRoleNameBadge[data-rolekey="talent"] { background: rgba(14,165,233,.2); border: 1px solid rgba(56,189,248,.6); color: #bae6fd; }
 .roles-scroll-container tr[data-rolekey="cfo"] .role-pill-badge,
 #viewRoleNameBadge[data-rolekey="cfo"] { background: rgba(168,85,247,.25); border: 1px solid rgba(192,132,252,.6); color: #e9d5ff; }
+.roles-scroll-container tr[data-rolekey="admin"] .role-pill-badge,
+#viewRoleNameBadge[data-rolekey="admin"] { background: rgba(239,68,68,.22); border: 1px solid rgba(248,113,113,.6); color: #fecaca; }
+.roles-scroll-container tr:is([data-rolekey="aftersales"], [data-rolekey="after_sales"]) .role-pill-badge,
+#viewRoleNameBadge:is([data-rolekey="aftersales"], [data-rolekey="after_sales"]) { background: rgba(234,179,8,.2); border: 1px solid rgba(250,204,21,.58); color: #fef08a; }
+.roles-scroll-container tr:is([data-rolekey="cs"], [data-rolekey="manager"], [data-rolekey="cs_director"], [data-rolekey="staff"]) .role-pill-badge,
+#viewRoleNameBadge:is([data-rolekey="cs"], [data-rolekey="manager"], [data-rolekey="cs_director"], [data-rolekey="staff"]) { background: rgba(14,165,233,.2); border: 1px solid rgba(56,189,248,.6); color: #bae6fd; }
+.roles-scroll-container tr[data-rolekey="member"] .role-pill-badge,
+#viewRoleNameBadge[data-rolekey="member"] { background: rgba(148,163,184,.13); border: 1px solid rgba(148,163,184,.35); color: #cbd5e1; }
 #editRolePermsModal .admin-permission-item .form-switch-input::after { content: ''; display: block; width: .9rem; height: .9rem; border-radius: 50%; background: #fff; position: absolute; top: .13rem; left: .15rem; transition: transform .15s ease; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 #editRolePermsModal .admin-permission-item .form-switch-input:checked::after { transform: translateX(1rem); }
 #editRolePermsModal .admin-permission-item .form-switch-input:focus-visible { outline: 2px solid #e9d5ff; outline-offset: 3px; }

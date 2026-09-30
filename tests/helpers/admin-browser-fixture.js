@@ -3,6 +3,9 @@
 const path = require('node:path');
 const express = require('express');
 const ejs = require('ejs');
+const { PERMISSION_METADATA } = require('../../config/permissions');
+const { KNOWN_LEGACY_PERMISSIONS, LEGACY_IMPLICATIONS } = require('../../utils/permissionResolver');
+const { getRoleInfo } = require('../../utils/roleHelper');
 
 const root = path.join(__dirname, '..', '..');
 const app = express();
@@ -13,7 +16,6 @@ app.use(express.static(path.join(root, 'public')));
 const sidebarPages = new Map([
     ['/management/analytics', ['analytics', '公司營運統計']],
     ['/management/members', ['members', '會員名單']],
-    ['/management/staff', ['staff', '員工列表']],
     ['/management/payroll', ['payroll', '薪資管理']]
 ]);
 const browserPermissions = ['analytics.view', 'members.view', 'member_ledger.view', 'staff.view', 'payroll.view'];
@@ -34,6 +36,59 @@ for (const [route, [activePage, title]] of sidebarPages) {
         }
     });
 }
+
+const browserUser = { id: '123456789012345678', username: 'browser-check', role: 'admin', avatar: null };
+const roleFixtures = [
+    { id: 1, role_key: 'admin', name: '店長', category: '最高權限', tier_level: 100, color_badge: 'danger', description: '店務管理', permissions: ['*'], canManageRole: true },
+    { id: 2, role_key: 'cfo', name: '財務長', category: '主管職位', tier_level: 90, color_badge: 'danger', description: '財務管理', permissions: ['payroll.view'], canManageRole: true },
+    { id: 3, role_key: 'aftersales', name: '售後管理', category: '主管職位', tier_level: 80, color_badge: 'warning', description: '售後服務', permissions: ['orders.view'], canManageRole: true },
+    { id: 4, role_key: 'cs', name: '客服', category: '客服職位', tier_level: 50, color_badge: 'info', description: '客服服務', permissions: ['orders.view'], canManageRole: true },
+    { id: 5, role_key: 'talent', name: '陪陪', category: '一般職位', tier_level: 30, color_badge: 'primary', description: '陪玩服務', permissions: ['profile'], canManageRole: true },
+    { id: 6, role_key: 'member', name: '會員', category: '會員', tier_level: 10, color_badge: 'secondary', description: '一般會員', permissions: ['profile'], canManageRole: true }
+];
+
+app.get('/management/staff', (req, res) => {
+    res.render('staff', {
+        currentUser: browserUser,
+        userPerms: ['*'],
+        hasPerm: () => true,
+        getRoleInfo,
+        flashData: {},
+        csrfToken: 'browser-fixture',
+        staffList: [{
+            id: browserUser.id, username: browserUser.username, global_name: '驗收店長', custom_nickname: null,
+            avatar: null, role: 'member', role_name: '會員', role_tier_level: 10, role_color_badge: 'secondary',
+            is_platform_superuser: 1, studio_id: 1, status: 'idle', talent_commission_rate: null,
+            staff_channel_id: null, total_orders: 0, total_revenue: 0, created_at: '2026-09-30'
+        }],
+        assignableRoles: roleFixtures,
+        canViewSensitive: false,
+        activePage: 'staff',
+        success: false,
+        errorMsg: null
+    });
+});
+
+app.get('/system/roles', (req, res) => {
+    res.render('roles', {
+        currentUser: browserUser,
+        user: browserUser,
+        userPerms: ['*'],
+        hasPerm: () => true,
+        getRoleInfo,
+        flashData: {},
+        csrfToken: 'browser-fixture',
+        activePage: 'roles',
+        roles: roleFixtures,
+        rolesData: roleFixtures,
+        saved: false,
+        permissionMetadata: PERMISSION_METADATA,
+        delegatablePermissions: [...Object.keys(PERMISSION_METADATA), ...KNOWN_LEGACY_PERMISSIONS],
+        legacyPermissionKeys: [...KNOWN_LEGACY_PERMISSIONS],
+        legacyPermissionImplications: LEGACY_IMPLICATIONS,
+        canGrantWildcard: true
+    });
+});
 
 app.get('/management/members/transactions', (req, res) => {
     res.render('member_transactions', {

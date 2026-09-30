@@ -86,6 +86,11 @@
         border-radius: 20px;
         letter-spacing: 0.4px;
     }
+    .staff-role-admin { color: #fecaca; background: rgba(239, 68, 68, .22); border: 1px solid rgba(248, 113, 113, .6); }
+    .staff-role-cfo { color: #e9d5ff; background: rgba(168, 85, 247, .25); border: 1px solid rgba(192, 132, 252, .6); }
+    .staff-role-aftersales, .staff-role-after_sales { color: #fef08a; background: rgba(234, 179, 8, .2); border: 1px solid rgba(250, 204, 21, .58); }
+    .staff-role-cs, .staff-role-manager, .staff-role-cs_director, .staff-role-talent, .staff-role-staff { color: #bae6fd; background: rgba(14, 165, 233, .2); border: 1px solid rgba(56, 189, 248, .6); }
+    .staff-role-member { color: #cbd5e1; background: rgba(148, 163, 184, .13); border: 1px solid rgba(148, 163, 184, .35); }
 
     .status-pill {
         display: inline-flex;
@@ -180,10 +185,14 @@
                         : `https://cdn.discordapp.com/embed/avatars/0.png`;
                     const displayName = s.custom_nickname || s.global_name || s.username;
 
-                    // 🚀 呼叫全域 getRoleInfo 工具，確保身分與全後台 100% 同步連動
-                    const roleObj = (typeof getRoleInfo === 'function')
+                    const fallbackRole = (typeof getRoleInfo === 'function')
                         ? getRoleInfo(s.role)
                         : { name: '陪陪', badgeClass: 'bg-primary' };
+                    const roleObj = {
+                        name: s.role_name || fallbackRole.name,
+                        badgeClass: s.role ? `staff-role-${String(s.role).replace(/[^a-zA-Z0-9_-]/g, '')}` : fallbackRole.badgeClass
+                    };
+                    const isPlatformSuperuser = Number(s.is_platform_superuser) === 1;
 
                     const statusMap = {
                         'idle': { name: '空閒中', class: 'status-idle', icon: 'fa-circle-check' },
@@ -207,7 +216,7 @@
                         username: s.username,
                         avatar: avUrl,
                         role: s.role,
-                        roleName: roleObj.name,
+                        roleName: `${roleObj.name}${isPlatformSuperuser ? ' · 最高權限' : ''}`,
                         status: s.status || 'idle',
                         statusName: statusObj.name,
                         commissionRate: hasPersonalRate ? personalRate : null,
@@ -236,7 +245,8 @@
 
                         <!-- 👤 所屬職位標籤 (全後台同步) -->
                         <td class="text-center">
-                            <span class="admin-badge admin-badge-purple <%= roleObj.badgeClass %> role-badge-tag"><%= roleObj.name %></span>
+                            <span class="admin-badge <%= roleObj.badgeClass %> role-badge-tag"><%= roleObj.name %></span>
+                            <% if (isPlatformSuperuser) { %><span class="admin-badge admin-badge-danger ms-1">最高權限</span><% } %>
                         </td>
 
                         <td class="text-center">
@@ -280,9 +290,6 @@
                                     </button>
                                 <% } %>
 
-                                <% if (checkPermission('staff.manage')) { %><a href="/management/staff/sync/<%= s.id %>" class="btn btn-sm btn-outline-info btn-circle-icon" title="從 Discord 刷新資料">
-                                    <i class="fa-solid fa-rotate"></i>
-                                </a><% } %>
                             </div>
                         </td>
                     </tr>

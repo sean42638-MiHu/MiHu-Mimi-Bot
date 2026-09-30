@@ -1,7 +1,7 @@
 <!-- 彈窗 1：檢視身分權限 Modal -->
 <div class="modal fade" id="viewRoleModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 850px;">
-        <div class="modal-content modal-content-glass">
+        <div class="modal-content modal-content-glass role-modal-content">
             <div class="modal-header border-0 pb-0 pt-4 px-4">
                 <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
                     <span id="viewRoleNameBadge" class="role-pill-badge badge-style-danger fs-6 px-3 py-1">職位</span>
@@ -45,7 +45,7 @@
 %>
 <div class="modal fade admin-modal" id="editRolePermsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl admin-modal-dialog admin-modal-dialog--lg">
-        <div class="modal-content modal-content-glass admin-modal-content">
+        <div class="modal-content modal-content-glass admin-modal-content role-modal-content">
             <form class="admin-form" action="/system/roles/update-permissions" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中...">
                 <div class="modal-header border-0 pb-0 pt-4 px-4">
                     <h5 class="modal-title fw-bold text-white"><i class="fa-solid fa-user-shield text-warning me-2"></i>編輯身分權限：<span id="targetRoleName" class="text-info"></span></h5>

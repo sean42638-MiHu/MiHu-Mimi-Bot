@@ -81,11 +81,30 @@ test('role editor reloads checkbox state from stored raw permissions rather than
 
 test('role list and permission switches keep the five-row visual contract', () => {
     const css = fs.readFileSync(path.join(root, 'public/css/roles-page.css'), 'utf8');
-    assert.match(css, /\.roles-scroll-container\s*\{[^}]*max-height:\s*380px[^}]*overflow-y:\s*auto/s);
-    assert.match(css, /\.roles-scroll-container \.mihu-table thead th\s*\{[^}]*position:\s*sticky[^}]*top:\s*0/s);
+    assert.match(css, /\.roles-scroll-container\s*\{[^}]*max-height:\s*380px[^}]*overflow:\s*auto/s);
+    assert.match(css, /\.roles-scroll-container \.mihu-table\s*\{[^}]*min-width:\s*900px/s);
+    assert.match(css, /\.roles-scroll-container \.mihu-table thead th\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*z-index:\s*10[^}]*background:\s*#[0-9a-f]+/s);
     assert.match(css, /\.roles-scroll-container \.mihu-table tbody tr\s*\{[^}]*height:\s*66px/s);
     assert.match(css, /\.form-switch-input\s*\{[^}]*background-image:\s*none !important/s);
     assert.match(css, /\.form-switch-input::after\s*\{[^}]*border-radius:\s*50%/s);
+});
+
+test('roles page uses the shared app layout and renders each existing partial once', () => {
+    const page = fs.readFileSync(path.join(root, 'views/roles.ejs'), 'utf8');
+    assert.match(page, /<body class="mihu-admin-page text-light">\s*<div class="app-layout">/);
+    for (const partial of ['partials/sidebar', 'partials/roles_table', 'modals/role_permission_modal', 'modals/role_info_modal']) {
+        assert.equal(page.split(partial).length - 1, 1, partial);
+    }
+});
+
+test('all existing role modals use the scoped purple-black glass surface', () => {
+    const modalSource = [
+        fs.readFileSync(path.join(root, 'views/modals/role_permission_modal.ejs'), 'utf8'),
+        fs.readFileSync(path.join(root, 'views/modals/role_info_modal.ejs'), 'utf8')
+    ].join('\n');
+    assert.equal((modalSource.match(/role-modal-content/g) || []).length, 4);
+    const css = fs.readFileSync(path.join(root, 'public/css/roles-page.css'), 'utf8');
+    assert.match(css, /\.modal-content\.role-modal-content\s*\{[^}]*background:\s*rgba\(15,\s*23,\s*42,\s*0\.95\)/s);
 });
 
 test('order controls expose only capabilities accepted by backend routes', () => {

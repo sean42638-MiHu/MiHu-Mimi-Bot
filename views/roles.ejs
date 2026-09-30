@@ -8,8 +8,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/roles-page.css">
 </head>
-<body>
+<body class="mihu-admin-page text-light">
 
+<div class="app-layout">
 <%- include('partials/sidebar', { activePage: 'roles' }) %>
 
 <div class="main-wrapper">
@@ -26,6 +27,7 @@
 
         <%- include('partials/roles_table') %>
     </div>
+</div>
 </div>
 
 <%- include('modals/role_permission_modal') %>

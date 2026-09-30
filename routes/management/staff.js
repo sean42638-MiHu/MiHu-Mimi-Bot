@@ -2,19 +2,19 @@ const express = require('express');
 const router = express.Router();
 const db = require('../../database');
 const { ensureAuth, checkPerm } = require('../../middleware/auth');
-const { sortByRoleWeight } = require('../../utils/roleHelper');
 const { normalizeTalentShareRate } = require('../../utils/commissionHelper');
 const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
 const { decryptSensitiveFields } = require('../../utils/sensitiveDataCrypto');
 const { withTransactionGate } = require('../../utils/transactionGate');
 const { hasResolvedPermission } = require('../../utils/permissionResolver');
+const { listRoles, listStaffDirectory } = require('../../services/staffDirectoryService');
 const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 
 // 2.1 渲染「員工列表」頁面 (對應 /management/staff)
-router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
+router.get('/', ensureAuth, checkPerm('staff.view'), async (req, res, next) => {
     const canViewSensitive = typeof res.locals.hasPerm === 'function'
         ? res.locals.hasPerm('staff.view_sensitive')
         : hasResolvedPermission(res.locals.userPerms, 'staff.view_sensitive');
@@ -24,70 +24,24 @@ router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
     if (!canViewAllStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
     }
-    const studioFilter = canViewAllStudios ? '' : 'AND u.studio_id = ?';
-    const queryParams = canViewAllStudios ? [] : [actorStudioId];
-    const sensitiveColumns = canViewSensitive
-        ? 'u.real_name, u.bank_name, u.bank_code, u.bank_branch, u.bank_account'
-        : 'NULL AS real_name, NULL AS bank_name, NULL AS bank_code, NULL AS bank_branch, NULL AS bank_account';
-    const safeStaffSql = `
-        SELECT u.id, u.username, u.global_name, u.custom_nickname, u.avatar, u.role, u.studio_id,
-            u.status, u.birthday, u.gender, u.mbti, u.commission_rate, u.staff_channel_id, u.created_at,
-            ${sensitiveColumns}, t.commission_rate AS talent_commission_rate,
-            COALESCE((SELECT COUNT(*) FROM orders WHERE (staff_id = u.id OR player_id = u.id) AND studio_id = u.studio_id AND status = 'completed'), 0) as total_orders,
-            COALESCE((SELECT SUM(total_amount) FROM orders WHERE (staff_id = u.id OR player_id = u.id) AND studio_id = u.studio_id AND status = 'completed'), 0) as total_revenue
-        FROM users u 
-        LEFT JOIN talents t ON t.user_id = u.id
-        WHERE (u.role IN ('admin', 'cfo', 'aftersales', 'after_sales', 'manager', 'cs_director', 'cs', 'staff', 'talent')
-           OR u.role IS NULL
-           OR u.role != 'member') ${studioFilter}
-    `;
-
-    db.all('SELECT * FROM roles ORDER BY id ASC', [], (rolesError, roles) => {
-        if (rolesError) return next(rolesError);
+    try {
+        const [roles, directory] = await Promise.all([
+            listRoles(db),
+            listStaffDirectory({ db, studioId: actorStudioId, allStudios: canViewAllStudios, includeSensitive: canViewSensitive })
+        ]);
+        if (directory.usedFallback) {
+            console.error('員工統計查詢失敗，已使用不含訂單統計的安全查詢:', directory.primaryError.message);
+        }
         const actor = { roleKey: req.user.role, permissions: userPerms };
         const assignableRoles = hasResolvedPermission(userPerms, 'staff.manage')
-            ? (roles || []).filter(role => canAssignRole(actor, role))
+            ? roles.filter(role => canAssignRole(actor, role))
             : [];
-        db.all(safeStaffSql, queryParams, (err, staffList) => {
-        if (err) {
-            console.error('❌ 載入員工清單 SQL 錯誤:', err);
-            const fallbackSql = `SELECT u.id, u.username, u.global_name, u.custom_nickname, u.avatar, u.role, u.studio_id,
-                u.status, u.birthday, u.gender, u.mbti, u.commission_rate, u.staff_channel_id, u.created_at,
-                ${sensitiveColumns}, t.commission_rate AS talent_commission_rate
-                FROM users u LEFT JOIN talents t ON t.user_id = u.id
-                WHERE (u.role != 'member' OR u.role IS NULL) ${studioFilter}`;
-            db.all(fallbackSql, queryParams, (fbErr, fbList) => {
-                let staffRows = fbList || [];
-                try {
-                    if (canViewSensitive) staffRows = staffRows.map(row => decryptSensitiveFields(row, payrollSensitiveFields));
-                } catch (error) {
-                    return res.status(503).send('目前無法安全載入員工薪轉資料');
-                }
-                const sorted = sortByRoleWeight(staffRows);
-                res.render('staff', {
-                    staffList: sorted,
-                    canViewSensitive,
-                    currentUser: req.user,
-                    userPerms,
-                    assignableRoles,
-                    activePage: 'staff',
-                    success: req.query.success === '1',
-                    errorMsg: req.query.error || null
-                });
-            });
-            return;
-        }
-
-        let safeStaffList = staffList || [];
-        try {
-            if (canViewSensitive) safeStaffList = safeStaffList.map(row => decryptSensitiveFields(row, payrollSensitiveFields));
-        } catch (error) {
-            return res.status(503).send('目前無法安全載入員工薪轉資料');
-        }
-        const sortedStaff = sortByRoleWeight(safeStaffList);
+        const staffList = canViewSensitive
+            ? directory.rows.map(row => decryptSensitiveFields(row, payrollSensitiveFields))
+            : directory.rows;
 
         res.render('staff', {
-            staffList: sortedStaff,
+            staffList,
             canViewSensitive,
             currentUser: req.user,
             userPerms,
@@ -96,8 +50,12 @@ router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
             success: req.query.success === '1',
             errorMsg: req.query.error || null
         });
-        });
-    });
+    } catch (error) {
+        if (/decrypt|cipher|authentic/i.test(String(error && error.message))) {
+            return res.status(503).send('目前無法安全載入員工薪轉資料');
+        }
+        return next(error);
+    }
 });
 
 // 2.2 💼 變更員工職位與設定 (對應 /management/staff/update/:id)
@@ -210,12 +168,12 @@ router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, re
 
 // 2.3 單一員工 Discord 刷洗 (對應 /management/staff/sync/:id)
 router.get('/sync/:id', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
-    res.redirect('/management/staff?success=1');
+    res.status(501).send('Discord 員工同步尚未實作');
 });
 
 // 2.4 全體員工 Discord 刷洗 (對應 /management/staff/sync-all)
 router.get('/sync-all', ensureAuth, checkPerm('staff.manage'), async (req, res) => {
-    res.redirect('/management/staff?success=1');
+    res.status(501).send('Discord 員工同步尚未實作');
 });
 
 module.exports = router;

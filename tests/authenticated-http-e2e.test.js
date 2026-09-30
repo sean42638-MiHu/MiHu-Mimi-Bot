@@ -252,6 +252,10 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const staff = await createSession('staff-a');
         const deniedStaff = await createRequest(port, 'GET', '/management/reconciliation', { Host: `127.0.0.1:${port}`, Cookie: staff.cookie });
         assert.equal(deniedStaff.status, 403);
+        const deniedMemberStaff = await createRequest(port, 'GET', '/management/staff', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie
+        });
+        assert.equal(deniedMemberStaff.status, 403);
 
         const managerA = await createSession('manager-a');
         const managerPayrollPage = await createRequest(port, 'GET', '/management/payroll', {
@@ -262,6 +266,17 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(managerPayrollPage.body, /payrollExportModal/);
         assert.match(managerPayrollPage.body, /export\/payouts/);
         assert.match(managerPayrollPage.body, /export\/bank-accounts/);
+        const managerStaffPage = await createRequest(port, 'GET', '/management/staff', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(managerStaffPage.status, 200, managerStaffPage.body);
+        assert.match(managerStaffPage.body, /admin-a/);
+        assert.doesNotMatch(managerStaffPage.body, /href="\/management\/staff\/sync(?:-all|\/)/);
+        const unimplementedStaffSync = await createRequest(port, 'GET', '/management/staff/sync-all', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(unimplementedStaffSync.status, 501);
+        assert.match(unimplementedStaffSync.body, /尚未實作/);
         const anonymousSystemSettings = await createRequest(port, 'GET', '/system/settings');
         assert.equal(anonymousSystemSettings.status, 302);
         const memberSystemSettings = await createRequest(port, 'GET', '/system/settings', {
@@ -484,6 +499,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(assignmentStaffPage.status, 200, assignmentStaffPage.body);
         assert.match(assignmentStaffPage.body, /option value="delegatable_target"/);
         assert.doesNotMatch(assignmentStaffPage.body, /option value="settings_target"|option value="protected_deployer"/);
+        assert.doesNotMatch(assignmentStaffPage.body, /7777888899990000|enc:v1:/);
         const staffRoleBefore = await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='assignment-target'", (error, row) => error ? reject(error) : resolve(row.role)));
         const deniedStaffAssignment = await createRequest(port, 'POST', '/management/staff/update/assignment-target', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: assignmentManager.cookie,
@@ -816,11 +832,30 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(deniedNamedAdminOrders.status, 200);
 
         const admin = await createSession('604610298581876746');
+        await new Promise((resolve, reject) => db.run("UPDATE users SET role='member' WHERE id='604610298581876746'", error => error ? reject(error) : resolve()));
+        const memberStoredPlatformStaff = await createRequest(port, 'GET', '/management/staff', {
+            Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+        });
+        assert.equal(memberStoredPlatformStaff.status, 200, memberStoredPlatformStaff.body);
+        assert.match(memberStoredPlatformStaff.body, /platform-user/);
+        assert.match(memberStoredPlatformStaff.body, /staff-role-member[^>]*>Member<\/span>[\s\S]*最高權限/);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='604610298581876746'", (error, row) => error ? reject(error) : resolve(row.role))), 'member');
+        await new Promise((resolve, reject) => db.run("UPDATE users SET role='admin' WHERE id='604610298581876746'", error => error ? reject(error) : resolve()));
         const breakGlassRoles = await createRequest(port, 'GET', '/system/roles', {
             Host: `127.0.0.1:${port}`, Cookie: admin.cookie
         });
         assert.equal(breakGlassRoles.status, 200, breakGlassRoles.body);
         assert.match(breakGlassRoles.body, /id="permission_wildcard"/);
+        const updateDelegatableTier = await createRequest(port, 'POST', '/system/roles/update-info/16', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: admin.cookie,
+            'X-CSRF-Token': admin.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'name=Delegatable+Target&category=%E4%B8%BB%E7%AE%A1%E8%81%B7%E4%BD%8D&tier_level=95&description=Sorted');
+        assert.equal(updateDelegatableTier.status, 302, updateDelegatableTier.body);
+        const reorderedRoles = await createRequest(port, 'GET', '/system/roles', {
+            Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+        });
+        assert.equal(reorderedRoles.status, 200, reorderedRoles.body);
+        assert.ok(reorderedRoles.body.indexOf('data-rolekey="delegatable_target"') < reorderedRoles.body.indexOf('data-rolekey="admin"'));
         const sidebarDestinations = [
             '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
             '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
