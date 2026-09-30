@@ -12,7 +12,7 @@ const {
 } = require('../utils/permissionResolver');
 
 const PAYMENT_LEDGER_TYPES = Object.freeze(['order_payment', 'payment']);
-const TERMINAL_ORDER_STATUSES = new Set(['cancelled', 'refunded']);
+const CLOSED_ORDER_STATUSES = new Set(['cancelled', 'refunded']);
 const PAYOUT_LOCKED_STATES = new Set(['pending', 'paid', 'completed']);
 
 function createBatchError(message, { statusCode = 409, code = 'ORDER_BATCH_CONFLICT', details = null } = {}) {
@@ -269,15 +269,13 @@ async function evaluateOrder(order, actorContext, tableState) {
         reasons.push('無權操作其他工作室訂單');
     }
 
-    if (TERMINAL_ORDER_STATUSES.has(status)) {
-        reasons.push(`訂單狀態為 ${order.status}，不可重複退款刪除`);
-    }
-
     if (status === 'completed' && !actorContext.allowCompletedRefund) {
         reasons.push('已完成訂單退款需由店長審核');
     }
 
-    if (status === 'completed' && actorContext.allowCompletedRefund) {
+    const hasEarnerIdentity = String(order.talent_id || order.staff_id || '').trim().length > 0;
+    if ((status === 'completed' && actorContext.allowCompletedRefund)
+        || (CLOSED_ORDER_STATUSES.has(status) && hasEarnerIdentity)) {
         reasons.push(...await detectSettlementRisk(order, tableState));
     }
 
@@ -315,22 +313,43 @@ async function evaluateOrder(order, actorContext, tableState) {
     const refundSum = refundRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
 
     let refundableAmount = 0;
+    let actualCharged = 0;
+    let alreadyRefunded = Math.max(0, refundSum);
 
-    if (paymentCount === 0) {
-        if (Number(order.total_amount || 0) !== 0) {
-            reasons.push('找不到可驗證付款流水，無法計算實際可退款金額');
-        }
-    } else if (!hasInvalidPaymentDirection && !hasInvalidRefundDirection && !hasInvalidAdjustment && !ledger.inconsistent && unknownOrderLinkedRows.length === 0) {
-        const netCharged = -(paymentSum + adjustmentSum);
-        if (!Number.isFinite(netCharged) || netCharged < 0) {
-            reasons.push('訂單扣款/沖銷總額異常，無法安全計算退款');
+    if (!hasInvalidPaymentDirection && !hasInvalidRefundDirection && !hasInvalidAdjustment && !ledger.inconsistent && unknownOrderLinkedRows.length === 0) {
+        if (paymentCount === 0) {
+            const zeroAmount = Math.abs(Number(order.total_amount || 0)) < 0.000001;
+            if (!zeroAmount) {
+                reasons.push('找不到可驗證付款流水，無法計算實際可退款金額');
+            }
+            if (adjustmentRows.length > 0) {
+                reasons.push('零元訂單存在調價流水，無法安全判定僅刪除');
+            }
+            if (refundRows.length > 0) {
+                reasons.push('零元訂單存在退款流水，無法安全判定僅刪除');
+            }
         } else {
-            const actualCharged = Math.max(0, netCharged);
-        const alreadyRefunded = Math.max(0, refundSum);
-        refundableAmount = Math.max(0, actualCharged - alreadyRefunded);
+            const netCharged = -(paymentSum + adjustmentSum);
+            if (!Number.isFinite(netCharged) || netCharged < 0) {
+                reasons.push('訂單扣款/沖銷總額異常，無法安全計算退款');
+            } else {
+                actualCharged = Math.max(0, netCharged);
+                alreadyRefunded = Math.max(0, refundSum);
 
-        if (refundableAmount > 0 && refundCount > 0) {
-                reasons.push('此訂單已有部分退款。受現行唯一索引限制，為避免重複退款請改走人工對帳流程。');
+                if (CLOSED_ORDER_STATUSES.has(status)) {
+                    const diff = actualCharged - alreadyRefunded;
+                    if (diff > 0.000001) {
+                        reasons.push('狀態顯示已取消/退款，但帳務仍有未退差額，禁止直接刪除');
+                    } else if (diff < -0.000001) {
+                        reasons.push('退款金額高於實際扣款，存在超額退款風險，禁止直接刪除');
+                    }
+                    refundableAmount = 0;
+                } else {
+                    refundableAmount = Math.max(0, actualCharged - alreadyRefunded);
+                    if (refundableAmount > 0 && refundCount > 0) {
+                        reasons.push('此訂單已有部分退款。受現行唯一索引限制，為避免重複退款請改走人工對帳流程。');
+                    }
+                }
             }
         }
     }
@@ -342,6 +361,9 @@ async function evaluateOrder(order, actorContext, tableState) {
         bossId: String(order.boss_id || ''),
         studioId: Number(order.studio_id),
         refundableAmount,
+        deleteOnly: refundableAmount <= 0,
+        chargedAmount: actualCharged,
+        refundedAmount: alreadyRefunded,
         reasons,
         snapshot: {
             id: Number(order.id),

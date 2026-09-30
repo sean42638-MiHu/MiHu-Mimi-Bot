@@ -191,7 +191,8 @@
                     <button type="button" class="filter-tab-btn" data-filter="pending">派單中</button>
                     <button type="button" class="filter-tab-btn" data-filter="active">進行中</button>
                     <button type="button" class="filter-tab-btn" data-filter="completed">已完成</button>
-                    <button type="button" class="filter-tab-btn" data-filter="cancelled">售後中</button>
+                    <button type="button" class="filter-tab-btn" data-filter="cancelled">已取消</button>
+                    <button type="button" class="filter-tab-btn" data-filter="refunded">已退款</button>
                     <button type="button" class="filter-tab-btn" data-filter="rejected">已駁回</button>
                 </div>
 
@@ -199,7 +200,7 @@
                     <!-- 🚀 批量刪除退款：先預覽再確認 -->
                     <form id="batchDeleteForm" action="/management/orders/batch-delete" method="POST" style="margin: 0;">
                         <input type="hidden" name="_csrf" id="batchDeleteCsrfToken" value="<%= csrfToken %>">
-                        <button type="button" class="btn-batch-delete" id="btnBatchDelete" style="display: none;">
+                        <button type="button" class="btn-batch-delete" id="btnBatchDelete" disabled>
                             <i class="fa-solid fa-trash-can"></i>
                             <span>批量刪除並退款 (<span id="selectedCount">0</span>)</span>
                         </button>
@@ -245,7 +246,7 @@
             </div>
             <div class="modal-body">
                 <p class="small mb-3 text-warning">
-                    確認後將退回實際已扣款金額，並永久刪除所選訂單；帳務流水與操作紀錄會保留。
+                    確認後會依帳務預覽結果執行「退款並刪除」或「僅刪除（本次退款 0）」；帳務流水與操作紀錄會保留。
                 </p>
                 <div class="refund-preview-board mb-3">
                     <div class="d-flex justify-content-between align-items-center small text-secondary mb-2">
@@ -439,10 +440,13 @@
                 const wrapper = document.createElement('div');
                 wrapper.className = 'preview-item';
                 const refundText = `$${Number(item.refundableAmount || 0).toLocaleString()} NTD`;
+                const deleteModeText = Number(item.refundableAmount || 0) > 0
+                    ? '本次退款'
+                    : '僅刪除 (已退款/免退款)';
                 wrapper.innerHTML = `
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="fw-semibold">${escapeHtml(item.orderNo)}</div>
-                        <div class="text-success">${refundText}</div>
+                        <div class="text-success">${deleteModeText}：${refundText}</div>
                     </div>
                     <div class="small text-secondary">狀態：${escapeHtml(item.status || '--')}</div>
                 `;
@@ -578,7 +582,7 @@
             const count = checkedBoxes.length;
 
             if (countSpan) countSpan.textContent = count;
-            if (batchBtn) batchBtn.style.display = count > 0 ? 'inline-flex' : 'none';
+            if (batchBtn) batchBtn.disabled = count === 0;
         }
 
         if (checkAll) {
@@ -599,7 +603,10 @@
         if (batchBtn && batchForm) {
             batchBtn.addEventListener('click', async () => {
                 const checkedBoxes = document.querySelectorAll('.order-checkbox:checked');
-                if (checkedBoxes.length === 0) return;
+                if (checkedBoxes.length === 0) {
+                    notifyError('請至少勾選一筆訂單再進行批量刪除。');
+                    return;
+                }
 
                 const selectedIds = [...checkedBoxes].map(cb => String(cb.value || '').trim()).filter(Boolean);
                 latestPreviewSelection = selectedIds;
@@ -619,6 +626,8 @@
                 }
             });
         }
+
+        updateBatchButton();
 
         if (batchDeleteConfirmBtn) {
             batchDeleteConfirmBtn.addEventListener('click', submitBatchDelete);

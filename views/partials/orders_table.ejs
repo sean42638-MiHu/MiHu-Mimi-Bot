@@ -145,7 +145,8 @@
                             'active': { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' },
                             'in_progress': { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' },
                             'completed': { name: '已完成', class: 'status-badge-completed', icon: 'fa-circle-check', group: 'completed' },
-                            'cancelled': { name: '售後中', class: 'status-badge-cancelled', icon: 'fa-triangle-exclamation', group: 'cancelled' },
+                            'cancelled': { name: '已取消', class: 'status-badge-cancelled', icon: 'fa-ban', group: 'cancelled' },
+                            'refunded': { name: '已退款', class: 'status-badge-cancelled', icon: 'fa-rotate-left', group: 'refunded' },
                             'rejected': { name: '已駁回', class: 'status-badge-rejected', icon: 'fa-ban', group: 'rejected' }
                         };
                         const statusObj = statusMap[o.status] || { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' };
@@ -160,9 +161,7 @@
                         const canRefund = typeof hasPerm === 'function' && hasPerm('action_order_refund');
                         const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
                         const canBatchDelete = typeof canBatchDeleteOrders !== 'undefined' ? !!canBatchDeleteOrders : false;
-                        const canBatchDeleteThisOrder = canBatchDelete
-                            && !['cancelled', 'refunded'].includes(o.status)
-                            && (o.status !== 'completed' || canRefundCompleted);
+                        const canBatchDeleteThisOrder = canBatchDelete;
 
                         const orderObj = {
                             id: o.id,

@@ -34,16 +34,18 @@ async function handleTopupModal(interaction) {
             addAmount: realAmount,
             bonusChange: bonusAmount,
             reason: note,
-            operatorId: interaction.user.id
+            operatorId: interaction.user.id,
+            mode: 'topup'
         });
 
         const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
         const userMention = targetUser ? `${targetUser}` : `<@${targetUserId}>`;
         const avatarUrl = targetUser ? targetUser.displayAvatarURL({ dynamic: true }) : null;
 
+        const hasVipWarning = result && result.vipUpdateStatus === 'failed';
         const embed = new EmbedBuilder()
-            .setTitle('🪙 會員資金充值與調帳成功')
-            .setColor(0x9333ea)
+            .setTitle(hasVipWarning ? '🪙 帳務已成功，VIP 同步失敗' : '🪙 會員資金充值與調帳成功')
+            .setColor(hasVipWarning ? 0xf59e0b : 0x9333ea)
             .addFields(
                 { name: '👤 目標會員', value: `${userMention} (\`${targetUserId}\`)`, inline: false },
                 { name: '💵 本次實充金額', value: `$${realAmount.toLocaleString()} NTD`, inline: true },
@@ -54,6 +56,14 @@ async function handleTopupModal(interaction) {
             )
             .setFooter({ text: `操作管理員：${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
             .setTimestamp();
+
+        if (hasVipWarning) {
+            embed.addFields({
+                name: '⚠️ VIP 同步狀態',
+                value: `${result.vipUpdateMessage || '帳務已成功更新，但 VIP 同步失敗。'}\n請勿重複提交本次入帳，稍後再確認 VIP 等級即可。`,
+                inline: false
+            });
+        }
 
         if (avatarUrl) embed.setThumbnail(avatarUrl);
 

@@ -5,6 +5,24 @@ const { createOrder } = require('../utils/orderService');
 const { checkChannelPermissions } = require('../utils/permissionHelper');
 const { createMihuEmbed, BRAND_COLORS } = require('../utils/embedBuilder');
 const { getStudioIdForUser } = require('../utils/commissionHelper');
+const {
+    readOrderPayerWalletSnapshot,
+    assertOrderWalletDebitAllowed
+} = require('../utils/walletService');
+
+function mapWalletPrecheckError(error, bossId) {
+    const code = String(error && error.code || '');
+    if (code === 'WALLET_NOT_FOUND' || code === 'PAYER_NOT_FOUND') {
+        return `🚫 **無法發布指定單**：闆闆 <@${bossId}> 尚未在系統中註冊會員錢包。`;
+    }
+    if (code === 'WALLET_STUDIO_MISMATCH' || code === 'WALLET_STUDIO_INVALID') {
+        return `🚫 **無法發布指定單**：闆闆 <@${bossId}> 不屬於目前工作室，請確認派單對象。`;
+    }
+    if (code === 'WALLET_INSUFFICIENT_BALANCE') {
+        return null;
+    }
+    return '❌ 讀取錢包資料失敗，請稍後再試。';
+}
 
 async function handleAssignModal(interaction) {
     if (!interaction.deferred && !interaction.replied) {
@@ -26,6 +44,7 @@ async function handleAssignModal(interaction) {
         const talentId = sessionData.tId; // 陪陪 ID
         const duration = sessionData.dur || 1;
         const totalPrice = sessionData.pri || 0;
+        const csUser = interaction.user;
 
         // 1. 計算折後金額
         let finalPrice = totalPrice;
@@ -38,30 +57,28 @@ async function handleAssignModal(interaction) {
         }
         const discountAmount = totalPrice - finalPrice;
 
-        // 2. 檢核會員與錢包餘額
-        const walletRow = await new Promise((resolve) => {
-            db.get('SELECT * FROM user_wallets WHERE user_id = ?', [bossId], (err, row) => {
-                resolve(row || null);
-            });
-        });
+        const studioId = await getStudioIdForUser(csUser.id);
 
-        if (!walletRow) {
-            return interaction.editReply({
-                content: `🚫 **無法發布指定單**：闆闆 <@${bossId}> 尚未在系統中註冊會員帳號！`
-            });
-        }
+        // 2. 檢核會員與正式錢包餘額（與交易扣款一致）
+        let walletSnapshot;
+        try {
+            walletSnapshot = await readOrderPayerWalletSnapshot({ userId: bossId, studioId });
+            assertOrderWalletDebitAllowed(walletSnapshot, finalPrice);
+        } catch (error) {
+            const mappedError = mapWalletPrecheckError(error, bossId);
+            if (mappedError) {
+                return interaction.editReply({ content: mappedError });
+            }
 
-        const currentBalance = Number(walletRow.balance || 0);
-        const currentBonus = Number(walletRow.bonus_balance || 0);
-        const totalAvailable = currentBalance + currentBonus;
-
-        if (totalAvailable < finalPrice) {
-            const shortAmount = finalPrice - totalAvailable;
+            const currentBalance = Number(walletSnapshot && walletSnapshot.balance || 0);
+            const currentBonus = Number(walletSnapshot && walletSnapshot.bonusBalance || 0);
+            const shortAmount = Math.max(0, Number(finalPrice || 0) - currentBalance);
             return interaction.editReply({
                 content: `🚫 **闆闆錢包餘額不足**：\n` +
                          `• 闆闆：<@${bossId}>\n` +
                          `• 本次訂單需扣款：\`$${finalPrice.toLocaleString()}\` NTD\n` +
-                         `• 目前可用總餘額：\`$${totalAvailable.toLocaleString()}\` NTD (實充: $${currentBalance} / 贈送: $${currentBonus})\n` +
+                         `• 可用主餘額：\`$${currentBalance.toLocaleString()}\` NTD\n` +
+                         `• 贈送餘額：\`$${currentBonus.toLocaleString()}\` NTD (本流程不與主餘額合併扣款)\n` +
                          `• 尚缺金額：\`$${shortAmount.toLocaleString()}\` NTD\n` +
                          `請通知闆闆充值預存後再行派單！`
             });
@@ -83,8 +100,6 @@ async function handleAssignModal(interaction) {
         const extra = interaction.fields.getTextInputValue('dispatch_extra') || '無';
         const note = interaction.fields.getTextInputValue('dispatch_note') || '無';
         const category = sessionData.cat || '陪玩單';
-        const csUser = interaction.user;
-        const studioId = await getStudioIdForUser(csUser.id);
 
         const unit = sessionData.unit || '小時';
         const unitPrice = duration > 0 ? (totalPrice / duration) : totalPrice;

@@ -78,6 +78,8 @@
     <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
         <div class="modal-content modal-content-glass">
             <form id="adjustBalanceForm" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="operation_id" id="balanceOperationId" value="">
                 <input type="hidden" name="current_balance" id="hiddenCurrentBalance" value="0">
                 <input type="hidden" name="current_bonus" id="hiddenCurrentBonus" value="0">
 

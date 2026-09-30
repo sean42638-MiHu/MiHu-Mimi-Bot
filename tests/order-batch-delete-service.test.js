@@ -235,6 +235,50 @@ test('partial refund is blocked with explicit message due unique-index strategy'
     });
 });
 
+test('fully refunded cancelled order can be deleted with refund amount 0', async () => {
+    await withFixture(async ({ db, service }) => {
+        await run(db, `INSERT INTO orders (id, order_no, boss_id, status, total_amount, studio_id, created_at)
+            VALUES (520, 'ORDER-520', 'member-a', 'cancelled', 100, 1, '2026-01-05 12:00:00')`);
+        await run(db, `INSERT INTO wallet_transactions
+            (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id)
+            VALUES
+            ('member-a', 'order_payment', -100, 200, 100, 'order', '520', 'payment', 'member-a'),
+            ('member-a', 'refund', 100, 100, 200, 'order', '520', 'manual refund done', 'operator-a')`);
+
+        const preview = await service.previewBatchDeleteAndRefund(['520'], actor());
+        assert.equal(preview.summary.canProceed, true);
+        assert.equal(preview.summary.refundableTotal, 0);
+        assert.equal(preview.items[0].refundableAmount, 0);
+
+        const refundCountBefore = (await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund' AND reference_id = '520'")) .count;
+        const balanceBefore = (await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")) .balance;
+
+        const result = await service.executeBatchDeleteAndRefund(['520'], actor(), { source: 'test-delete' });
+        assert.equal(result.summary.deletedCount, 1);
+        assert.equal(result.summary.refundedCount, 0);
+        assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM orders WHERE id = 520')).count, 0);
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund' AND reference_id = '520'")) .count, refundCountBefore);
+        assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")) .balance, balanceBefore);
+    });
+});
+
+test('zero amount order without financial traces can be deleted safely with no refund', async () => {
+    await withFixture(async ({ db, service }) => {
+        await run(db, `INSERT INTO orders (id, order_no, boss_id, status, total_amount, studio_id, created_at)
+            VALUES (521, 'ORDER-521', 'member-a', 'refunded', 0, 1, '2026-01-05 12:00:00')`);
+
+        const preview = await service.previewBatchDeleteAndRefund(['521'], actor());
+        assert.equal(preview.summary.canProceed, true);
+        assert.equal(preview.summary.refundableTotal, 0);
+
+        const result = await service.executeBatchDeleteAndRefund(['521'], actor(), { source: 'test-delete' });
+        assert.equal(result.summary.deletedCount, 1);
+        assert.equal(result.summary.refundedCount, 0);
+        assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM orders WHERE id = 521')).count, 0);
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE reference_id = '521' AND type = 'refund'")) .count, 0);
+    });
+});
+
 test('cross-studio preview rejects without leaking order details', async () => {
     await withFixture(async ({ db, service }) => {
         await run(db, `INSERT INTO orders (id, order_no, boss_id, status, total_amount, studio_id, created_at)

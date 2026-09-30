@@ -9,7 +9,12 @@ const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
 const { withTransactionGate } = require('../../utils/transactionGate');
 const { resolveAvatarUrl } = require('../../utils/avatarUrl');
-const { hasResolvedPermission } = require('../../utils/permissionResolver');
+const {
+    hasResolvedPermission,
+    parsePermissionData,
+    resolvePermissions,
+    isPlatformSuperuserId
+} = require('../../utils/permissionResolver');
 const { getRolesDataFromDb } = require('../../utils/dataSync');
 const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
 
@@ -43,6 +48,19 @@ function memberIdentityExpression(alias = 'member') {
 function ledgerDisplayType(type) {
     const known = ledgerTypeLabels[type];
     return known || { label: `其他：${type || '未知'}`, icon: 'fa-circle-question', tone: 'neutral' };
+}
+
+async function loadActorRuntimePermissions(actorId) {
+    const row = await queryOne(`
+        SELECT u.id, u.role, r.permissions
+        FROM users u
+        LEFT JOIN roles r ON r.role_key = u.role
+        WHERE u.id = ?
+        LIMIT 1
+    `, [actorId]);
+    if (!row) return [];
+    const parsed = parsePermissionData(row.permissions || '[]');
+    return resolvePermissions(parsed.valid ? parsed.keys : [], isPlatformSuperuserId(actorId));
 }
 
 router.get('/role-options', ensureAuth, checkPerm('action_member_role_vip'), async (req, res, next) => {
@@ -226,6 +244,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_members'), (req, res, next) =
                 userPerms: Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [],
                 activePage: 'members',
                 success: req.query.success === '1',
+                warningMsg: req.query.warning || null,
                 errorMsg: req.query.error || null
             });
         });
@@ -285,19 +304,26 @@ router.get('/sync-all', ensureAuth, checkPerm('action_member_manage'), async (re
 // 1.4 手動更新會員帳務金額 API (整合資金資料庫與防呆空字串)
 router.post('/update-balance/:id', ensureAuth, checkPerm('action_member_balance'), async (req, res) => {
     const targetUserId = req.params.id;
-    const { add_amount, bonus_change, bonus_balance, balance, total_spent, total_deposited, note } = req.body;
+    const { add_amount, bonus_change, bonus_balance, balance, total_spent, total_deposited, note, operation_id } = req.body;
 
     try {
+        const actorPerms = await loadActorRuntimePermissions(req.user && req.user.id);
+        if (!hasResolvedPermission(actorPerms, 'action_member_balance')) {
+            return denyPermission(req, res, ['action_member_balance'], { kind: 'action', feature: '會員帳務調整' });
+        }
+
         const target = await dbGet('SELECT studio_id FROM users WHERE id = ?', [targetUserId]);
         if (!target) return res.status(404).send('找不到目標會員');
+        let expectedStudioId = null;
         if (!isPlatformSuperuser(req, res)) {
             const actorStudioId = Number(req.user && req.user.studio_id);
             const targetStudioId = Number(target.studio_id);
             if (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || targetStudioId !== actorStudioId) {
                 return denyPermission(req, res, ['action_member_balance'], { kind: 'action', feature: '會員帳務調整' });
             }
+            expectedStudioId = actorStudioId;
         }
-        await adjustUserWallet({
+        const adjustResult = await adjustUserWallet({
             userId: targetUserId,
             addAmount: (add_amount !== undefined && String(add_amount).trim() !== '') ? add_amount : null,
             bonusChange: (bonus_change !== undefined && String(bonus_change).trim() !== '') ? bonus_change : ((bonus_balance !== undefined && String(bonus_balance).trim() !== '') ? bonus_balance : null),
@@ -305,7 +331,15 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('action_member_balance'
             overrideSpent: (total_spent !== undefined && String(total_spent).trim() !== '') ? total_spent : null,
             overrideDeposited: (total_deposited !== undefined && String(total_deposited).trim() !== '') ? total_deposited : null,
             reason: note || '管理員手動調整帳務',
-            operatorId: req.user ? req.user.id : null
+            operatorId: req.user ? req.user.id : null,
+            expectedStudioId,
+            mode: 'admin_adjustment',
+            operationId: operation_id || req.get('x-idempotency-key') || null,
+            permissionRecheck: {
+                actorId: req.user ? req.user.id : null,
+                permissionKey: 'action_member_balance',
+                expectedActorStudioId: isPlatformSuperuser(req, res) ? null : Number(req.user && req.user.studio_id)
+            }
         });
 
         try {
@@ -313,8 +347,21 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('action_member_balance'
             if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
         } catch (e) {}
 
+        if (adjustResult && adjustResult.vipUpdateStatus === 'failed') {
+            return res.redirect('/management/members?success=1&warning=' + encodeURIComponent(adjustResult.vipUpdateMessage || '帳務已成功更新，但 VIP 同步失敗'));
+        }
+
         res.redirect('/management/members?success=1');
     } catch (err) {
+        if (err && err.code === 'PERMISSION_DENIED') {
+            return denyPermission(req, res, ['action_member_balance'], { kind: 'action', feature: '會員帳務調整' });
+        }
+        if (err && err.code === 'MISSING_OPERATION_ID') {
+            return res.redirect('/management/members?error=' + encodeURIComponent('操作識別遺失，請重新開啟調帳視窗再試。'));
+        }
+        if (err && err.code === 'IDEMPOTENCY_CONFLICT') {
+            return res.redirect('/management/members?error=' + encodeURIComponent(err.message));
+        }
         console.error('❌ 帳務調整失敗:', err.message);
         res.redirect('/management/members?error=' + encodeURIComponent(err.message));
     }

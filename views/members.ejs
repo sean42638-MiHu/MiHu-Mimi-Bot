@@ -214,6 +214,7 @@
 
         <div id="flashStatus" 
              data-success="<%= typeof success !== 'undefined' && success ? '1' : '0' %>"
+               data-warning="<%= typeof warningMsg !== 'undefined' && warningMsg ? warningMsg : '' %>"
              data-error="<%= typeof errorMsg !== 'undefined' && errorMsg ? errorMsg : '' %>"
              style="display:none;"></div>
 
@@ -243,6 +244,13 @@
 
         window.currentMemberBalance = 0;
         window.currentMemberBonus = 0;
+
+        function generateBalanceOperationId() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return `mba_${window.crypto.randomUUID().replace(/-/g, '')}`;
+            }
+            return `mba_${Date.now()}_${Math.random().toString(16).slice(2, 14)}`;
+        }
 
         function showMemberDetail(data) {
             if (!data) return;
@@ -282,6 +290,9 @@
             if (hiddenBal) hiddenBal.value = window.currentMemberBalance;
             const hiddenBonus = document.getElementById('hiddenCurrentBonus');
             if (hiddenBonus) hiddenBonus.value = window.currentMemberBonus;
+
+            const operationIdInput = document.getElementById('balanceOperationId');
+            if (operationIdInput) operationIdInput.value = generateBalanceOperationId();
 
             // 🚨 清空欄位！防填入舊資料導致覆蓋
             document.getElementById('modalAddAmount').value = '';
@@ -385,6 +396,8 @@
         const adjustForm = document.getElementById('adjustBalanceForm');
         if (adjustForm) {
             adjustForm.addEventListener('submit', function (e) {
+                const submitButton = adjustForm.querySelector('button[type="submit"]');
+                const operationIdInput = document.getElementById('balanceOperationId');
                 const currBalance = Number(window.currentMemberBalance || 0);
                 const currBonus = Number(window.currentMemberBonus || 0);
 
@@ -423,7 +436,20 @@
                     const errTextEl = document.getElementById('negativeErrorText');
                     if (errTextEl) errTextEl.textContent = errorMsg;
                     if (negativeErrorModal) negativeErrorModal.show();
+                    if (submitButton) submitButton.disabled = false;
+                    return;
                 }
+
+                if (!operationIdInput || !String(operationIdInput.value || '').trim()) {
+                    e.preventDefault();
+                    if (submitButton) submitButton.disabled = false;
+                    const errTextEl = document.getElementById('negativeErrorText');
+                    if (errTextEl) errTextEl.textContent = '操作識別遺失，請重新開啟調帳視窗再試。';
+                    if (negativeErrorModal) negativeErrorModal.show();
+                    return;
+                }
+
+                if (submitButton) submitButton.disabled = true;
             });
         }
 
@@ -431,9 +457,18 @@
         const flash = document.getElementById('flashStatus');
         if (flash) {
             const isSuccess = flash.getAttribute('data-success') === '1';
+            const warningMsg = flash.getAttribute('data-warning');
             const errorMsg = flash.getAttribute('data-error');
 
-            if (isSuccess) {
+            if (isSuccess && warningMsg && warningMsg.trim() !== '') {
+                const icon = document.getElementById('notifyIcon');
+                if (icon) icon.className = 'fa-solid fa-triangle-exclamation text-warning fs-1';
+                const title = document.getElementById('notifyTitle');
+                if (title) title.textContent = '帳務已更新，VIP 待同步';
+                const msg = document.getElementById('notifyMessage');
+                if (msg) msg.textContent = warningMsg;
+                if (notifyModal) notifyModal.show();
+            } else if (isSuccess) {
                 const icon = document.getElementById('notifyIcon');
                 if (icon) icon.className = 'fa-solid fa-circle-check text-success fs-1';
                 const title = document.getElementById('notifyTitle');

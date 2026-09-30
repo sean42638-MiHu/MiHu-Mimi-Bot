@@ -2,6 +2,12 @@ const db = require('../database');
 const { writeAuditLog } = require('./auditService');
 const { withTransactionGate } = require('./transactionGate');
 
+function createWalletError(message, code) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
 function dbRun(sql, params = []) {
     return new Promise((resolve, reject) => {
         db.run(sql, params, function (err) {
@@ -32,18 +38,18 @@ async function applyWalletDeltaInTransaction({
         FROM user_wallets w JOIN users u ON u.id = w.user_id
         WHERE w.user_id = ?
     `, [userId]);
-    if (!current) throw new Error('找不到目標會員錢包');
+    if (!current) throw createWalletError('找不到目標會員錢包', 'WALLET_NOT_FOUND');
     const currentStudioId = Number(current.studio_id);
     if (studioId !== null && studioId !== undefined) {
         const expectedStudioId = Number(studioId);
         if (!Number.isInteger(expectedStudioId) || expectedStudioId <= 0 || expectedStudioId !== currentStudioId) {
-            throw new Error('會員錢包工作室範圍驗證失敗');
+            throw createWalletError('會員錢包工作室範圍驗證失敗', 'WALLET_STUDIO_MISMATCH');
         }
     }
 
     const balanceBefore = Number(current.balance || 0);
     const balanceAfter = balanceBefore + delta;
-    if (balanceAfter < 0) throw new Error('錢包餘額不足');
+    if (balanceAfter < 0) throw createWalletError('錢包餘額不足', 'WALLET_INSUFFICIENT_BALANCE');
 
     await dbRun(`
         UPDATE user_wallets
@@ -68,6 +74,82 @@ async function applyWalletDeltaInTransaction({
     });
 
     return { balanceBefore, balanceAfter, amount: delta };
+}
+
+async function readOrderPayerWalletSnapshot({ userId, studioId = null }) {
+    const targetUserId = String(userId || '').trim();
+    if (!targetUserId) {
+        throw createWalletError('缺少付款會員 ID', 'INVALID_PAYER');
+    }
+
+    const row = await dbGet(`
+        SELECT
+            u.id AS user_id,
+            u.studio_id AS studio_id,
+            w.user_id AS wallet_user_id,
+            w.balance AS wallet_balance,
+            w.bonus_balance AS wallet_bonus_balance
+        FROM users u
+        LEFT JOIN user_wallets w ON w.user_id = u.id
+        WHERE u.id = ?
+        LIMIT 1
+    `, [targetUserId]);
+
+    if (!row) {
+        throw createWalletError('找不到付款會員資料', 'PAYER_NOT_FOUND');
+    }
+
+    const walletStudioId = Number(row.studio_id);
+    if (!Number.isInteger(walletStudioId) || walletStudioId <= 0) {
+        throw createWalletError('付款會員工作室資料異常', 'WALLET_STUDIO_INVALID');
+    }
+
+    if (studioId !== null && studioId !== undefined) {
+        const expectedStudioId = Number(studioId);
+        if (!Number.isInteger(expectedStudioId) || expectedStudioId <= 0 || expectedStudioId !== walletStudioId) {
+            throw createWalletError('付款會員不屬於目前工作室', 'WALLET_STUDIO_MISMATCH');
+        }
+    }
+
+    if (!row.wallet_user_id) {
+        throw createWalletError('找不到付款會員錢包', 'WALLET_NOT_FOUND');
+    }
+
+    const balance = Number(row.wallet_balance || 0);
+    const bonusBalance = Number(row.wallet_bonus_balance || 0);
+    if (!Number.isFinite(balance) || !Number.isFinite(bonusBalance)) {
+        throw createWalletError('付款會員錢包資料異常', 'WALLET_DATA_INVALID');
+    }
+
+    return {
+        userId: targetUserId,
+        studioId: walletStudioId,
+        balance,
+        bonusBalance
+    };
+}
+
+function assertOrderWalletDebitAllowed(snapshot, amount) {
+    const debitAmount = Number(amount || 0);
+    if (!Number.isFinite(debitAmount) || debitAmount < 0) {
+        throw createWalletError('訂單扣款金額無效', 'INVALID_DEBIT_AMOUNT');
+    }
+    if (debitAmount === 0) {
+        return {
+            debitAmount,
+            availableBalance: Number(snapshot.balance || 0),
+            availableBonusBalance: Number(snapshot.bonusBalance || 0)
+        };
+    }
+    const availableBalance = Number(snapshot.balance || 0);
+    if (availableBalance < debitAmount) {
+        throw createWalletError('錢包餘額不足', 'WALLET_INSUFFICIENT_BALANCE');
+    }
+    return {
+        debitAmount,
+        availableBalance,
+        availableBonusBalance: Number(snapshot.bonusBalance || 0)
+    };
 }
 
 function dbGet(sql, params = []) {
@@ -163,5 +245,10 @@ function refundOrders(orderIdentifiers, operatorId = null, source = 'management'
     });
 }
 
-module.exports = { refundOrder, refundOrders };
-module.exports = { refundOrder, refundOrders, applyWalletDeltaInTransaction };
+module.exports = {
+    refundOrder,
+    refundOrders,
+    applyWalletDeltaInTransaction,
+    readOrderPayerWalletSnapshot,
+    assertOrderWalletDebitAllowed
+};

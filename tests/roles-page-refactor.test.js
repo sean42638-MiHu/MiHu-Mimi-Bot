@@ -112,7 +112,9 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     assert.match(table, /hasPerm\('action_order_price'\)/);
     assert.match(table, /hasPerm\('action_order_refund'\)/);
     assert.match(table, /hasPerm\('action_order_refund_completed'\)/);
-    assert.match(table, /o\.status !== 'completed' \|\| canRefundCompleted/);
+    assert.match(table, /'cancelled': \{ name: '已取消'/);
+    assert.match(table, /'refunded': \{ name: '已退款'/);
+    assert.match(table, /const canBatchDeleteThisOrder = canBatchDelete/);
     assert.match(ordersPage, /window\.currentOrderCanAdjustPrice = !!data\.canAdjustPrice/);
     assert.match(ordersPage, /window\.currentOrderCanReassign = !!data\.canReassign/);
     assert.match(ordersPage, /window\.currentOrderCanRefund = !!data\.canRefund/);

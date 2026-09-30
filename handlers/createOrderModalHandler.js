@@ -4,6 +4,24 @@ const { syncOrdersJsonFromDb } = require('../utils/dataSync');
 const { createOrder } = require('../utils/orderService');
 const { getStudioIdForUser } = require('../utils/commissionHelper');
 const { createMihuEmbed, BRAND_COLORS } = require('../utils/embedBuilder');
+const {
+    readOrderPayerWalletSnapshot,
+    assertOrderWalletDebitAllowed
+} = require('../utils/walletService');
+
+function mapWalletPrecheckError(error, bossId) {
+    const code = String(error && error.code || '');
+    if (code === 'WALLET_NOT_FOUND' || code === 'PAYER_NOT_FOUND') {
+        return `🚫 **無法建立訂單**：老闆 <@${bossId}> 尚未在系統中註冊會員錢包。`;
+    }
+    if (code === 'WALLET_STUDIO_MISMATCH' || code === 'WALLET_STUDIO_INVALID') {
+        return `🚫 **無法建立訂單**：老闆 <@${bossId}> 不屬於目前工作室。`;
+    }
+    if (code === 'WALLET_INSUFFICIENT_BALANCE') {
+        return null;
+    }
+    return '❌ 讀取錢包資料失敗，請稍後再試。';
+}
 
 async function handleCreateOrderModal(interaction) {
     if (!interaction.deferred && !interaction.replied) {
@@ -47,28 +65,26 @@ async function handleCreateOrderModal(interaction) {
         if (studioId !== talentStudioId) {
             return interaction.editReply({ content: '🚫 建立失敗：陪玩師與建立者不屬於同一工作室。' });
         }
-        // 3. 檢核老闆會員與錢包餘額
-        const walletRow = await new Promise((resolve) => {
-            db.get('SELECT * FROM user_wallets WHERE user_id = ?', [bossId], (err, row) => {
-                resolve(row || null);
-            });
-        });
+        // 3. 檢核老闆正式錢包餘額（與交易內扣款一致）
+        let walletSnapshot;
+        try {
+            walletSnapshot = await readOrderPayerWalletSnapshot({ userId: bossId, studioId });
+            assertOrderWalletDebitAllowed(walletSnapshot, finalPrice);
+        } catch (error) {
+            const mappedError = mapWalletPrecheckError(error, bossId);
+            if (mappedError) {
+                return interaction.editReply({ content: mappedError });
+            }
 
-        if (!walletRow) {
-            return interaction.editReply({ content: `🚫 **無法建立訂單**：老闆 <@${bossId}> 尚未在系統中註冊會員帳號！` });
-        }
-
-        const currentBalance = Number(walletRow.balance || 0);
-        const currentBonus = Number(walletRow.bonus_balance || 0);
-        const totalAvailable = currentBalance + currentBonus;
-
-        if (totalAvailable < finalPrice) {
-            const shortAmount = finalPrice - totalAvailable;
+            const currentBalance = Number(walletSnapshot && walletSnapshot.balance || 0);
+            const currentBonus = Number(walletSnapshot && walletSnapshot.bonusBalance || 0);
+            const shortAmount = Math.max(0, Number(finalPrice || 0) - currentBalance);
             return interaction.editReply({
                 content: `🚫 **老闆錢包餘額不足**：\n` +
                          `• 老闆：<@${bossId}>\n` +
                          `• 本次訂單需扣款：\`$${finalPrice.toLocaleString()}\` NTD\n` +
-                         `• 當前可用總餘額：\`$${totalAvailable.toLocaleString()}\` NTD\n` +
+                         `• 可用主餘額：\`$${currentBalance.toLocaleString()}\` NTD\n` +
+                         `• 贈送餘額：\`$${currentBonus.toLocaleString()}\` NTD (本流程不與主餘額合併扣款)\n` +
                          `• 尚缺金額：\`$${shortAmount.toLocaleString()}\` NTD`
             });
         }
