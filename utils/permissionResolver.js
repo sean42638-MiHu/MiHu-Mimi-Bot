@@ -44,7 +44,7 @@ const oldImplications = {
 const originalManagePairs = {
     'system_settings.manage': 'system_settings.view', 'members.manage': 'members.view',
     'roles.manage': 'roles.view', 'staff.manage': 'staff.view', 'vip.manage': 'vip.view',
-    'orders.manage': 'orders.view', 'orders.refund': 'orders.view', 'payout.reject': 'payout.view',
+    'orders.manage': 'orders.view', 'orders.refund': 'orders.view', 'orders.batch_delete': 'orders.view', 'payout.reject': 'payout.view',
     'commission.manage': 'commission.view', 'payroll.manage': 'payroll.view'
 };
 const LEGACY_IMPLICATIONS = Object.freeze(Object.fromEntries(Object.entries(oldImplications).map(([key, values]) =>

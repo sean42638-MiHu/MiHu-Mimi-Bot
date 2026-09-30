@@ -45,12 +45,17 @@ test('Unknown permissions are rejected and sensitive permission remains independ
 
 test('Order view, management and refund are independent and Production roles follow policy', () => {
     assert.equal(PERMISSION_METADATA['action_order_refund'].mode, 'manage');
+    assert.equal(PERMISSION_METADATA['action_order_batch_delete'].mode, 'manage');
+    assert.equal(PERMISSION_METADATA['action_order_batch_delete'].risk, 'high');
     assert.equal(PERMISSION_METADATA['action_order_refund'].risk, 'high');
     assert.equal(PERMISSION_METADATA['action_order_price'].risk, 'high');
     assert.equal(PERMISSION_METADATA['action_order_refund_completed'].risk, 'high');
     assert.deepEqual(resolvePermissions(['action_order_refund']).sort(), ['action_order_refund', 'view_manage_orders']);
+    assert.deepEqual(resolvePermissions(['action_order_batch_delete']).sort(), ['action_order_batch_delete', 'view_manage_orders']);
     assert.ok(resolvePermissions(['action_order_manage']).includes('view_manage_orders'));
     assert.equal(resolvePermissions(['action_order_manage']).includes('action_order_refund'), false);
+    assert.equal(resolvePermissions(['action_order_refund']).includes('action_order_batch_delete'), false);
+    assert.equal(resolvePermissions(['action_order_reassign']).includes('action_order_batch_delete'), false);
 
     const roles = JSON.parse(read('deploy/rbac/production-roles.json')).roles;
     const effective = Object.fromEntries(roles.map(role => [role.role_key, resolvePermissions(role.permissions)]));
@@ -64,6 +69,8 @@ test('Order view, management and refund are independent and Production roles fol
     for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('action_order_price'), false, roleKey);
     assert.ok(effective.admin.includes('action_order_refund_completed'));
     for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('action_order_refund_completed'), false, roleKey);
+    assert.ok(effective.admin.includes('action_order_batch_delete'));
+    for (const roleKey of ['aftersales', 'manager', 'cs']) assert.equal(effective[roleKey].includes('action_order_batch_delete'), false, roleKey);
     for (const roleKey of ['aftersales', 'manager', 'cs']) {
         for (const forbidden of ['action_member_management', 'action_member_manage', 'action_member_balance', 'action_member_role_vip', 'action_vip_config', 'action_role_manage']) {
             assert.equal(effective[roleKey].includes(forbidden), false, `${roleKey}: ${forbidden}`);
@@ -95,7 +102,8 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
     assert.match(managementOrders, /router\.get\('\/', ensureAuth, checkPerm\('view_manage_orders'\)/);
     assert.match(managementOrders, /router\.post\('\/update\/:id', ensureAuth, requireUpdatePermission/);
     assert.match(managementOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'action_order_refund' : 'action_order_manage'/);
-    assert.match(managementOrders, /router\.post\('\/batch-delete', ensureAuth, checkPerm\('action_order_refund'\)/);
+    assert.match(managementOrders, /router\.post\('\/batch-delete\/preview', ensureAuth, checkPerm\('action_order_batch_delete'\)/);
+    assert.match(managementOrders, /router\.post\('\/batch-delete', ensureAuth, checkPerm\('action_order_batch_delete'\)/);
     assert.match(managementOrders, /router\.post\('\/cancel\/:id', ensureAuth, checkPerm\('action_order_refund'\)/);
     assert.match(managementOrders, /router\.post\('\/complete\/:id', ensureAuth, checkPerm\('action_order_manage'\)/);
     assert.match(managementOrders, /allowPriceAdjustment: canAdjustOrderPrice\(res\)/);

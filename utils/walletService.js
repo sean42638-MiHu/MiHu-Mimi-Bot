@@ -14,6 +14,7 @@ function dbRun(sql, params = []) {
 async function applyWalletDeltaInTransaction({
     userId,
     amount,
+    studioId = null,
     operatorId = null,
     reason,
     referenceType,
@@ -32,6 +33,13 @@ async function applyWalletDeltaInTransaction({
         WHERE w.user_id = ?
     `, [userId]);
     if (!current) throw new Error('找不到目標會員錢包');
+    const currentStudioId = Number(current.studio_id);
+    if (studioId !== null && studioId !== undefined) {
+        const expectedStudioId = Number(studioId);
+        if (!Number.isInteger(expectedStudioId) || expectedStudioId <= 0 || expectedStudioId !== currentStudioId) {
+            throw new Error('會員錢包工作室範圍驗證失敗');
+        }
+    }
 
     const balanceBefore = Number(current.balance || 0);
     const balanceAfter = balanceBefore + delta;
@@ -50,7 +58,7 @@ async function applyWalletDeltaInTransaction({
     `, [userId, ledgerType, delta, balanceBefore, balanceAfter, referenceType, String(referenceId), reason || '', operatorId]);
     await writeAuditLog({
         operatorId,
-        studioId: current.studio_id,
+        studioId: currentStudioId,
         action: auditAction,
         targetType: 'user',
         targetId: userId,

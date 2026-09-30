@@ -24,6 +24,7 @@ const PERMISSION_ALIASES = Object.freeze({
     "orders.manage": "action_order_manage",
     "orders.price_adjust": "action_order_price",
     "orders.refund": "action_order_refund",
+    "orders.batch_delete": "action_order_batch_delete",
     "orders.refund_completed": "action_order_refund_completed",
     "commission.view": "view_commission",
     "commission.manage": "action_commission_config",

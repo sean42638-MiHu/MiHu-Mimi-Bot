@@ -104,6 +104,10 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     const ordersPage = fs.readFileSync(path.join(root, 'views/orders.ejs'), 'utf8');
     const table = fs.readFileSync(path.join(root, 'views/partials/orders_table.ejs'), 'utf8');
     const modal = fs.readFileSync(path.join(root, 'views/modals/order_detail_modal.ejs'), 'utf8');
+    assert.match(ordersPage, /hasPerm\('action_order_batch_delete'\)/);
+    assert.match(ordersPage, /batch-delete\/preview/);
+    assert.match(ordersPage, /批量刪除訂單並退款確認/);
+    assert.doesNotMatch(ordersPage, /confirm\(/);
     assert.match(table, /hasPerm\('action_order_manage'\)/);
     assert.match(table, /hasPerm\('action_order_price'\)/);
     assert.match(table, /hasPerm\('action_order_refund'\)/);

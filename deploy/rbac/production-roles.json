@@ -19,7 +19,7 @@
         "system", "sys_vip", "sys_roles", "sys_settings",
         "member_adjust_balance", "member_adjust_vip",
         "staff_view_payroll", "staff_edit_role_commission", "orders_edit_and_reassign",
-        "orders.view", "orders.manage", "orders.price_adjust", "orders.refund", "orders.refund_completed",
+        "orders.view", "orders.manage", "orders.price_adjust", "orders.refund", "orders.batch_delete", "orders.refund_completed",
         "payout.view", "payout.view_sensitive", "payout.export", "payout.mark_paid", "payout.reject"
       ]
     },

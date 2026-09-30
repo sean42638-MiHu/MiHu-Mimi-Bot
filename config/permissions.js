@@ -25,6 +25,7 @@ const granularDefinitions = [
     ['orders.manage', '管理訂單', '訂單', 'manage', 'high'],
     ['orders.price_adjust', '調整訂單價格', '訂單', 'manage', 'high'],
     ['orders.refund', '退款訂單', '訂單', 'manage', 'high'],
+    ['orders.batch_delete', '批量刪除訂單並退款', '訂單', 'manage', 'high'],
     ['orders.refund_completed', '核准完成訂單退款', '訂單', 'manage', 'high'],
     ['commission.view', '查看抽佣', '抽佣', 'read', 'medium'],
     ['commission.manage', '管理抽佣', '抽佣', 'manage', 'high'],

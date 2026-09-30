@@ -3,9 +3,13 @@ const router = express.Router();
 const db = require('../../database');
 const { syncOrdersJsonFromDb, syncUsersJsonFromDb } = require('../../utils/dataSync');
 const { denyPermission, requireAuth: ensureAuth, requirePerm: checkPerm } = require('../../middleware/auth');
-const { refundOrder, refundOrders } = require('../../utils/walletService');
+const { refundOrder } = require('../../utils/walletService');
 const { getOrder, updateOrder, completeOrder } = require('../../utils/orderService');
 const { hasResolvedPermission } = require('../../utils/permissionResolver');
+const {
+    previewBatchDeleteAndRefund,
+    executeBatchDeleteAndRefund
+} = require('../../services/orderBatchDeleteService');
 
 function isPlatformSuperuser(res) {
     return hasResolvedPermission(res.locals.userPerms, '*');
@@ -35,6 +39,12 @@ function canAdjustOrderPrice(res) {
 
 function canReassignOrder(res) {
     return hasResolvedPermission(res.locals.userPerms, 'action_order_reassign');
+}
+
+function buildBatchActorContext(req, res) {
+    return {
+        actorId: String(req.user.id)
+    };
 }
 
 function normalizeAssignee(value) {
@@ -161,53 +171,74 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
 });
 
 // =========================================================================
-// 🚀 3. 專用訂單批量刪除 API (對應 /management/orders/batch-delete)
+// 🚀 3. 專用訂單批量刪除預覽 API (對應 /management/orders/batch-delete/preview)
 // =========================================================================
-router.post('/batch-delete', ensureAuth, checkPerm('action_order_refund'), async (req, res) => {
+router.post('/batch-delete/preview', ensureAuth, checkPerm('action_order_batch_delete'), async (req, res) => {
     try {
-        let orderIds = req.body.order_ids;
-        if (!orderIds) {
-            if (wantsJson(req)) return res.status(400).json({ success: false, error: '⚠️ 請至少勾選一筆訂單！' });
-            return res.redirect('/management/orders?error=' + encodeURIComponent('⚠️ 請至少勾選一筆訂單！'));
+        const preview = await previewBatchDeleteAndRefund(req.body.order_ids, buildBatchActorContext(req, res));
+        return res.json({ success: true, preview });
+    } catch (err) {
+        if (err.statusCode === 403 || err.code === 'PERMISSION_DENIED') {
+            return denyPermission(req, res, ['action_order_batch_delete'], { kind: 'action', feature: '批量刪除訂單並退款' });
         }
-
-        if (!Array.isArray(orderIds)) {
-            orderIds = [orderIds];
+        if (err.statusCode === 400) {
+            return res.status(400).json({ success: false, error: err.message, code: err.code || 'INVALID_INPUT' });
         }
+        if (err.statusCode === 409) {
+            return res.status(409).json({ success: false, error: err.message, code: err.code || 'ORDER_BATCH_CONFLICT', details: err.details || null });
+        }
+        console.error('❌ 批量刪除預覽失敗:', err);
+        return res.status(500).json({ success: false, error: '批量刪除預覽失敗，請稍後再試。' });
+    }
+});
 
-        const selectedOrders = await new Promise((resolve, reject) => {
-            const placeholders = orderIds.map(() => '?').join(',');
-            db.all(`SELECT id, status, studio_id FROM orders WHERE id IN (${placeholders}) OR order_no IN (${placeholders})`, [...orderIds, ...orderIds], (err, rows) => err ? reject(err) : resolve(rows || []));
+// =========================================================================
+// 🚀 4. 專用訂單批量刪除執行 API (對應 /management/orders/batch-delete)
+// =========================================================================
+router.post('/batch-delete', ensureAuth, checkPerm('action_order_batch_delete'), async (req, res) => {
+    try {
+        const result = await executeBatchDeleteAndRefund(req.body.order_ids, buildBatchActorContext(req, res), {
+            source: '後台批量刪除'
         });
-        if (selectedOrders.length !== orderIds.length) {
-            if (wantsJson(req)) return res.status(404).json({ success: false, error: '部分訂單不存在，批次操作已取消' });
-            return res.redirect('/management/orders?error=' + encodeURIComponent('部分訂單不存在，批次操作已取消'));
-        }
-        if (selectedOrders.some(order => !canManageOrderStudio(req, res, order.studio_id))) {
-            if (wantsJson(req)) return res.status(403).json({ success: false, error: '無權刪除其他工作室訂單' });
-            return res.status(403).send('無權刪除其他工作室訂單');
-        }
-        await refundOrders(selectedOrders.map(order => order.id), req.user.id, '後台批次作廢', { allowCompleted: canApproveCompletedRefund(res) });
 
         try {
             syncOrdersJsonFromDb();
             if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
         } catch (e) {}
 
-        const successMsg = `✅ 成功批量退款並標記取消 ${orderIds.length} 筆訂單！`;
+        const successMsg = `✅ 成功批量刪除並退款 ${result.summary.deletedCount} 筆訂單！`;
         const redirectUrl = '/management/orders?successMsg=' + encodeURIComponent(successMsg);
         if (wantsJson(req)) return res.json({ success: true, redirect: redirectUrl, successMsg });
-        res.redirect(redirectUrl);
+        return res.redirect(redirectUrl);
 
     } catch (err) {
+        if (err.statusCode === 403 || err.code === 'PERMISSION_DENIED') {
+            return denyPermission(req, res, ['action_order_batch_delete'], { kind: 'action', feature: '批量刪除訂單並退款' });
+        }
+        if (err.statusCode === 400) {
+            if (wantsJson(req)) return res.status(400).json({ success: false, error: err.message, code: err.code || 'INVALID_INPUT' });
+            return res.redirect('/management/orders?error=' + encodeURIComponent(err.message));
+        }
+        if (err.statusCode === 409) {
+            if (wantsJson(req)) {
+                return res.status(409).json({
+                    success: false,
+                    error: err.message,
+                    code: err.code || 'ORDER_BATCH_CONFLICT',
+                    details: err.details || null
+                });
+            }
+            return res.redirect('/management/orders?error=' + encodeURIComponent(err.message));
+        }
+
         console.error('❌ 批量刪除訂單出錯:', err);
-        if (wantsJson(req)) return res.status(500).json({ success: false, error: '批量刪除失敗：' + err.message });
-        res.redirect('/management/orders?error=' + encodeURIComponent('批量刪除失敗：' + err.message));
+        if (wantsJson(req)) return res.status(500).json({ success: false, error: '批量刪除失敗，請稍後再試。' });
+        return res.redirect('/management/orders?error=' + encodeURIComponent('批量刪除失敗，請稍後再試。'));
     }
 });
 
 // =========================================================================
-// 4. 單筆作廢退款 API (對應 /management/orders/cancel/:id)
+// 5. 單筆作廢退款 API (對應 /management/orders/cancel/:id)
 // =========================================================================
 router.post('/cancel/:id', ensureAuth, checkPerm('action_order_refund'), (req, res) => {
     const orderId = req.params.id;
@@ -229,7 +260,7 @@ router.post('/cancel/:id', ensureAuth, checkPerm('action_order_refund'), (req, r
 });
 
 // =========================================================================
-// 5. 標記完成 API (對應 /management/orders/complete/:id)
+// 6. 標記完成 API (對應 /management/orders/complete/:id)
 // =========================================================================
 router.post('/complete/:id', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
     try {

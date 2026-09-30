@@ -422,6 +422,7 @@ async function assignOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
             await applyWalletDeltaInTransaction({
                 userId: order.boss_id,
                 amount: walletDelta,
+                studioId,
                 operatorId: input.operatorId,
                 reason: `Order price adjustment ${order.order_no}`,
                 referenceType: 'order_adjustment',

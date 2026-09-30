@@ -159,7 +159,8 @@
                         const canAdjustPrice = typeof hasPerm === 'function' && hasPerm('action_order_price');
                         const canRefund = typeof hasPerm === 'function' && hasPerm('action_order_refund');
                         const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
-                        const canRefundThisOrder = canRefund
+                        const canBatchDelete = typeof canBatchDeleteOrders !== 'undefined' ? !!canBatchDeleteOrders : false;
+                        const canBatchDeleteThisOrder = canBatchDelete
                             && !['cancelled', 'refunded'].includes(o.status)
                             && (o.status !== 'completed' || canRefundCompleted);
 
@@ -211,7 +212,7 @@
                             <% if (typeof canBatchDeleteOrders !== 'undefined' && canBatchDeleteOrders) { %>
                                 <!-- 🚀 僅限店長顯示 Checkbox，並使用 stopPropagation 避免點擊勾選框時誤觸展開編輯 Modal -->
                                 <td style="text-align: center;" onclick="event.stopPropagation();">
-                                    <% if (canRefundThisOrder) { %><input type="checkbox" class="order-checkbox order-checkbox-custom" value="<%= o.id %>"><% } %>
+                                    <% if (canBatchDeleteThisOrder) { %><input type="checkbox" class="order-checkbox order-checkbox-custom" value="<%= o.id %>"><% } %>
                                 </td>
                             <% } %>
 

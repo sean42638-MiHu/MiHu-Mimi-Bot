@@ -147,7 +147,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (13,'star_actor','Star Actor','["*"]'),
         (21,'ledger_viewer','Ledger Viewer','["view_management","view_member_ledger"]'),
         (22,'payroll_viewer','Payroll Viewer','["view_management","view_staff_payroll"]'),
-        (17,'admin','店長','["view_manage_orders","action_order_manage","action_order_price","action_order_refund","action_order_refund_completed"]'),
+        (17,'admin','店長','["view_manage_orders","action_order_manage","action_order_price","action_order_refund","action_order_batch_delete","action_order_refund_completed"]'),
         (18,'cs','客服','["view_manage_orders","action_order_manage","action_order_reassign"]'),
         (19,'legacy_order_manager','Legacy Order Manager','["action_order_management"]'),
         (20,'aftersales','售後','["view_manage_orders","action_order_manage","action_order_refund"]'),
@@ -177,7 +177,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,discount,total_amount,status,created_at,studio_id)
         VALUES (606,'ORDER-REFUND-OPEN','member-a','陪玩單','game','standard',1,'h',45,0,45,'accepted',CURRENT_TIMESTAMP,1),
                (607,'ORDER-REFUND-DONE','member-a','陪玩單','game','standard',1,'h',35,0,35,'completed',CURRENT_TIMESTAMP,1),
-               (608,'CSRF-BATCH-608','admin-a','陪玩單','game','standard',1,'h',25,0,25,'accepted',CURRENT_TIMESTAMP,1)`);
+               (608,'CSRF-BATCH-608','member-a','陪玩單','game','standard',1,'h',25,0,25,'accepted',CURRENT_TIMESTAMP,1)`);
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
@@ -189,6 +189,9 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'order_payment', -100, 200, 100, 'order', '101', 'ORDER-A payment', 'member-a', '2026-01-01 12:00:00')`);
+    await run(`INSERT INTO wallet_transactions
+        (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
+        VALUES ('member-a', 'order_payment', -25, 100, 75, 'order', '608', 'CSRF-BATCH-608 payment', 'member-a', '2026-01-01 12:10:00')`);
     await new Promise(resolve => setup.close(resolve));
 
     const discord = require('discord.js');
@@ -1023,30 +1026,53 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(unimplementedMemberSync.body, /尚未實作/);
 
         const refundSession = await createSession('aftersales-orders');
-        const beforeBatchDeleteOrder = await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row)));
-        const missingBatchDeleteCsrf = await createRequest(port, 'POST', '/management/orders/batch-delete', {
+        const deniedBatchPreview = await createRequest(port, 'POST', '/management/orders/batch-delete/preview', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': refundSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'order_ids=608');
+        assert.equal(deniedBatchPreview.status, 403);
+        assert.equal(JSON.parse(deniedBatchPreview.body).reason, 'PERMISSION_DENIED');
+        const deniedBatchDeleteNoPermission = await createRequest(port, 'POST', '/management/orders/batch-delete', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': refundSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'order_ids=608');
+        assert.equal(deniedBatchDeleteNoPermission.status, 403);
+        assert.equal(JSON.parse(deniedBatchDeleteNoPermission.body).reason, 'PERMISSION_DENIED');
+
+        const batchDeleteSession = await createSession('admin-a');
+        const beforeBatchDeleteOrder = await new Promise((resolve, reject) => db.get("SELECT id, status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row)));
+        const missingBatchDeleteCsrf = await createRequest(port, 'POST', '/management/orders/batch-delete', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: batchDeleteSession.cookie,
             Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'order_ids=608');
         assert.equal(missingBatchDeleteCsrf.status, 403);
         assert.match(missingBatchDeleteCsrf.body, /Invalid CSRF token/);
-        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row))), beforeBatchDeleteOrder);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT id, status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row))), beforeBatchDeleteOrder);
         const invalidBatchDeleteCsrf = await createRequest(port, 'POST', '/management/orders/batch-delete', {
-            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: batchDeleteSession.cookie,
             Accept: 'application/json', 'X-CSRF-Token': 'invalid-token', 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'order_ids=608');
         assert.equal(invalidBatchDeleteCsrf.status, 403);
         assert.match(invalidBatchDeleteCsrf.body, /Invalid CSRF token/);
-        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row))), beforeBatchDeleteOrder);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT id, status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row))), beforeBatchDeleteOrder);
+        const validBatchPreview = await createRequest(port, 'POST', '/management/orders/batch-delete/preview', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: batchDeleteSession.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': batchDeleteSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'order_ids=608');
+        assert.equal(validBatchPreview.status, 200, validBatchPreview.body);
+        const validBatchPreviewPayload = JSON.parse(validBatchPreview.body);
+        assert.equal(validBatchPreviewPayload.success, true);
+        assert.equal(validBatchPreviewPayload.preview.summary.canProceed, true);
+        assert.equal(validBatchPreviewPayload.preview.summary.refundableTotal, 25);
         const validBatchDelete = await createRequest(port, 'POST', '/management/orders/batch-delete', {
-            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: refundSession.cookie,
-            Accept: 'application/json', 'X-CSRF-Token': refundSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: batchDeleteSession.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': batchDeleteSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'order_ids=608');
         assert.equal(validBatchDelete.status, 200, validBatchDelete.body);
         const validBatchDeletePayload = JSON.parse(validBatchDelete.body);
         assert.equal(validBatchDeletePayload.success, true);
         assert.match(validBatchDeletePayload.redirect, /^\/management\/orders\?successMsg=/);
-        assert.equal(await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row.status))), 'cancelled');
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM orders WHERE id = 608", (error, row) => error ? reject(error) : resolve(row.count))), 0);
         const beforeCrossStudio = await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 202", (error, row) => error ? reject(error) : resolve(row)));
         const beforeLedger = await new Promise((resolve, reject) => db.get('SELECT COUNT(*) AS count FROM wallet_transactions', (error, row) => error ? reject(error) : resolve(row.count)));
         const beforeAudit = await new Promise((resolve, reject) => db.get('SELECT COUNT(*) AS count FROM audit_logs', (error, row) => error ? reject(error) : resolve(row.count)));
@@ -1299,7 +1325,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(reassign.status, 302, reassign.headers.location);
         assert.equal(await new Promise((resolve, reject) => db.get('SELECT talent_id FROM orders WHERE id=101', (error, row) => error ? reject(error) : resolve(row.talent_id))), 'talent-a');
-        assert.equal((await orderSecuritySnapshot(101)).wallet_balance, 100);
+        const afterReassignSnapshot = await orderSecuritySnapshot(101);
+        assert.equal(afterReassignSnapshot.wallet_balance, managerReassignMixedAliasDeniedSnapshot.wallet_balance);
 
         const legacyEndpoint = await orderPost(managerA, '/orders/update/101', { is_delete: '1' });
         assert.equal(legacyEndpoint.status, 404);
