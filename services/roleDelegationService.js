@@ -27,6 +27,26 @@ function canGrantPermission(actorPermissions, permission) {
         && hasResolvedPermission(actorPermissions, permission);
 }
 
+const SYSTEM_PERMISSION_GROUPS = Object.freeze([
+    Object.freeze({ parent: 'view_cat_system_settings', children: Object.freeze(['view_system_settings']) }),
+    Object.freeze({ parent: 'view_cat_system_manage', children: Object.freeze(['view_discord_status', 'view_commission', 'view_vip', 'view_roles']) }),
+    Object.freeze({ parent: 'view_cat_system_info', children: Object.freeze(['action_view_audit_logs', 'view_system_health']) })
+]);
+
+function normalizeSystemPermissionHierarchy(requestedPermissions) {
+    const normalized = new Set(requestedPermissions);
+    let hasSystemScopedPermission = false;
+
+    SYSTEM_PERMISSION_GROUPS.forEach(group => {
+        const childEnabled = group.children.some(permission => normalized.has(permission));
+        if (childEnabled) normalized.add(group.parent);
+        if (childEnabled || normalized.has(group.parent)) hasSystemScopedPermission = true;
+    });
+
+    if (hasSystemScopedPermission) normalized.add('view_system');
+    return [...normalized];
+}
+
 function validatePermissionGrant(actorPermissions, requestedPermissions, _options = {}) {
     if (!Array.isArray(requestedPermissions) || requestedPermissions.some(permission => typeof permission !== 'string')) {
         throw new RoleDelegationError('權限清單格式無效');
@@ -37,14 +57,15 @@ function validatePermissionGrant(actorPermissions, requestedPermissions, _option
     if (requested.some(permission => !isKnownPermission(permission))) {
         throw new RoleDelegationError('權限清單包含未知項目');
     }
-    if (requested.includes('*') && !isSuperuser) {
+    const normalizedRequested = normalizeSystemPermissionHierarchy(requested);
+    if (normalizedRequested.includes('*') && !isSuperuser) {
         throw new RoleDelegationError('只有最高權限使用者可以授予萬用權限');
     }
-    if (requested.some(permission => permission !== '*' && !canGrantPermission(actorPermissions, permission))) {
+    if (normalizedRequested.some(permission => permission !== '*' && !canGrantPermission(actorPermissions, permission))) {
         throw new RoleDelegationError('不可授予自己未擁有的權限');
     }
 
-    return requested;
+    return normalizedRequested;
 }
 
 function hasUnknownStoredPermissions(role) {

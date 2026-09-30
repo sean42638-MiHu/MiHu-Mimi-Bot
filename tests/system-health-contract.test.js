@@ -43,7 +43,7 @@ test('System Health UI uses shared design primitives and does not expose secrets
     const view = read('views/system_health.ejs');
     const sidebar = read('views/partials/sidebar.ejs');
     for (const selector of ['admin-page-content', 'admin-panel', 'admin-badge', 'health-grid']) assert.match(view, new RegExp(selector), selector);
-    assert.match(sidebar, /href="\/system\/health"/);
+    assert.match(sidebar, /href="\/system\/status"/);
     for (const secret of ['DISCORD_BOT_TOKEN', 'DISCORD_CLIENT_SECRET', 'SESSION_SECRET', 'PAYROLL_DATA_ENCRYPTION_KEY']) {
         assert.doesNotMatch(view, new RegExp(secret));
     }

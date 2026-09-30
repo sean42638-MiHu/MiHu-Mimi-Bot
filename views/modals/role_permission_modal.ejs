@@ -9,7 +9,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-4" style="max-height: 75vh; overflow-y: auto;">
+            <div class="modal-body admin-modal-body p-4" style="max-height: 75vh; overflow-y: auto;">
                 <div class="p-3 rounded-3 mb-3" style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08);">
                     <div class="text-secondary small mb-1"><i class="fa-solid fa-circle-info me-1"></i>職責說明：</div>
                     <div class="text-white small fw-medium" id="viewRoleDesc">說明內容</div>
@@ -30,11 +30,40 @@
 
 <% if (hasPerm('action_role_manage')) { %>
 <%
-    const sections = [
-        { id: 'roleMenuPermissions', title: '1. 側邊欄與頁面能見度', number: 1 },
+    const sectionOne = { id: 'roleMenuPermissions', title: '1. 側邊欄與頁面能見度', number: 1 };
+    const remainingSections = [
         { id: 'roleActionPermissions', title: '2. 敏感個資與進階操作權限', number: 2 },
         { id: 'roleHighPermissions', title: '3. 高權限與敏感情節', number: 3 }
     ];
+    const metadataValues = Object.values(permissionMetadata || {});
+    const systemGroups = [
+        {
+            id: 'system_settings',
+            title: '系統設定',
+            description: '管理系統基礎設定頁與相關可見性。',
+            iconClass: 'fa-solid fa-sliders',
+            parentKey: 'view_cat_system_settings',
+            children: ['view_system_settings']
+        },
+        {
+            id: 'system_manage',
+            title: '系統管理',
+            description: '管理機器人、抽傭、VIP 與身分設定入口。',
+            iconClass: 'fa-solid fa-screwdriver-wrench',
+            parentKey: 'view_cat_system_manage',
+            children: ['view_discord_status', 'view_commission', 'view_vip', 'view_roles']
+        },
+        {
+            id: 'system_info',
+            title: '系統資訊',
+            description: '管理操作紀錄與系統狀態監看入口。',
+            iconClass: 'fa-solid fa-circle-info',
+            parentKey: 'view_cat_system_info',
+            children: ['action_view_audit_logs', 'view_system_health']
+        }
+    ];
+    const systemMappedKeys = new Set(systemGroups.flatMap(group => [group.parentKey, ...group.children]));
+    const sectionOneOthers = metadataValues.filter(item => item.section === sectionOne.number && !systemMappedKeys.has(item.key));
 %>
 <div class="modal fade admin-modal" id="editRolePermsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl admin-modal-dialog admin-modal-dialog--lg">
@@ -47,11 +76,55 @@
                 <div class="modal-body admin-modal-body p-4">
                     <input type="hidden" id="targetRoleKey" name="role">
                     <p class="small text-secondary">各項權限獨立授予；衍生開關會標示來源，儲存時保留原始選取。</p>
-                    <% sections.forEach(section => { %>
+                    <section class="admin-form-section mb-4" aria-labelledby="<%= sectionOne.id %>">
+                        <h6 id="<%= sectionOne.id %>" class="admin-form-section-title"><%= sectionOne.title %></h6>
+
+                        <% systemGroups.forEach(group => {
+                            const parentPermission = (permissionMetadata || {})[group.parentKey];
+                            const childPermissions = group.children.map(key => (permissionMetadata || {})[key]).filter(Boolean);
+                            if (!parentPermission && childPermissions.length === 0) return;
+                        %>
+                        <section class="admin-form-section mb-3" aria-label="<%= group.title %>">
+                            <h6 class="admin-form-section-title d-flex align-items-center gap-2">
+                                <i class="<%= group.iconClass %> text-info"></i>
+                                <span><%= group.title %></span>
+                            </h6>
+                            <p class="admin-form-section-desc"><%= group.description %></p>
+                            <div class="admin-permission-grid">
+                                <% if (parentPermission) { %>
+                                <label class="admin-permission-item">
+                                    <input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" data-inactive="<%= parentPermission.implemented === false %>" data-permission-label="<%= parentPermission.label %>" data-system-group="<%= group.id %>" data-system-parent="true" data-system-parent-key="<%= group.parentKey %>" name="permissions" value="<%= parentPermission.key %>" id="role_permission_<%= parentPermission.key %>" <%= parentPermission.implemented !== false && (delegatablePermissions || []).includes(parentPermission.key) ? '' : 'disabled' %>>
+                                    <span class="admin-permission-name"><%= parentPermission.label %><% if (parentPermission.implemented === false) { %><small class="d-block text-secondary">尚未實作獨立權限檢查（唯讀保留）</small><% } %></span>
+                                </label>
+                                <% } %>
+
+                                <% childPermissions.forEach(permission => { %>
+                                <label class="admin-permission-item">
+                                    <input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" data-inactive="<%= permission.implemented === false %>" data-permission-label="<%= permission.label %>" data-system-group="<%= group.id %>" data-system-child="true" data-system-parent-key="<%= group.parentKey %>" name="permissions" value="<%= permission.key %>" id="role_permission_<%= permission.key %>" <%= permission.implemented !== false && (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>>
+                                    <span class="admin-permission-name"><%= permission.label %><% if (permission.implemented === false) { %><small class="d-block text-secondary">尚未實作獨立權限檢查（唯讀保留）</small><% } %></span>
+                                </label>
+                                <% }) %>
+                            </div>
+                        </section>
+                        <% }) %>
+
+                        <% if (sectionOneOthers.length > 0) { %>
+                        <div class="admin-permission-grid mt-2">
+                            <% sectionOneOthers.forEach(permission => { %>
+                            <label class="admin-permission-item">
+                                <input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" data-inactive="<%= permission.implemented === false %>" data-permission-label="<%= permission.label %>" name="permissions" value="<%= permission.key %>" id="role_permission_<%= permission.key %>" <%= permission.implemented !== false && (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>>
+                                <span class="admin-permission-name"><%= permission.label %><% if (permission.implemented === false) { %><small class="d-block text-secondary">尚未實作獨立權限檢查（唯讀保留）</small><% } %></span>
+                            </label>
+                            <% }) %>
+                        </div>
+                        <% } %>
+                    </section>
+
+                    <% remainingSections.forEach(section => { %>
                     <section class="admin-form-section mb-4" aria-labelledby="<%= section.id %>">
                         <h6 id="<%= section.id %>" class="admin-form-section-title"><%= section.title %></h6>
                         <div class="admin-permission-grid">
-                        <% Object.values(permissionMetadata || {}).filter(item => item.section === section.number).forEach(permission => { %>
+                        <% metadataValues.filter(item => item.section === section.number && !systemMappedKeys.has(item.key)).forEach(permission => { %>
                             <label class="admin-permission-item">
                                 <input class="form-check-input form-switch-input perm-checkbox" type="checkbox" role="switch" data-inactive="<%= permission.implemented === false %>" data-permission-label="<%= permission.label %>" name="permissions" value="<%= permission.key %>" id="role_permission_<%= permission.key %>" <%= permission.implemented !== false && (delegatablePermissions || []).includes(permission.key) ? '' : 'disabled' %>>
                                 <span class="admin-permission-name"><%= permission.label %><% if (permission.implemented === false) { %><small class="d-block text-secondary">尚未實作獨立權限檢查（唯讀保留）</small><% } %></span>

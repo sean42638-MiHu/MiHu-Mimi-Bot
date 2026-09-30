@@ -248,6 +248,12 @@ router.get('/system/settings', ensureAuth, checkPerm('view_system_settings'), (r
     discordDeploy: req.query.discordDeploy || null
 }));
 
+function redirectWithQuery(req, res, targetPath) {
+    const queryIndex = String(req.originalUrl || '').indexOf('?');
+    const query = queryIndex >= 0 ? String(req.originalUrl).slice(queryIndex) : '';
+    return res.redirect(302, `${targetPath}${query}`);
+}
+
 router.get('/system/health', ensureAuth, checkPerm('view_system_health'), async (req, res) => {
     try {
         return res.render('system_health', { activePage: 'system_health', health: await getSystemHealth(), error: null });
@@ -256,6 +262,8 @@ router.get('/system/health', ensureAuth, checkPerm('view_system_health'), async 
         return res.status(503).render('system_health', { activePage: 'system_health', health: null, error: '系統狀態目前無法載入，請稍後再試。' });
     }
 });
+
+router.get('/system/status', ensureAuth, checkPerm('view_system_health'), (req, res) => redirectWithQuery(req, res, '/system/health'));
 
 router.get('/system/health/status', ensureAuth, checkPerm('view_system_health'), async (req, res) => {
     try { return res.json(await getSystemHealth()); }
@@ -283,6 +291,8 @@ router.get('/system/audit-logs', ensureAuth, checkPerm('action_view_audit_logs')
         });
     }
 });
+
+router.get('/system/logs', ensureAuth, checkPerm('action_view_audit_logs'), (req, res) => redirectWithQuery(req, res, '/system/audit-logs'));
 
 router.post('/system/settings', ensureAuth, checkPerm('action_system_config'), async (req, res) => {
     try {
@@ -389,7 +399,7 @@ router.get('/system/bot-settings', ensureAuth, checkPerm('view_discord_status'),
             res.render('system_bot_settings', {
                 user: currentUser || req.user,
                 commands,
-                activePage: 'bot-settings',
+                activePage: 'bot_settings',
                 syncResult: req.query.sync || null,
                 registration: client.commandRegistration || null,
                 guildLabels: GUILD_LABELS,
@@ -403,12 +413,16 @@ router.get('/system/bot-settings', ensureAuth, checkPerm('view_discord_status'),
     });
 });
 
+router.get('/system/bot', ensureAuth, checkPerm('view_discord_status'), (req, res) => redirectWithQuery(req, res, '/system/bot-settings'));
+
 function redirectToCommandDeploymentInfo(req, res) {
     res.redirect(req.method === 'POST' ? 303 : 302, '/system/bot-settings?commandDeployInfo=1');
 }
 
 router.get('/system/bot-settings/sync', ensureAuth, checkPerm('view_discord_status'), redirectToCommandDeploymentInfo);
 router.post('/system/bot-settings/sync', ensureAuth, checkPerm('view_discord_status'), redirectToCommandDeploymentInfo);
+router.get('/system/bot/sync', ensureAuth, checkPerm('view_discord_status'), (req, res) => redirectWithQuery(req, res, '/system/bot-settings/sync'));
+router.post('/system/bot/sync', ensureAuth, checkPerm('view_discord_status'), redirectToCommandDeploymentInfo);
 
 router.get('/system/payout-settings', ensureAuth, checkPerm('view_system_settings'), async (req, res) => {
     try {

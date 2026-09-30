@@ -269,7 +269,7 @@ test('persists sidebar scrollTop on link navigation and pagehide', () => {
     const pagehideListeners = harness.windowListeners.get('pagehide') || [];
     pagehideListeners.forEach(listener => listener({ persisted: false }));
 
-    assert.equal(harness.storage.dump()['mihu.sidebar.scrollTop'], '345');
+    assert.equal(harness.storage.dump().sidebar_scroll_top, '345');
 });
 
 test('ignores invalid stored scroll values without breaking navigation behavior', () => {
@@ -280,7 +280,7 @@ test('ignores invalid stored scroll values without breaking navigation behavior'
     harness.sidebar.scrollTop = 41;
     const pagehideListeners = harness.windowListeners.get('pagehide') || [];
     pagehideListeners.forEach(listener => listener({ persisted: false }));
-    assert.equal(harness.storage.dump()['mihu.sidebar.scrollTop'], '41');
+    assert.equal(harness.storage.dump().sidebar_scroll_top, '41');
 });
 
 test('mobile drawer keeps stored value when hidden and restores after open', () => {
@@ -347,7 +347,19 @@ test('open scroll close then leave stores last valid scroll position', () => {
 
     const pagehideListeners = harness.windowListeners.get('pagehide') || [];
     pagehideListeners.forEach(listener => listener({ persisted: true }));
-    assert.equal(harness.storage.dump()['mihu.sidebar.scrollTop'], '420');
+    assert.equal(harness.storage.dump().sidebar_scroll_top, '420');
+});
+
+test('prefers new scroll key over legacy fallback during restore', () => {
+    const harness = createHarness({
+        stored: {
+            sidebar_scroll_top: '260',
+            'mihu.sidebar.scrollTop': '120'
+        }
+    });
+
+    harness.flushAnimationFrames(3);
+    assert.equal(harness.sidebar.scrollTop, 260);
 });
 
 test('collapse toggles do not force stale restore after initialization', () => {

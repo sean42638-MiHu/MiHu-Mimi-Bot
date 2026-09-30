@@ -5,6 +5,73 @@
     const permissionLabelMap = window.rolePageConfig.permissionLabels || {};
     const canGrantWildcard = window.rolePageConfig.canGrantWildcard;
 
+    function canDelegatePermissionKey(permissionKey) {
+        return (permissionKey === '*' && canGrantWildcard) || delegatablePermissionKeys.has(permissionKey);
+    }
+
+    function getSystemPermissionGroups(scope) {
+        const groups = new Map();
+        scope.querySelectorAll('.perm-checkbox[data-system-group]').forEach(checkbox => {
+            const groupId = checkbox.dataset.systemGroup;
+            if (!groupId) return;
+            if (!groups.has(groupId)) groups.set(groupId, { parent: null, children: [] });
+            const group = groups.get(groupId);
+            if (checkbox.dataset.systemParent === 'true') group.parent = checkbox;
+            if (checkbox.dataset.systemChild === 'true') group.children.push(checkbox);
+        });
+        return groups;
+    }
+
+    function notifySystemPermissionHint(message) {
+        if (!message) return;
+        if (window.MiHuFeedback && typeof window.MiHuFeedback.warning === 'function') {
+            window.MiHuFeedback.warning('權限關聯提醒', message);
+            return;
+        }
+        window.alert(message);
+    }
+
+    function applySystemPermissionToggleRules(changedCheckbox, scope) {
+        if (!changedCheckbox || !scope) return;
+        const groups = getSystemPermissionGroups(scope);
+        const groupId = changedCheckbox.dataset.systemGroup;
+        if (!groupId || !groups.has(groupId)) return;
+        const group = groups.get(groupId);
+
+        if (changedCheckbox.dataset.systemChild === 'true' && changedCheckbox.checked && group.parent) {
+            if (group.parent.disabled) {
+                changedCheckbox.checked = false;
+                changedCheckbox.dataset.explicitChecked = 'false';
+                const parentLabel = group.parent.dataset.permissionLabel || permissionLabelMap[group.parent.value] || group.parent.value;
+                notifySystemPermissionHint(`「${parentLabel}」不可委派，無法單獨開啟子項。`);
+                return;
+            }
+            group.parent.checked = true;
+            group.parent.dataset.explicitChecked = 'true';
+        }
+
+        if (changedCheckbox.dataset.systemParent === 'true' && !changedCheckbox.checked) {
+            const activeChildren = group.children.filter(child => child.checked);
+            if (!activeChildren.length) return;
+
+            const blockedChildren = activeChildren.filter(child => child.disabled);
+            if (blockedChildren.length) {
+                changedCheckbox.checked = true;
+                changedCheckbox.dataset.explicitChecked = 'true';
+                const childNames = blockedChildren
+                    .map(child => child.dataset.permissionLabel || permissionLabelMap[child.value] || child.value)
+                    .join('、');
+                notifySystemPermissionHint(`仍有不可編輯子項啟用中：${childNames}`);
+                return;
+            }
+
+            activeChildren.forEach(child => {
+                child.checked = false;
+                child.dataset.explicitChecked = 'false';
+            });
+        }
+    }
+
     function syncImpliedPermissions(scope = document.getElementById('editRolePermsModal')) {
         const checkboxes = [...scope.querySelectorAll('.perm-checkbox')];
         const explicit = new Set(checkboxes
@@ -24,14 +91,36 @@
             }
         }
 
+        const systemGroups = getSystemPermissionGroups(scope);
+        systemGroups.forEach(group => {
+            if (!group.parent) return;
+            const impliedChildSource = group.children.find(child => checked.has(child.value));
+            if (!impliedChildSource) return;
+            if (!checked.has(group.parent.value)) {
+                checked.add(group.parent.value);
+                pending.push(group.parent.value);
+            }
+            if (!explicit.has(group.parent.value) && !impliedBy.has(group.parent.value)) {
+                impliedBy.set(group.parent.value, impliedChildSource.value);
+            }
+        });
+
         checkboxes.forEach(checkbox => {
             const source = impliedBy.get(checkbox.value);
-            const canDelegate = (checkbox.value === '*' && canGrantWildcard)
-                || delegatablePermissionKeys.has(checkbox.value);
+            const canDelegate = canDelegatePermissionKey(checkbox.value);
+            const parentKey = checkbox.dataset.systemParentKey;
+            const parentCheckbox = checkbox.dataset.systemChild === 'true' && parentKey
+                ? scope.querySelector(`.perm-checkbox[value="${parentKey}"]`)
+                : null;
+            const blockedByParent = Boolean(parentCheckbox && !canDelegatePermissionKey(parentCheckbox.value));
             checkbox.checked = explicit.has(checkbox.value) || Boolean(source);
-            checkbox.disabled = checkbox.dataset.inactive === 'true' || !canDelegate || Boolean(source && !explicit.has(checkbox.value));
+            checkbox.disabled = checkbox.dataset.inactive === 'true' || !canDelegate || Boolean(source && !explicit.has(checkbox.value)) || blockedByParent;
             const sourceLabel = source ? (permissionLabelMap[source] || checkbox.dataset.permissionLabel || source) : '';
-            checkbox.title = source ? `由「${sourceLabel}」推導啟用` : (!canDelegate ? '你沒有權限授予此項目' : '');
+            checkbox.title = source
+                ? `由「${sourceLabel}」推導啟用`
+                : (!canDelegate
+                    ? '你沒有權限授予此項目'
+                    : (blockedByParent ? '父分類未授權，無法單獨委派子項' : ''));
 
             const label = checkbox.closest('label') || document.querySelector(`label[for="${checkbox.id}"]`);
             if (!label) return;
@@ -63,7 +152,9 @@
     document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', () => {
             checkbox.dataset.explicitChecked = String(checkbox.checked);
-            syncImpliedPermissions(checkbox.closest('form'));
+            const scope = checkbox.closest('form');
+            applySystemPermissionToggleRules(checkbox, scope);
+            syncImpliedPermissions(scope);
         });
     });
     document.querySelectorAll('form').forEach(form => {

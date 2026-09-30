@@ -69,12 +69,12 @@ test('wildcard renders every existing sidebar destination', async () => {
     for (const href of [
         '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
         '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
-        '/management/orders', '/system/bot-settings', '/management/commission', '/system/vip', '/system/roles',
-        '/system/settings', '/system/audit-logs', '/system/health'
+        '/management/orders', '/system/settings', '/system/bot', '/system/commission', '/system/vip', '/system/roles',
+        '/system/logs', '/system/status'
     ]) {
         assert.match(html, new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), href);
     }
-    for (const label of ['首頁', '個人', '管理', '系統', '系統資訊', '會員名單', '會員資金明細', '員工列表', '薪轉管理']) {
+    for (const label of ['首頁', '個人', '管理', '系統', '系統設定', '系統管理', '系統資訊', '會員名單', '會員資金明細', '員工列表', '薪轉管理']) {
         assert.match(html, new RegExp(label), label);
     }
 });
@@ -115,9 +115,8 @@ test('nested admin destinations have one current link and an active expanded par
 test('system info destinations keep one current link and only one active parent collapse', async () => {
     const permissions = ['view_system', 'view_system_settings', 'action_view_audit_logs', 'view_system_health', 'view_discord_status'];
     const cases = [
-        ['system_settings', '/system/settings'],
-        ['audit_logs', '/system/audit-logs'],
-        ['system_health', '/system/health']
+        ['audit_logs', '/system/logs'],
+        ['system_health', '/system/status']
     ];
 
     for (const [activePage, href] of cases) {
@@ -141,30 +140,47 @@ test('system info group is hidden when no child permission is granted', async ()
 test('system info child visibility follows individual permissions', async () => {
     const settingsOnly = await renderSidebar(['view_system', 'view_system_settings'], 'system_settings');
     assert.match(settingsOnly, /href="\/system\/settings"/);
-    assert.doesNotMatch(settingsOnly, /href="\/system\/audit-logs"/);
-    assert.doesNotMatch(settingsOnly, /href="\/system\/health"/);
+    assert.doesNotMatch(settingsOnly, /href="\/system\/logs"/);
+    assert.doesNotMatch(settingsOnly, /href="\/system\/status"/);
 
     const logsOnly = await renderSidebar(['view_system', 'action_view_audit_logs'], 'audit_logs');
-    assert.match(logsOnly, /href="\/system\/audit-logs"/);
+    assert.match(logsOnly, /href="\/system\/logs"/);
     assert.doesNotMatch(logsOnly, /href="\/system\/settings"/);
-    assert.doesNotMatch(logsOnly, /href="\/system\/health"/);
+    assert.doesNotMatch(logsOnly, /href="\/system\/status"/);
 
     const healthOnly = await renderSidebar(['view_system', 'view_system_health'], 'system_health');
-    assert.match(healthOnly, /href="\/system\/health"/);
+    assert.match(healthOnly, /href="\/system\/status"/);
     assert.doesNotMatch(healthOnly, /href="\/system\/settings"/);
-    assert.doesNotMatch(healthOnly, /href="\/system\/audit-logs"/);
+    assert.doesNotMatch(healthOnly, /href="\/system\/logs"/);
+});
+
+test('system settings and system manage destinations activate their own parent groups', async () => {
+    const permissions = ['view_system', 'view_system_settings', 'view_discord_status', 'view_commission', 'view_vip', 'view_roles'];
+
+    const settings = await renderSidebar(permissions, 'system_settings');
+    assert.match(settings, /href="#collapseSystemSettings"[^>]*class="menu-item[^"]*active[^"]*"[^>]*aria-expanded="true"/);
+    assert.match(settings, /class="collapse show" id="collapseSystemSettings"/);
+
+    const bot = await renderSidebar(permissions, 'bot_settings');
+    assert.match(bot, /href="\/system\/bot"[^>]*active-staff[^>]*aria-current="page"/);
+    assert.match(bot, /href="#collapseSystemManage"[^>]*class="menu-item[^"]*active[^"]*"[^>]*aria-expanded="true"/);
+    assert.match(bot, /class="collapse show" id="collapseSystemManage"/);
+
+    const commission = await renderSidebar(permissions, 'commission');
+    assert.match(commission, /href="\/system\/commission"[^>]*active-staff[^>]*aria-current="page"/);
 });
 
 test('sidebar icon colors are class-driven and not tied to active state styles', () => {
     const sidebar = fs.readFileSync(path.join(__dirname, '..', 'views', 'partials', 'sidebar.ejs'), 'utf8');
     for (const iconClass of [
         'menu-icon-home',
-        'menu-icon-personal-cyan',
-        'menu-icon-personal-pink',
-        'menu-icon-manage-violet',
-        'menu-icon-manage-green',
-        'menu-icon-bot',
-        'menu-icon-system-info'
+        'menu-icon-profile',
+        'menu-icon-wallet',
+        'menu-icon-income',
+        'menu-icon-manage-members',
+        'menu-icon-manage-orders',
+        'menu-icon-system-bot',
+        'menu-icon-system-info-parent'
     ]) {
         assert.match(sidebar, new RegExp(iconClass), iconClass);
     }

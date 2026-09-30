@@ -1244,15 +1244,29 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const sidebarDestinations = [
             '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
             '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
-            '/management/orders', '/system/bot-settings', '/management/commission', '/system/vip', '/system/roles',
-            '/system/settings', '/system/audit-logs', '/system/health'
+            '/management/orders', '/system/settings', '/system/bot', '/system/commission', '/system/vip', '/system/roles',
+            '/system/logs', '/system/status'
         ];
         for (const destination of sidebarDestinations) {
             assert.match(breakGlassRoles.body, new RegExp(`href="${destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), destination);
             const response = await createRequest(port, 'GET', destination, {
                 Host: `127.0.0.1:${port}`, Cookie: admin.cookie
             });
-            assert.equal(response.status, 200, `${destination}: ${response.body}`);
+            if (response.status === 302 || response.status === 303) {
+                assert.ok(response.headers.location, `${destination}: missing redirect location`);
+                const followed = await createRequest(port, 'GET', response.headers.location, {
+                    Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+                });
+                assert.equal(followed.status, 200, `${destination} -> ${response.headers.location}: ${followed.body}`);
+            } else {
+                assert.equal(response.status, 200, `${destination}: ${response.body}`);
+            }
+        }
+        for (const legacyDestination of ['/system/bot-settings', '/management/commission', '/system/audit-logs', '/system/health']) {
+            const response = await createRequest(port, 'GET', legacyDestination, {
+                Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+            });
+            assert.equal(response.status, 200, `${legacyDestination}: ${response.body}`);
         }
         const url = '/system/bot-settings/sync';
         const settings = await createRequest(port, 'GET', '/system/bot-settings', {
@@ -1472,7 +1486,11 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(JSON.parse(objectDeniedPost.body).reason, 'PERMISSION_DENIED');
         await saveRolePermissions('settings_viewer', ['system_settings.view']);
         assert.deepEqual(await storedRolePermissions('settings_viewer'), {
-            opaque: { note: '<script>inert</script>' }, 'future.disabled': false, view_system_settings: true
+            opaque: { note: '<script>inert</script>' },
+            'future.disabled': false,
+            view_system_settings: true,
+            view_cat_system_settings: true,
+            view_system: true
         });
         const unknownInjection = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,

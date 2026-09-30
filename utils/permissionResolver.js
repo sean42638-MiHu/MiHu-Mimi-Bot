@@ -38,7 +38,14 @@ const oldImplications = {
     sys_roles: ['roles.view', 'roles.manage'],
     sys_vip: ['vip.view', 'vip.manage'],
     sys_commission: ['commission.view', 'commission.manage'],
-    sys_settings: ['system_settings.view', 'system_settings.manage', 'discord_control.view', 'audit_logs.view', 'system_health.view'],
+    sys_settings: ['system_settings.view', 'system_settings.manage', 'discord_control.view', 'audit_logs.view', 'system_health.view', 'view_cat_system_settings', 'view_cat_system_manage', 'view_cat_system_info'],
+    'system_settings.view': ['view_cat_system_settings'],
+    'discord_control.view': ['view_cat_system_manage'],
+    'commission.view': ['view_cat_system_manage'],
+    'vip.view': ['view_cat_system_manage'],
+    'roles.view': ['view_cat_system_manage'],
+    'audit_logs.view': ['view_cat_system_info'],
+    'system_health.view': ['view_cat_system_info'],
     'payout.view_sensitive': ['payout.view'], 'payout.export': ['payout.view']
 };
 const originalManagePairs = {

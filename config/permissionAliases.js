@@ -2,6 +2,15 @@
 
 // Compatibility names only; authorization and new writes use canonical keys.
 const PERMISSION_ALIASES = Object.freeze({
+    "view_cat_system_settings": "view_cat_system_settings",
+    "view_cat_system_manage": "view_cat_system_manage",
+    "view_cat_system_info": "view_cat_system_info",
+    "view_bot_settings": "view_discord_status",
+    "view_commission_settings": "view_commission",
+    "view_vip_settings": "view_vip",
+    "view_role_management": "view_roles",
+    "view_audit_logs": "action_view_audit_logs",
+    "view_system_status": "view_system_health",
     "system_health.view": "view_system_health",
     "analytics.view": "action_view_analytics",
     "audit_logs.view": "action_view_audit_logs",

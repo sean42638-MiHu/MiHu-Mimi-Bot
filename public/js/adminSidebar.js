@@ -5,7 +5,8 @@
     if (!sidebar) return;
 
     const collapseStorageKey = id => `mihu.sidebar.collapse.${id}`;
-    const scrollStorageKey = 'mihu.sidebar.scrollTop';
+    const scrollStorageKey = 'sidebar_scroll_top';
+    const legacyScrollStorageKey = 'mihu.sidebar.scrollTop';
     const scrollSaveThrottleMs = 140;
     const initScrollGuardMs = 300;
     let scrollContainer = null;
@@ -98,7 +99,9 @@
         if (!scrollContainer) scrollContainer = resolveScrollContainer();
         if (!scrollContainer) return;
 
-        const storedValue = parseStoredScrollTop(safeSessionStorage('getItem', scrollStorageKey));
+        const storedRaw = safeSessionStorage('getItem', scrollStorageKey);
+        const legacyRaw = storedRaw === null ? safeSessionStorage('getItem', legacyScrollStorageKey) : null;
+        const storedValue = parseStoredScrollTop(storedRaw === null ? legacyRaw : storedRaw);
         if (storedValue === null) {
             scrollRestorePending = false;
             return;
