@@ -192,7 +192,6 @@
                         name: s.role_name || fallbackRole.name,
                         badgeClass: s.role ? `staff-role-${String(s.role).replace(/[^a-zA-Z0-9_-]/g, '')}` : fallbackRole.badgeClass
                     };
-                    const isPlatformSuperuser = Number(s.is_platform_superuser) === 1;
 
                     const statusMap = {
                         'idle': { name: '空閒中', class: 'status-idle', icon: 'fa-circle-check' },
@@ -216,7 +215,7 @@
                         username: s.username,
                         avatar: avUrl,
                         role: s.role,
-                        roleName: `${roleObj.name}${isPlatformSuperuser ? ' · 最高權限' : ''}`,
+                        roleName: roleObj.name,
                         status: s.status || 'idle',
                         statusName: statusObj.name,
                         commissionRate: hasPersonalRate ? personalRate : null,
@@ -246,7 +245,6 @@
                         <!-- 👤 所屬職位標籤 (全後台同步) -->
                         <td class="text-center">
                             <span class="admin-badge <%= roleObj.badgeClass %> role-badge-tag"><%= roleObj.name %></span>
-                            <% if (isPlatformSuperuser) { %><span class="admin-badge admin-badge-danger ms-1">最高權限</span><% } %>
                         </td>
 
                         <td class="text-center">

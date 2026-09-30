@@ -1096,7 +1096,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(memberStoredPlatformStaff.status, 200, memberStoredPlatformStaff.body);
         assert.match(memberStoredPlatformStaff.body, /platform-user/);
-        assert.match(memberStoredPlatformStaff.body, /staff-role-member[^>]*>Member<\/span>[\s\S]*最高權限/);
+        assert.match(memberStoredPlatformStaff.body, /staff-role-member[^>]*>Member<\/span>/);
+        assert.doesNotMatch(memberStoredPlatformStaff.body, /最高權限/);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='604610298581876746'", (error, row) => error ? reject(error) : resolve(row.role))), 'member');
         await new Promise((resolve, reject) => db.run("UPDATE users SET role='admin' WHERE id='604610298581876746'", error => error ? reject(error) : resolve()));
         const breakGlassRoles = await createRequest(port, 'GET', '/system/roles', {
