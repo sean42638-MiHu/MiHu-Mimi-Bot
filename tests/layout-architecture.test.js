@@ -92,3 +92,28 @@ test('individual view permissions render only their destination and necessary pa
     assert.doesNotMatch(payroll, /href="\/management\/staff"/);
     assert.doesNotMatch(payroll, /會員管理/);
 });
+
+test('nested admin destinations have one current link and an active expanded parent', async () => {
+    const permissions = ['analytics.view', 'members.view', 'member_ledger.view', 'staff.view', 'payroll.view'];
+    const cases = [
+        ['analytics', '/management/analytics', 'collapseOperation'],
+        ['members', '/management/members', 'collapseMembers'],
+        ['member_transactions', '/management/members/transactions', 'collapseMembers'],
+        ['staff', '/management/staff', 'collapseStaff'],
+        ['payroll', '/management/payroll', 'collapseStaff']
+    ];
+
+    for (const [activePage, href, collapseId] of cases) {
+        const html = await renderSidebar(permissions, activePage);
+        assert.equal((html.match(/aria-current="page"/g) || []).length, 1, activePage);
+        assert.match(html, new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*active-staff[^>]*aria-current="page"`), activePage);
+        assert.match(html, new RegExp(`class="menu-item[^"]*active[^"]*"[^>]*aria-expanded="true"[^>]*aria-controls="${collapseId}"`), activePage);
+        assert.match(html, new RegExp(`class="collapse show" id="${collapseId}"`), activePage);
+    }
+});
+
+test('direct sidebar destinations use the same unique current-page contract', async () => {
+    const html = await renderSidebar(['*'], 'system_health');
+    assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
+    assert.match(html, /href="\/system\/health"[^>]*class="menu-item active"[^>]*aria-current="page"/);
+});

@@ -30,6 +30,13 @@ function createRequest(port, method, route, headers = {}, body = '') {
     });
 }
 
+function assertNestedSidebarState(body, href, collapseId) {
+    const escapedHref = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.equal((body.match(/aria-current="page"/g) || []).length, 1, href);
+    assert.match(body, new RegExp(`href="${escapedHref}"[^>]*class="submenu-item active-staff"[^>]*aria-current="page"`), href);
+    assert.match(body, new RegExp(`href="#${collapseId}"[^>]*class="menu-item[^"]*active[^"]*"[^>]*aria-expanded="true"`), collapseId);
+}
+
 test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB', async () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-http-e2e-'));
     const databasePath = path.join(tempDirectory, 'fixture.sqlite');
@@ -251,6 +258,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
         });
         assert.equal(managerPayrollPage.status, 200, managerPayrollPage.body);
+        assertNestedSidebarState(managerPayrollPage.body, '/management/payroll', 'collapseStaff');
         assert.match(managerPayrollPage.body, /payrollExportModal/);
         assert.match(managerPayrollPage.body, /export\/payouts/);
         assert.match(managerPayrollPage.body, /export\/bank-accounts/);
@@ -525,6 +533,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(ledgerA.body, /collapseMembers/);
         assert.doesNotMatch(ledgerA.body, /Studio B fixture/);
         assert.match(ledgerA.body, /active-staff/);
+        assertNestedSidebarState(ledgerA.body, '/management/members/transactions', 'collapseMembers');
         assert.match(ledgerA.body, /href="\/management\/members\/transactions" class="submenu-item active-staff"/);
         assert.doesNotMatch(ledgerA.body, /href="\/management\/members" class="submenu-item active-staff"/);
         assert.match(ledgerA.body, /src="\/images\/default-avatar\.png"/);
@@ -585,6 +594,18 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(ledgerB.body, /Studio B fixture/);
         assert.doesNotMatch(ledgerB.body, /Studio A fixture/);
         assert.match(ledgerB.body, /其他：mystery_type/);
+
+        for (const [route, href, collapseId] of [
+            ['/management/analytics?source=sidebar-test', '/management/analytics', 'collapseOperation'],
+            ['/management/members?source=sidebar-test', '/management/members', 'collapseMembers'],
+            ['/management/staff?source=sidebar-test', '/management/staff', 'collapseStaff']
+        ]) {
+            const response = await createRequest(port, 'GET', route, {
+                Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+            });
+            assert.equal(response.status, 200, `${route}: ${response.body}`);
+            assertNestedSidebarState(response.body, href, collapseId);
+        }
 
         const memberA = await createSession('member-a');
         const profilePage = await createRequest(port, 'GET', '/profile', {
