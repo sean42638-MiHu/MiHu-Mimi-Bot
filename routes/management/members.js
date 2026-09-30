@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../database');
-const { ensureAuth, checkPerm } = require('../../middleware/auth');
+const { denyPermission, ensureAuth, checkPerm } = require('../../middleware/auth');
 const { sortByRoleWeight } = require('../../utils/roleHelper');
 const { adjustUserWallet } = require('../../utils/walletHelper');
 const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../../utils/vipColor');
@@ -10,7 +10,8 @@ const { writeAuditLog } = require('../../utils/auditService');
 const { withTransactionGate } = require('../../utils/transactionGate');
 const { resolveAvatarUrl } = require('../../utils/avatarUrl');
 const { hasResolvedPermission } = require('../../utils/permissionResolver');
-const { authorizeRoleAssignment, isRoleDelegationError } = require('../../services/roleDelegationService');
+const { getRolesDataFromDb } = require('../../utils/dataSync');
+const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
 
 function isPlatformSuperuser(req, res) {
     const permissions = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
@@ -44,12 +45,24 @@ function ledgerDisplayType(type) {
     return known || { label: `其他：${type || '未知'}`, icon: 'fa-circle-question', tone: 'neutral' };
 }
 
+router.get('/role-options', ensureAuth, checkPerm('member_adjust_vip'), async (req, res, next) => {
+    try {
+        const [roles, actor] = await Promise.all([getRolesDataFromDb(), loadActorContext(req.user.id, db)]);
+        const assignableRoles = roles
+            .filter(role => canAssignRole(actor, role))
+            .map(({ id, role_key, name, tier_level }) => ({ id, role_key, name, tier_level }));
+        return res.json({ success: true, roles: assignableRoles });
+    } catch (error) {
+        return next(error);
+    }
+});
+
 // 1.0 唯讀會員 Wallet Ledger；此 route 必須位於任何未來 /:id dynamic route 之前。
 router.get('/transactions', ensureAuth, checkPerm('member_ledger.view'), async (req, res) => {
     const platformAdmin = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!platformAdmin && (!Number.isInteger(studioId) || studioId <= 0)) {
-        return res.status(403).send('找不到已授權的工作室範圍');
+        return denyPermission(req, res, ['member_ledger.view'], { feature: '會員資金明細' });
     }
 
     const requestedType = String(req.query.type || '').trim();
@@ -120,11 +133,11 @@ router.get('/transactions', ensureAuth, checkPerm('member_ledger.view'), async (
 });
 
 // 1.1 渲染「會員管理」頁面 (完全整合 user_wallets 資料庫)
-router.get('/', ensureAuth, checkPerm('members.view'), (req, res) => {
+router.get('/', ensureAuth, checkPerm('members.view'), (req, res, next) => {
     const allStudios = isPlatformSuperuser(req, res);
     const studioId = Number(req.user && req.user.studio_id);
     if (!allStudios && (!Number.isInteger(studioId) || studioId <= 0)) {
-        return res.status(403).send('找不到已授權的工作室範圍');
+        return denyPermission(req, res, ['members.view'], { feature: '會員管理' });
     }
     const membersSql = `
         SELECT u.*,
@@ -145,6 +158,7 @@ router.get('/', ensureAuth, checkPerm('members.view'), (req, res) => {
         }
 
         db.all('SELECT * FROM vip_tiers ORDER BY CAST(level AS INTEGER) ASC', [], (vErr, vipTiers) => {
+            if (vErr) return next(vErr);
             const tiers = vipTiers || [];
             const vipColorMap = new Map(tiers.map(tier => [Number(tier.level), normalizeVipColor(tier.color, DEFAULT_VIP_COLOR)]));
             
@@ -228,7 +242,7 @@ router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, re
         const actorStudioId = Number(req.user.studio_id);
         const targetStudioId = Number(target.studio_id);
         if (!platformAdmin && (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || actorStudioId !== targetStudioId)) {
-            return res.status(403).send('無權同步其他工作室會員');
+            return denyPermission(req, res, ['members.manage'], { kind: 'action', feature: '同步會員 Discord 資料' });
         }
         if (process.env.DISCORD_ENABLED !== 'true') return res.status(503).send('Discord integration is disabled');
         const client = req.app.get('discordClient');
@@ -265,7 +279,7 @@ router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, re
 
 // 1.3 全體會員 Discord 資料刷新
 router.get('/sync-all', ensureAuth, checkPerm('members.manage'), async (req, res) => {
-    res.redirect('/management/members?success=1');
+    res.status(501).send('Discord 會員全體同步尚未實作');
 });
 
 // 1.4 手動更新會員帳務金額 API (整合資金資料庫與防呆空字串)
@@ -280,7 +294,7 @@ router.post('/update-balance/:id', ensureAuth, checkPerm('member_adjust_balance'
             const actorStudioId = Number(req.user && req.user.studio_id);
             const targetStudioId = Number(target.studio_id);
             if (!Number.isInteger(actorStudioId) || actorStudioId <= 0 || targetStudioId !== actorStudioId) {
-                return res.status(403).send('無權調整其他工作室會員錢包');
+                return denyPermission(req, res, ['member_adjust_balance'], { kind: 'action', feature: '會員帳務調整' });
             }
         }
         await adjustUserWallet({
@@ -335,9 +349,7 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
                 }
                 newVip = Math.max(0, newVip);
                 const newRole = role === undefined || role === '' ? (targetUser.role || 'member') : String(role).trim();
-                if (newRole !== targetUser.role) {
-                    await authorizeRoleAssignment(req.user.id, newRole, 'member_adjust_vip', db);
-                }
+                await authorizeRoleAssignment(req.user.id, newRole, 'member_adjust_vip', db);
                 await dbRun('UPDATE users SET vip_level = ?, role = ? WHERE id = ?', [newVip, newRole, targetUserId]);
                 await writeAuditLog({
                     operatorId: req.user.id,
@@ -378,8 +390,9 @@ router.post('/update-vip/:id', ensureAuth, checkPerm('member_adjust_vip'), async
         } catch (e) {}
         return res.redirect('/management/members?success=1');
     } catch (error) {
-        if (isRoleDelegationError(error)) return res.status(403).send(error.message);
-        if (error.message === '無權調整其他工作室會員') return res.status(403).send(error.message);
+        if (isRoleDelegationError(error) || error.message === '無權調整其他工作室會員') {
+            return denyPermission(req, res, ['member_adjust_vip'], { kind: 'action', feature: '會員身分與 VIP 調整' });
+        }
         return res.redirect('/management/members?error=' + encodeURIComponent(error.message || '更新身分失敗'));
     }
 });

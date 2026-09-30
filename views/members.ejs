@@ -209,9 +209,6 @@
                     </button>
                 </div>
 
-                <% if (hasPerm('members.manage')) { %><a href="/management/members/sync-all" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2 fw-semibold text-nowrap flex-shrink-0">
-                    <i class="fa-brands fa-discord me-1"></i>全體同步 DC 資訊
-                </a><% } %>
             </div>
         </div>
 
@@ -302,7 +299,32 @@
             if (adjustBalanceModal) adjustBalanceModal.show();
         }
 
-        function showVipEdit(data) {
+        let roleOptionsRequest = null;
+        let roleOptionsRequestId = 0;
+
+        function replaceRoleOptions(select, roles, currentRole) {
+            select.replaceChildren();
+            roles.forEach(role => {
+                const option = document.createElement('option');
+                option.value = role.role_key;
+                option.textContent = `${role.name || role.role_key} · Lv.${role.tier_level}`;
+                select.appendChild(option);
+            });
+            const currentOption = roles.find(role => role.role_key === currentRole);
+            if (!currentOption) {
+                const unavailable = document.createElement('option');
+                unavailable.value = currentRole;
+                unavailable.textContent = `${currentRole || '未知身分'}（已刪除或不可指派）`;
+                unavailable.disabled = true;
+                unavailable.selected = true;
+                select.appendChild(unavailable);
+                return false;
+            }
+            select.value = currentRole;
+            return true;
+        }
+
+        async function showVipEdit(data) {
             if (!data) return;
             const form = document.getElementById('vipForm');
             if (form) form.action = `/management/members/update-vip/${data.id}`;
@@ -312,11 +334,52 @@
 
             document.getElementById('inputVipOnly').value = data.vip !== undefined ? data.vip : 0;
             const roleSelect = document.getElementById('inputRoleSelect');
-            if (roleSelect && data.roleKey) {
-                roleSelect.value = data.roleKey;
-            }
+            const submitButton = document.getElementById('submitVipRoleButton');
+            const feedback = document.getElementById('roleOptionsFeedback');
+            const requestId = ++roleOptionsRequestId;
+            if (roleOptionsRequest) roleOptionsRequest.abort();
+            roleOptionsRequest = new AbortController();
+            roleSelect.replaceChildren(new Option('正在載入身分角色...', ''));
+            roleSelect.disabled = true;
+            submitButton.disabled = true;
+            feedback.textContent = '正在取得最新身分角色...';
             if (vipModal) vipModal.show();
+            try {
+                const response = await fetch('/management/members/role-options', {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                    signal: roleOptionsRequest.signal
+                });
+                const result = await response.json();
+                if (requestId !== roleOptionsRequestId) return;
+                if (!response.ok || !result.success || !Array.isArray(result.roles)) throw new Error(result.message || '身分角色載入失敗');
+                const currentAvailable = replaceRoleOptions(roleSelect, result.roles, data.roleKey || 'member');
+                roleSelect.disabled = false;
+                submitButton.disabled = !currentAvailable;
+                feedback.textContent = currentAvailable ? '' : '目前身分已刪除或不可指派，請選擇可用身分後再提交。';
+            } catch (error) {
+                if (error.name === 'AbortError' || requestId !== roleOptionsRequestId) return;
+                roleSelect.replaceChildren(new Option('身分角色載入失敗', ''));
+                roleSelect.disabled = true;
+                submitButton.disabled = true;
+                feedback.textContent = '無法取得最新身分角色，請稍後再試。';
+            }
         }
+
+        document.getElementById('inputRoleSelect')?.addEventListener('change', event => {
+            const selected = event.target.selectedOptions[0];
+            document.getElementById('submitVipRoleButton').disabled = !selected || selected.disabled || !selected.value;
+            document.getElementById('roleOptionsFeedback').textContent = selected && !selected.disabled ? '' : '請選擇可指派的身分角色。';
+        });
+
+        document.getElementById('vipForm')?.addEventListener('submit', event => {
+            const roleSelect = document.getElementById('inputRoleSelect');
+            const selected = roleSelect && roleSelect.selectedOptions[0];
+            if (!selected || roleSelect.disabled || selected.disabled || !selected.value) {
+                event.preventDefault();
+                document.getElementById('roleOptionsFeedback').textContent = '請先取得並選擇可指派的身分角色。';
+            }
+        });
 
         // 🚀 帳務表單提交負數防呆攔截 (跳出負數獨立 Modal)
         const adjustForm = document.getElementById('adjustBalanceForm');

@@ -162,15 +162,10 @@
 
                     <div class="mb-3">
                         <label class="small text-secondary fw-semibold mb-1">連動後台身分角色</label>
-                        <select id="inputRoleSelect" name="role" class="form-select form-control-glass" style="background-color: #171326; color: #fff;">
-                            <option value="member">會員</option>
-                            <option value="talent">陪陪</option>
-                            <option value="cs">客服</option>
-                            <option value="manager">客服主管</option>
-                            <option value="aftersales">售後管理</option>
-                            <option value="cfo">財務長</option>
-                            <option value="admin">店長</option>
+                        <select id="inputRoleSelect" name="role" class="form-select form-control-glass" style="background-color: #171326; color: #fff;" disabled>
+                            <option value="">開啟視窗後載入身分角色</option>
                         </select>
+                        <div id="roleOptionsFeedback" class="admin-form-help mt-1" role="status" aria-live="polite"></div>
                     </div>
 
                     <div class="mb-2">
@@ -180,7 +175,7 @@
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-sm btn-warning rounded-pill px-4 fw-semibold text-dark">確認同步更新</button>
+                    <button type="submit" id="submitVipRoleButton" class="btn btn-sm btn-warning rounded-pill px-4 fw-semibold text-dark" disabled>確認同步更新</button>
                 </div>
             </form>
         </div>

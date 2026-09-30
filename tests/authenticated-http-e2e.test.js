@@ -256,6 +256,26 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: member.cookie
         });
         assert.equal(deniedMemberStaff.status, 403);
+        const deniedMemberStaffPage = await createRequest(port, 'GET', '/management/staff', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie, Accept: 'text/html,application/xhtml+xml'
+        });
+        assert.equal(deniedMemberStaffPage.status, 403);
+        assert.match(deniedMemberStaffPage.body, /⛔ 無權限存取此頁面/);
+        assert.match(deniedMemberStaffPage.body, /data-access-denied-kind="page"[^>]*data-access-denied-feature="員工列表"/);
+        assert.match(deniedMemberStaffPage.body, /href="\/home"/);
+        const deniedMemberAction = await createRequest(port, 'POST', '/management/payroll/payouts/1/paid', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: member.cookie,
+            'X-CSRF-Token': member.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, '{}');
+        assert.equal(deniedMemberAction.status, 403);
+        assert.deepEqual(JSON.parse(deniedMemberAction.body), {
+            success: false, code: 403, reason: 'PERMISSION_DENIED', message: '您沒有權限執行此操作', feature: '標記提款已匯款'
+        });
+        const homeAlias = await createRequest(port, 'GET', '/home', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie
+        });
+        assert.equal(homeAlias.status, 302);
+        assert.equal(homeAlias.headers.location, '/dashboard');
 
         const managerA = await createSession('manager-a');
         const managerPayrollPage = await createRequest(port, 'GET', '/management/payroll', {
@@ -411,8 +431,17 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const storedRolePermissions = async roleKey => JSON.parse(await new Promise((resolve, reject) => db.get(
             'SELECT permissions FROM roles WHERE role_key = ?', [roleKey], (error, row) => error ? reject(error) : resolve(row.permissions)
         )));
+        await saveRolePermissions('settings_viewer', ['system_settings.manage']);
+        assert.deepEqual(await storedRolePermissions('settings_viewer'), ['system_settings.manage']);
+        const newlyAuthorizedSettingsPost = await createRequest(port, 'POST', '/system/settings', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: settingsViewer.cookie,
+            'X-CSRF-Token': settingsViewer.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'start_day=1&end_day=31&minimum_amount=100');
+        assert.equal(newlyAuthorizedSettingsPost.status, 302, newlyAuthorizedSettingsPost.body);
+        const permissionsBeforeSave = {};
         for (const roleKey of ['cs', 'manager', 'admin']) {
             const permissions = await storedRolePermissions(roleKey);
+            permissionsBeforeSave[roleKey] = permissions;
             await saveRolePermissions(roleKey, permissions);
         }
         const savedRolePage = await createRequest(port, 'GET', '/system/roles', {
@@ -429,9 +458,10 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const csPermissionsAfterReload = rolePermissionsFromPage('cs');
         const managerPermissionsAfterReload = rolePermissionsFromPage('manager');
         const adminPermissionsAfterReload = rolePermissionsFromPage('admin');
-        assert.ok(csPermissionsAfterReload.includes('orders.manage'));
+        assert.deepEqual(csPermissionsAfterReload, permissionsBeforeSave.cs);
+        assert.deepEqual(managerPermissionsAfterReload, permissionsBeforeSave.manager);
+        assert.deepEqual(adminPermissionsAfterReload, permissionsBeforeSave.admin);
         assert.ok(managerPermissionsAfterReload.includes('manage_orders'));
-        assert.ok(managerPermissionsAfterReload.includes('orders.manage'));
         assert.ok(adminPermissionsAfterReload.includes('orders.price_adjust'));
         for (const [roleKey, permissions] of [['cs', csPermissionsAfterReload], ['manager', managerPermissionsAfterReload]]) {
             assert.equal(permissions.includes('orders.price_adjust'), false, `${roleKey} price toggle must reload off`);
@@ -446,6 +476,24 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             ['permissions', 'payout.view_sensitive'], ['permissions', 'discord_commands.deploy_production']
         ]).toString());
         assert.equal(superuserCreate.status, 302);
+        const assignedAdminRole = await new Promise((resolve, reject) => db.get("SELECT id FROM roles WHERE role_key='admin'", (error, row) => error ? reject(error) : resolve(row)));
+        const deniedAssignedRoleDelete = await createRequest(port, 'POST', `/system/roles/delete/${assignedAdminRole.id}`, {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie, Accept: 'application/json',
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        });
+        assert.equal(deniedAssignedRoleDelete.status, 409);
+        assert.doesNotMatch(deniedAssignedRoleDelete.body, /PERMISSION_DENIED/);
+        const disposableRole = await new Promise((resolve, reject) => db.get("SELECT id, role_key FROM roles WHERE name='Superuser Delegation'", (error, row) => error ? reject(error) : resolve(row)));
+        const deletedRole = await createRequest(port, 'POST', `/system/roles/delete/${disposableRole.id}`, {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
+            'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        });
+        assert.equal(deletedRole.status, 302, deletedRole.body);
+        const rolesAfterDelete = await createRequest(port, 'GET', '/management/members/role-options', {
+            Host: `127.0.0.1:${port}`, Cookie: starActor.cookie, Accept: 'application/json'
+        });
+        assert.equal(rolesAfterDelete.status, 200, rolesAfterDelete.body);
+        assert.equal(JSON.parse(rolesAfterDelete.body).roles.some(role => role.role_key === disposableRole.role_key), false);
         const superuserProtectedRoleEdit = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: starActor.cookie,
             'X-CSRF-Token': starActor.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
@@ -454,7 +502,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const superuserRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, metadata FROM audit_logs WHERE action='ROLE_UPDATED' AND target_id='protected_deployer'", (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(superuserRoleAudit.action, 'ROLE_UPDATED');
         assert.deepEqual(JSON.parse(superuserRoleAudit.metadata).permissionDiff, {
-            added: ['system_settings.manage', 'system_settings.view'],
+            added: ['system_settings.manage'],
             removed: ['discord_commands.deploy_production', 'roles.manage']
         });
         const superuserUnknownGrant = await createRequest(port, 'POST', '/system/roles/add', {
@@ -468,6 +516,23 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM roles WHERE name='Unknown Superuser Grant'", (error, row) => error ? reject(error) : resolve(row.count))), 0);
 
         const protectedRoleBefore = await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions)));
+        const protectedRoleJsonDenial = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            Accept: 'application/json', 'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/json'
+        }, JSON.stringify({ role: 'protected_deployer', permissions: ['roles.manage'] }));
+        assert.equal(protectedRoleJsonDenial.status, 403);
+        assert.deepEqual(JSON.parse(protectedRoleJsonDenial.body), {
+            success: false, code: 403, reason: 'PERMISSION_DENIED', message: '您沒有權限執行此操作', feature: '角色權限修改'
+        });
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions))), protectedRoleBefore);
+        const protectedRoleHtmlDenial = await createRequest(port, 'POST', '/system/roles/update-permissions', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
+            Accept: 'text/html,application/xhtml+xml', 'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'role=protected_deployer&permissions=roles.manage');
+        assert.equal(protectedRoleHtmlDenial.status, 403);
+        assert.match(protectedRoleHtmlDenial.body, /data-access-denied-kind="action"[^>]*data-access-denied-feature="角色權限修改"/);
+        assert.match(protectedRoleHtmlDenial.body, /⚠️ 操作遭到拒絕/);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT permissions FROM roles WHERE role_key='protected_deployer'", (error, row) => error ? reject(error) : resolve(row.permissions))), protectedRoleBefore);
         const protectedRoleEdit = await createRequest(port, 'POST', '/system/roles/update-permissions', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: securityCross.cookie,
             'X-CSRF-Token': securityCross.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
@@ -514,6 +579,12 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'X-CSRF-Token': assignmentManager.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'vip_level=0&role=settings_target');
         assert.equal(deniedMemberAssignment.status, 403, deniedMemberAssignment.headers.location || deniedMemberAssignment.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT role, vip_level FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row))), memberRoleBefore);
+        const forgedDeletedRole = await createRequest(port, 'POST', '/management/members/update-vip/member-a', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'vip_level=9&role=deleted-role-key');
+        assert.equal(forgedDeletedRole.status, 403, forgedDeletedRole.headers.location || forgedDeletedRole.body);
         assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT role, vip_level FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row))), memberRoleBefore);
 
         const dataSync = require('../utils/dataSync');
@@ -788,6 +859,23 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(memberListA.status, 200);
         assert.match(memberListA.body, /member-a/);
         assert.doesNotMatch(memberListA.body, /member-b/);
+        assert.doesNotMatch(memberListA.body, /option value="delegatable_target"/);
+        const managerRoleOptions = await createRequest(port, 'GET', '/management/members/role-options', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie, Accept: 'application/json'
+        });
+        assert.equal(managerRoleOptions.status, 200, managerRoleOptions.body);
+        assert.ok(JSON.parse(managerRoleOptions.body).roles.some(role => role.role_key === 'delegatable_target'));
+        const deniedMemberRoleOptions = await createRequest(port, 'GET', '/management/members/role-options', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie, Accept: 'application/json'
+        });
+        assert.equal(deniedMemberRoleOptions.status, 403);
+        assert.equal(JSON.parse(deniedMemberRoleOptions.body).reason, 'PERMISSION_DENIED');
+        assert.doesNotMatch(memberListA.body, /href="\/management\/members\/sync-all"/);
+        const unimplementedMemberSync = await createRequest(port, 'GET', '/management/members/sync-all', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(unimplementedMemberSync.status, 501);
+        assert.match(unimplementedMemberSync.body, /尚未實作/);
 
         const beforeCrossStudio = await new Promise((resolve, reject) => db.get("SELECT status FROM orders WHERE id = 202", (error, row) => error ? reject(error) : resolve(row)));
         const beforeLedger = await new Promise((resolve, reject) => db.get('SELECT COUNT(*) AS count FROM wallet_transactions', (error, row) => error ? reject(error) : resolve(row.count)));
@@ -856,6 +944,13 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(reorderedRoles.status, 200, reorderedRoles.body);
         assert.ok(reorderedRoles.body.indexOf('data-rolekey="delegatable_target"') < reorderedRoles.body.indexOf('data-rolekey="admin"'));
+        const refreshedMemberRoles = await createRequest(port, 'GET', '/management/members/role-options', {
+            Host: `127.0.0.1:${port}`, Cookie: admin.cookie, Accept: 'application/json'
+        });
+        assert.equal(refreshedMemberRoles.status, 200, refreshedMemberRoles.body);
+        assert.deepEqual(JSON.parse(refreshedMemberRoles.body).roles.find(role => role.role_key === 'delegatable_target'), {
+            id: 16, role_key: 'delegatable_target', name: 'Delegatable Target', tier_level: 95
+        });
         const sidebarDestinations = [
             '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
             '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
@@ -896,6 +991,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(missing.status, 403);
         assert.equal(invalid.status, 403);
+        assert.doesNotMatch(invalid.body, /PERMISSION_DENIED/);
         assert.equal(otherSession.status, 403);
         assert.equal(settings.status, 200);
         assert.match(settings.body, /discordCommandDeployModal/);

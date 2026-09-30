@@ -3,6 +3,7 @@
 
     const toastRegion = document.getElementById('mihuToastRegion');
     const feedbackState = new WeakMap();
+    const permissionDeniedResponses = new WeakSet();
     const activeToasts = new Map();
     const toastLimit = 4;
     const toastTypes = {
@@ -160,6 +161,22 @@
         });
     }
 
+    function accessDenied(options = {}) {
+        const modalElement = document.getElementById('adminAccessDeniedModal');
+        if (!modalElement || !window.bootstrap?.Modal) return null;
+        const pageDenied = options.kind === 'page';
+        const feature = normalizeText(options.feature, pageDenied ? '此頁面' : '此功能');
+        modalElement.querySelector('[data-access-denied-title]').textContent = pageDenied ? '⛔ 無權限存取此頁面' : '⚠️ 操作遭到拒絕';
+        modalElement.querySelector('[data-access-denied-message]').textContent = pageDenied
+            ? `您的身分階層缺少存取「${feature}」的檢視權限，請聯繫店長或系統管理員。`
+            : `您未獲得執行此功能（${feature}）的操作授權。`;
+        modalElement.querySelector('[data-access-denied-home]').hidden = !pageDenied;
+        modalElement.querySelectorAll('[data-access-denied-dismiss]').forEach(element => { element.hidden = pageDenied; });
+        const instance = window.bootstrap.Modal.getOrCreateInstance(modalElement, { backdrop: 'static', keyboard: !pageDenied });
+        instance.show();
+        return instance;
+    }
+
     function showFlash() {
         const element = document.getElementById('mihu-flash-data');
         if (!element) return;
@@ -180,6 +197,8 @@
         warning: (message, options = {}) => toast({ ...options, type: 'warning', message }),
         info: (message, options = {}) => toast({ ...options, type: 'info', message }),
         confirm,
+        accessDenied,
+        isPermissionDeniedResponse: response => permissionDeniedResponses.has(response),
         setButtonLoading
     };
 
@@ -214,5 +233,21 @@
         });
     });
 
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+        const response = await nativeFetch(...args);
+        if (response.status === 403 && !permissionDeniedResponses.has(response)) {
+            let payload = {};
+            try { payload = await response.clone().json(); } catch (error) {}
+            if (payload.code === 403 && payload.reason === 'PERMISSION_DENIED') {
+                permissionDeniedResponses.add(response);
+                accessDenied({ kind: 'action', feature: payload.feature || '此功能' });
+            }
+        }
+        return response;
+    };
+
     showFlash();
+    const deniedPage = document.querySelector('[data-access-denied-kind]');
+    if (deniedPage) accessDenied({ kind: deniedPage.dataset.accessDeniedKind, feature: deniedPage.dataset.accessDeniedFeature || '此功能' });
 })();

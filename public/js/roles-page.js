@@ -6,7 +6,10 @@
 
     function syncImpliedPermissions() {
         const checkboxes = [...document.querySelectorAll('.perm-checkbox')];
-        const checked = new Set(checkboxes.filter(checkbox => checkbox.checked).map(checkbox => checkbox.value));
+        const explicit = new Set(checkboxes
+            .filter(checkbox => checkbox.dataset.explicitChecked === 'true')
+            .map(checkbox => checkbox.value));
+        const checked = new Set(explicit);
         const impliedBy = new Map();
         const pending = [...checked];
         while (pending.length) {
@@ -24,8 +27,8 @@
             const source = impliedBy.get(checkbox.value);
             const canDelegate = (checkbox.value === '*' && canGrantWildcard)
                 || delegatablePermissionKeys.has(checkbox.value);
-            if (source) checkbox.checked = true;
-            checkbox.disabled = !canDelegate || Boolean(source);
+            checkbox.checked = explicit.has(checkbox.value) || Boolean(source);
+            checkbox.disabled = !canDelegate || Boolean(source && !explicit.has(checkbox.value));
             checkbox.title = source ? `由舊版權限 ${source} 啟用` : (!canDelegate ? '你沒有權限授予此項目' : '');
 
             const label = checkbox.closest('label') || document.querySelector(`label[for="${checkbox.id}"]`);
@@ -47,7 +50,10 @@
     }
 
     document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', syncImpliedPermissions);
+        checkbox.addEventListener('change', () => {
+            checkbox.dataset.explicitChecked = String(checkbox.checked);
+            syncImpliedPermissions();
+        });
     });
     syncImpliedPermissions();
 
@@ -55,12 +61,18 @@
         document.getElementById('targetRoleKey').value = roleKey;
         document.getElementById('targetRoleName').textContent = `${roleName} (${roleKey})`;
 
-        document.querySelectorAll('.perm-checkbox').forEach(cb => cb.checked = false);
+        document.querySelectorAll('.perm-checkbox').forEach(cb => {
+            cb.checked = false;
+            cb.dataset.explicitChecked = 'false';
+        });
 
         if (Array.isArray(currentPermsArray)) {
             currentPermsArray.forEach(perm => {
                 const cb = document.querySelector(`.perm-checkbox[value="${perm}"]`);
-                if (cb) cb.checked = true;
+                if (cb) {
+                    cb.checked = true;
+                    cb.dataset.explicitChecked = 'true';
+                }
             });
         }
         syncImpliedPermissions();

@@ -191,21 +191,25 @@
             body: JSON.stringify(payload)
         });
         const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || '操作失敗');
+        if (!response.ok || !result.success) {
+            const error = new Error(result.message || '操作失敗');
+            error.permissionDenied = Boolean(window.MiHuFeedback?.isPermissionDeniedResponse(response));
+            throw error;
+        }
         window.location.reload();
     }
 
     document.querySelectorAll('.payout-paid-button').forEach(button => button.addEventListener('click', async () => {
         if (!window.confirm('確認此提款已完成匯款？系統只會更新提款狀態，不會再次扣款。')) return;
         try { await payoutPost(`/management/payroll/payouts/${button.dataset.payoutId}/paid`); }
-        catch (error) { window.alert(error.message); }
+        catch (error) { if (!error.permissionDenied) window.alert(error.message); }
     }));
 
     document.querySelectorAll('.payout-reject-button').forEach(button => button.addEventListener('click', async () => {
         const reason = window.prompt('請填寫退回原因');
         if (!reason || !reason.trim()) return;
         try { await payoutPost(`/management/payroll/payouts/${button.dataset.payoutId}/reject`, { reason }); }
-        catch (error) { window.alert(error.message); }
+        catch (error) { if (!error.permissionDenied) window.alert(error.message); }
     }));
 
     const payoutChecks = Array.from(document.querySelectorAll('.pending-payout-check'));
@@ -223,7 +227,7 @@
         const payoutIds = payoutChecks.filter(check => check.checked).map(check => Number(check.value));
         if (!payoutIds.length || !window.confirm(`整批標記 ${payoutIds.length} 筆提款已撥款？`)) return;
         try { await payoutPost('/management/payroll/payouts/batch-paid', { payout_ids: payoutIds }); }
-        catch (error) { window.alert(error.message); }
+        catch (error) { if (!error.permissionDenied) window.alert(error.message); }
     });
 
     document.addEventListener('DOMContentLoaded', () => {

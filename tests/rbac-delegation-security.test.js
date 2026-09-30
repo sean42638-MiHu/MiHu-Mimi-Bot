@@ -25,11 +25,11 @@ test('delegation allows only metadata permissions already effective for the acto
     assert.throws(() => validatePermissionGrant(actorPermissions, ['unknown.permission']), /未知/);
 });
 
-test('manage grants normalize implied view without requiring a client checkbox', () => {
+test('manage grants imply view at runtime without persisting an unchecked view key', () => {
     const actorPermissions = resolvePermissions(['roles.manage', 'system_settings.manage']);
-    const normalized = validatePermissionGrant(actorPermissions, ['system_settings.manage']);
-    assert.ok(normalized.includes('system_settings.manage'));
-    assert.ok(normalized.includes('system_settings.view'));
+    const stored = validatePermissionGrant(actorPermissions, ['system_settings.manage']);
+    assert.deepEqual(stored, ['system_settings.manage']);
+    assert.equal(resolvePermissions(stored).includes('system_settings.view'), true);
 });
 
 test('self-role and protected-role edits and deletions are denied to ordinary actors', () => {
@@ -61,7 +61,7 @@ test('wildcard delegates all known permissions but never makes unknown keys vali
     const superuserPermissions = resolvePermissions(['*']);
     assert.ok(superuserPermissions.includes('*'));
     assert.equal(canGrantPermission(superuserPermissions, 'payout.view_sensitive'), true);
-    assert.deepEqual(validatePermissionGrant(superuserPermissions, ['system_settings.manage']), ['system_settings.view', 'system_settings.manage']);
+    assert.deepEqual(validatePermissionGrant(superuserPermissions, ['system_settings.manage']), ['system_settings.manage']);
     assert.deepEqual(validatePermissionGrant(superuserPermissions, ['*']), ['*']);
     assert.throws(() => validatePermissionGrant(superuserPermissions, ['unknown.permission']), /未知/);
 });

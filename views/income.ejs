@@ -425,6 +425,12 @@
                 body: JSON.stringify({ amount })
             });
             const result = await response.json();
+            if (window.MiHuFeedback?.isPermissionDeniedResponse(response)) {
+                withdrawalSubmitting = false;
+                submitWithdrawalButton.disabled = false;
+                submitWithdrawalButton.innerHTML = originalSubmitMarkup;
+                return;
+            }
             if (!response.ok || !result.success) throw new Error(result.message || '提款申請失敗');
             window.location.reload();
         } catch (error) {

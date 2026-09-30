@@ -6,7 +6,7 @@ const {
     saveVipJsonFromDb, getRolesDataFromDb,
     syncCommandsJsonFromDb
 } = require('../utils/dataSync');
-const { requireAuth: ensureAuth, requirePerm: checkPerm, requireAnyPerm } = require('../middleware/auth');
+const { denyPermission, requireAuth: ensureAuth, requirePerm: checkPerm, requireAnyPerm } = require('../middleware/auth');
 const { withTransactionGate } = require('../utils/transactionGate');
 const { normalizeTalentShareRate } = require('../utils/commissionHelper');
 const { writeAuditLog } = require('../utils/auditService');
@@ -570,7 +570,8 @@ router.post('/system/roles/update-permissions', ensureAuth, checkPerm('roles.man
         });
         return res.redirect('/system/roles?saved=1');
     } catch (err) {
-        if (isRoleDelegationError(err) || err.statusCode === 404) return res.status(err.statusCode || 403).send(err.message);
+        if (err.statusCode === 404) return res.status(404).send(err.message);
+        if (isRoleDelegationError(err)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '角色權限修改' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
@@ -599,7 +600,8 @@ router.post('/system/roles/update-info/:id', ensureAuth, checkPerm('roles.manage
         });
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
-        if (isRoleDelegationError(error) || error.statusCode === 404) return res.status(error.statusCode || 403).send(error.message);
+        if (error.statusCode === 404) return res.status(404).send(error.message);
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '角色資料修改' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('身分組更新失敗'));
     }
 });
@@ -627,7 +629,8 @@ router.post('/system/roles/update-perms/:id', ensureAuth, checkPerm('roles.manag
         });
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
-        if (isRoleDelegationError(error) || error.statusCode === 404) return res.status(error.statusCode || 403).send(error.message);
+        if (error.statusCode === 404) return res.status(404).send(error.message);
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '角色權限修改' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('權限更新失敗'));
     }
 });
@@ -659,8 +662,38 @@ router.post('/system/roles/add', ensureAuth, checkPerm('roles.manage'), async (r
         });
         return res.redirect('/system/roles?saved=1');
     } catch (error) {
-        if (isRoleDelegationError(error)) return res.status(403).send(error.message);
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '新增身分組' });
         return res.redirect('/system/roles?error=' + encodeURIComponent('新增身分組失敗'));
+    }
+});
+
+router.post('/system/roles/delete/:id', ensureAuth, checkPerm('roles.manage'), async (req, res) => {
+    const roleId = Number(req.params.id);
+    try {
+        await runSystemTransaction(async () => {
+            const before = await loadRoleById(roleId, db);
+            if (!before) throw Object.assign(new Error('找不到身分組'), { statusCode: 404 });
+            await authorizeRoleMutation(req.user.id, before, db);
+            const assignedRows = await queryAll('SELECT COUNT(*) AS count FROM users WHERE role = ?', [before.role_key]);
+            if (Number(assignedRows[0] && assignedRows[0].count) > 0) {
+                throw Object.assign(new Error('此身分仍有使用者，無法刪除'), { statusCode: 409 });
+            }
+            await runSql('DELETE FROM roles WHERE id = ?', [roleId]);
+            await writeAuditLog({
+                operatorId: req.user.id,
+                action: 'ROLE_DELETED',
+                targetType: 'role',
+                targetId: before.role_key,
+                before: null,
+                after: null,
+                metadata: { source: 'system-role-route', deletedRole: { role_key: before.role_key, name: before.name, tier_level: before.tier_level } }
+            });
+        });
+        return res.redirect('/system/roles?saved=1');
+    } catch (error) {
+        if ([404, 409].includes(error.statusCode)) return res.status(error.statusCode).send(error.message);
+        if (isRoleDelegationError(error)) return denyPermission(req, res, ['roles.manage'], { kind: 'action', feature: '刪除身分組' });
+        return res.redirect('/system/roles?error=' + encodeURIComponent('身分組刪除失敗'));
     }
 });
 

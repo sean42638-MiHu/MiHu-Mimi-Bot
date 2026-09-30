@@ -30,6 +30,19 @@ test('Roles, Staff and VIP CRUD forms opt into shared modal and submit loading b
     assert.match(vip, /addVipModal/);
 });
 
+test('member role adjustment reloads role options safely every time it opens', () => {
+    const modal = read('views/modals/member_modals.ejs');
+    const page = read('views/members.ejs');
+    assert.match(modal, /inputRoleSelect[\s\S]*disabled[\s\S]*開啟視窗後載入身分角色/);
+    assert.doesNotMatch(modal, /<option value="(?:admin|cfo|manager|member)">/);
+    assert.match(read('routes/management/members.js'), /router\.get\('\/role-options'[\s\S]*checkPerm\('member_adjust_vip'\)[\s\S]*getRolesDataFromDb\(\)/);
+    assert.match(page, /new AbortController\(\)/);
+    assert.match(page, /requestId !== roleOptionsRequestId/);
+    assert.match(page, /roleSelect\.replaceChildren/);
+    assert.match(page, /submitButton\.disabled = true/);
+    assert.match(page, /已刪除或不可指派/);
+});
+
 test('Shared form states expose invalid, required, help and sensitive contracts', () => {
     const css = read('public/css/admin-components.css');
     const roles = ['views/roles.ejs', 'views/modals/role_info_modal.ejs'].map(read).join('\n');

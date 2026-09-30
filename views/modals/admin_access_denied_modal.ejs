@@ -1,0 +1,24 @@
+<%
+    const pageDenied = typeof accessDeniedKind !== 'undefined' && accessDeniedKind === 'page';
+    const deniedFeature = typeof pageName !== 'undefined' && pageName ? pageName : '此功能';
+%>
+<div class="modal fade admin-access-denied-modal" id="adminAccessDeniedModal" tabindex="-1" aria-labelledby="adminAccessDeniedTitle" aria-describedby="adminAccessDeniedMessage" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content admin-access-denied-modal__content">
+            <div class="modal-header">
+                <div class="admin-confirm-modal__heading">
+                    <span class="admin-access-denied-modal__icon" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <h2 class="modal-title" id="adminAccessDeniedTitle" data-access-denied-title><%= pageDenied ? '⛔ 無權限存取此頁面' : '⚠️ 操作遭到拒絕' %></h2>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-access-denied-dismiss aria-label="關閉" <%= pageDenied ? 'hidden' : '' %>></button>
+            </div>
+            <div class="modal-body">
+                <p class="admin-access-denied-modal__message" id="adminAccessDeniedMessage" data-access-denied-message><%= pageDenied ? `您的身分階層缺少存取「${deniedFeature}」的檢視權限，請聯繫店長或系統管理員。` : '' %></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="admin-btn admin-btn-ghost" data-bs-dismiss="modal" data-access-denied-close data-access-denied-dismiss <%= pageDenied ? 'hidden' : '' %>>關閉</button>
+                <a class="admin-btn admin-btn-danger" href="/home" data-access-denied-home <%= pageDenied ? '' : 'hidden' %>>返回首頁</a>
+            </div>
+        </div>
+    </div>
+</div>

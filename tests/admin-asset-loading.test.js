@@ -13,6 +13,7 @@ test('canonical sidebar owns shared Admin CSS, feedback, drawer and Coming Soon 
         assert.equal((sidebar.match(new RegExp(asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1, asset);
     }
     assert.equal((sidebar.match(/admin_confirm_modal/g) || []).length, 1);
+    assert.equal((sidebar.match(/admin_access_denied_modal/g) || []).length, 1);
     assert.equal((sidebar.match(/admin_toast_container/g) || []).length, 1);
 });
 

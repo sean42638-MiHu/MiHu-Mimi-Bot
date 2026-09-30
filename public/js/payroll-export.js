@@ -20,7 +20,10 @@
                 if (feedback) feedback.textContent = button.dataset.emptyMessage;
                 return;
             }
-            if (!response.ok) throw new Error('匯出失敗，請稍後再試。');
+            if (!response.ok) {
+                if (feedbackApi?.isPermissionDeniedResponse(response)) return;
+                throw new Error('匯出失敗，請稍後再試。');
+            }
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement('a');

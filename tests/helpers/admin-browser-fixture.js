@@ -15,7 +15,6 @@ app.use(express.static(path.join(root, 'public')));
 
 const sidebarPages = new Map([
     ['/management/analytics', ['analytics', '公司營運統計']],
-    ['/management/members', ['members', '會員名單']],
     ['/management/payroll', ['payroll', '薪資管理']]
 ]);
 const browserPermissions = ['analytics.view', 'members.view', 'member_ledger.view', 'staff.view', 'payroll.view'];
@@ -46,6 +45,26 @@ const roleFixtures = [
     { id: 5, role_key: 'talent', name: '陪陪', category: '一般職位', tier_level: 30, color_badge: 'primary', description: '陪玩服務', permissions: ['profile'], canManageRole: true },
     { id: 6, role_key: 'member', name: '會員', category: '會員', tier_level: 10, color_badge: 'secondary', description: '一般會員', permissions: ['profile'], canManageRole: true }
 ];
+
+app.get('/management/members', (req, res) => {
+    const member = (id, name, role) => ({
+        id, username: name, global_name: name, custom_nickname: null, avatar: null, role, vip_level: 0,
+        total_balance: 0, balance: 0, bonus_balance: 0, total_spent: 0, total_deposited: 0,
+        gap_spent: 0, gap_deposit: 0, vip_gap_text: '已達頂級', vip_color: '#A855F7', created_at: '2026-09-30'
+    });
+    res.render('members', {
+        currentUser: browserUser,
+        userPerms: ['*'],
+        hasPerm: () => true,
+        getRoleInfo,
+        flashData: {},
+        csrfToken: 'browser-fixture',
+        members: [member('member-one', '第一位會員', 'member'), member('member-two', '第二位會員', 'talent')],
+        activePage: 'members',
+        success: false,
+        errorMsg: null
+    });
+});
 
 app.get('/management/staff', (req, res) => {
     res.render('staff', {
@@ -88,6 +107,26 @@ app.get('/system/roles', (req, res) => {
         legacyPermissionImplications: LEGACY_IMPLICATIONS,
         canGrantWildcard: true
     });
+});
+
+app.get('/forbidden', (req, res) => {
+    res.status(403).render('forbidden', {
+        currentUser: browserUser,
+        userPerms: browserPermissions,
+        hasPerm: permission => browserPermissions.includes(permission),
+        getRoleInfo,
+        flashData: {},
+        pageName: '會員管理',
+        accessDeniedKind: 'page'
+    });
+});
+
+app.get('/api/denied', (req, res) => {
+    res.status(403).json({ success: false, code: 403, reason: 'PERMISSION_DENIED', message: '您沒有權限執行此操作', feature: '帳務扣款' });
+});
+
+app.get('/api/csrf-denied', (req, res) => {
+    res.status(403).json({ success: false, error: 'Invalid CSRF token' });
 });
 
 app.get('/management/members/transactions', (req, res) => {

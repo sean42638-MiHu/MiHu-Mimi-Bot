@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>無權限存取 · 米胡電競 MiHu Gaming</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="mihu-admin-page text-light" data-access-denied-kind="<%= accessDeniedKind %>" data-access-denied-feature="<%= pageName %>">
+    <div class="app-layout">
+        <%- include('partials/sidebar', { activePage: '' }) %>
+        <div class="main-wrapper">
+            <%- include('partials/navbar', { activePage: '' }) %>
+            <main class="content-body admin-page-content">
+                <div class="admin-error-state" role="alert">
+                    <i class="fa-solid fa-shield-halved admin-error-state__icon" aria-hidden="true"></i>
+                    <strong class="admin-error-state__title"><%= accessDeniedKind === 'page' ? '無權限存取此頁面' : '操作遭到拒絕' %></strong>
+                    <p class="admin-error-state__description"><%= accessDeniedKind === 'page' ? '您的帳號缺少此頁面的檢視權限。' : '您的帳號缺少執行此操作的權限。' %></p>
+                    <a href="/home" class="admin-btn admin-btn-danger">返回首頁</a>
+                </div>
+            </main>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

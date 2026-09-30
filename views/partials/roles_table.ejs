@@ -55,6 +55,9 @@
                                             <button type="button" class="btn btn-sm rounded-pill action-btn-clean text-white fw-semibold btn-edit-perms" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;">
                                                 <i class="fa-solid fa-lock-open me-1"></i>編輯權限
                                             </button>
+                                            <form method="POST" action="/system/roles/delete/<%= r.id %>" data-admin-confirm data-confirm-title="刪除身分組" data-confirm-message="確定要刪除「<%= r.name %>」嗎？仍有使用者的身分不允許刪除。" data-confirm-confirm-text="刪除" data-confirm-variant="danger">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill action-btn-clean"><i class="fa-solid fa-trash me-1"></i>刪除</button>
+                                            </form>
                                         </div>
                                         <% } else if (hasPerm('roles.manage')) { %>
                                             <span class="admin-badge admin-badge-muted"><%= r.roleProtectionMessage %></span>

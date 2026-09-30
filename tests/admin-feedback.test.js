@@ -11,6 +11,7 @@ test('shared feedback infrastructure is mounted once and preserves Coming Soon s
     const sidebar = read('views/partials/sidebar.ejs');
     assert.equal((sidebar.match(/admin_confirm_modal/g) || []).length, 1);
     assert.equal((sidebar.match(/admin_toast_container/g) || []).length, 1);
+    assert.equal((sidebar.match(/admin_access_denied_modal/g) || []).length, 1);
     assert.match(sidebar, /admin-feedback\.js/);
     assert.match(sidebar, /coming_soon_modal/);
     assert.match(sidebar, /coming-soon\.js/);
@@ -29,7 +30,7 @@ test('feedback template serializes hostile flash values as inert JSON', () => {
 test('feedback module exposes safe APIs and accessibility behavior', () => {
     const script = read('public/js/admin-feedback.js');
     assert.match(script, /window\.MiHuFeedback\s*=\s*\{/);
-    for (const method of ['toast', 'success', 'error', 'warning', 'info', 'confirm', 'setButtonLoading']) {
+    for (const method of ['toast', 'success', 'error', 'warning', 'info', 'confirm', 'accessDenied', 'setButtonLoading']) {
         assert.match(script, new RegExp(`\\b${method}\\b`), method);
     }
     assert.match(script, /textContent\s*=\s*normalizeText\(options\.title/);
@@ -37,6 +38,12 @@ test('feedback module exposes safe APIs and accessibility behavior', () => {
     assert.match(script, /aria-busy/);
     assert.match(script, /hidden\.bs\.modal/);
     assert.match(script, /data-admin-confirm/);
+    assert.match(script, /response\.status === 403/);
+    assert.match(script, /response\.clone\(\)\.json\(\)/);
+    assert.match(script, /payload\.reason === 'PERMISSION_DENIED'/);
+    assert.match(script, /permissionDeniedResponses\.add\(response\)/);
+    assert.match(script, /isPermissionDeniedResponse/);
+    assert.match(script, /操作遭到拒絕/);
     assert.doesNotMatch(script, /message\.innerHTML|title\.innerHTML/);
 });
 

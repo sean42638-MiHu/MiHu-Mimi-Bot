@@ -8,6 +8,7 @@ const test = require('node:test');
 const sqlite3 = require('sqlite3');
 const ejs = require('ejs');
 const { validatePermissionGrant, RoleDelegationError } = require('../services/roleDelegationService');
+const { resolvePermissions } = require('../utils/permissionResolver');
 
 const root = path.resolve(__dirname, '..');
 const get = (db, sql) => new Promise((resolve, reject) => db.all(sql, (error, rows) => error ? reject(error) : resolve(rows)));
@@ -61,19 +62,19 @@ test('permission editor renders both groups once and preserves legacy grants on 
 
     const actor = ['roles.manage', 'manage_orders', 'orders.view', 'orders.manage'];
     const saved = validatePermissionGrant(actor, ['manage_orders','orders.view'], { preserveLegacy: true });
-    assert.ok(saved.includes('manage_orders'));
-    assert.ok(saved.includes('orders.view'));
-    assert.ok(saved.includes('orders.manage'));
+    assert.deepEqual(saved, ['manage_orders', 'orders.view']);
+    assert.equal(resolvePermissions(saved).includes('orders.manage'), true);
     assert.throws(() => validatePermissionGrant(actor, ['member_adjust_balance'], { preserveLegacy: true }), RoleDelegationError);
     assert.throws(() => validatePermissionGrant(actor, ['unknown.key'], { preserveLegacy: true }), RoleDelegationError);
 });
 
 test('role editor reloads checkbox state from stored raw permissions rather than alias implications', () => {
     const script = fs.readFileSync(path.join(root, 'public/js/roles-page.js'), 'utf8');
-    assert.match(script, /currentPermsArray\.forEach\(perm => \{[\s\S]*?cb\.checked = true/);
+    assert.match(script, /currentPermsArray\.forEach\(perm => \{[\s\S]*?cb\.dataset\.explicitChecked = 'true'/);
     assert.match(script, /const rawPerms = row\.getAttribute\('data-perms'\)/);
+    assert.match(script, /checkbox\.dataset\.explicitChecked === 'true'/);
     assert.match(script, /legacyPermissionImplications\[source\]/);
-    assert.match(script, /checkbox\.disabled = !canDelegate \|\| Boolean\(source\)/);
+    assert.match(script, /checkbox\.disabled = !canDelegate \|\| Boolean\(source && !explicit\.has\(checkbox\.value\)\)/);
     assert.match(script, /由舊版權限 \$\{source\} 啟用/);
     const rolesPage = fs.readFileSync(path.join(root, 'views/roles.ejs'), 'utf8');
     assert.match(rolesPage, /legacyPermissionImplications: typeof legacyPermissionImplications !== 'undefined'/);
@@ -95,6 +96,7 @@ test('roles page uses the shared app layout and renders each existing partial on
     for (const partial of ['partials/sidebar', 'partials/roles_table', 'modals/role_permission_modal', 'modals/role_info_modal']) {
         assert.equal(page.split(partial).length - 1, 1, partial);
     }
+    assert.match(fs.readFileSync(path.join(root, 'views', 'partials', 'roles_table.ejs'), 'utf8'), /action="\/system\/roles\/delete\/<%= r\.id %>"[\s\S]*data-admin-confirm/);
 });
 
 test('all existing role modals use the scoped purple-black glass surface', () => {

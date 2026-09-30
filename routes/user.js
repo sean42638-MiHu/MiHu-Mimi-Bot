@@ -31,6 +31,8 @@ function createVipInfo(tiers, level) {
 // =========================================================================
 // 1. 首頁 (Dashboard)
 // =========================================================================
+router.get('/home', ensureAuth, (req, res) => res.redirect('/dashboard'));
+
 router.get('/dashboard', ensureAuth, checkPerm('home'), (req, res) => {
     db.get(`
         SELECT u.*,

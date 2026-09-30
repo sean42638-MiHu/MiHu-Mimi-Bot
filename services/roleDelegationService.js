@@ -49,14 +49,7 @@ function validatePermissionGrant(actorPermissions, requestedPermissions, { prese
         throw new RoleDelegationError('不可授予自己未擁有的權限');
     }
 
-    const normalized = resolvePermissions(requested);
-    if (preserveLegacy && !requested.includes('*')) {
-        const legacy = requested.filter(permission => KNOWN_LEGACY_PERMISSIONS.has(permission) && !PERMISSION_METADATA[permission]);
-        return [...legacy, ...ALL_GRANULAR_PERMISSIONS.filter(permission => normalized.includes(permission))];
-    }
-    return requested.includes('*')
-        ? ['*']
-        : ALL_GRANULAR_PERMISSIONS.filter(permission => normalized.includes(permission));
+    return requested.includes('*') ? ['*'] : requested;
 }
 
 function hasUnknownStoredPermissions(role) {
