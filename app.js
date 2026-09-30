@@ -70,13 +70,13 @@ app.use((req, res, next) => {
                     ? role.permissions
                     : ['home', 'home_wallet_card', 'home_info', 'personal', 'profile', 'my_wallet', 'my_orders'];
                 const permissions = resolvePermissions(storedPermissions, isPlatformSuperuserId(currentUser.id));
-                const isSuperuser = permissions.includes('*');
+                const isSuperuser = hasResolvedPermission(permissions, '*');
                 db.get('SELECT id FROM studios WHERE id = ? AND owner_user_id = ?', [Number(currentUser.studio_id), currentUser.id], (studioError, ownedStudio) => {
                     res.locals.userPerms = permissions;
                     res.locals.currentUser = currentUser;
                     res.locals.user = currentUser;
                     res.locals.hasPerm = node => hasResolvedPermission(permissions, node);
-                    res.locals.canManageStudioCommission = isSuperuser || permissions.includes('commission.manage') || Boolean(ownedStudio);
+                    res.locals.canManageStudioCommission = hasResolvedPermission(permissions, 'commission.manage') || Boolean(ownedStudio);
                     next();
                 });
             }).catch(next);

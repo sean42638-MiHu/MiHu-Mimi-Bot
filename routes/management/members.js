@@ -8,11 +8,13 @@ const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../../utils/vipColor')
 const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
 const { withTransactionGate } = require('../../utils/transactionGate');
+const { resolveAvatarUrl } = require('../../utils/avatarUrl');
+const { hasResolvedPermission } = require('../../utils/permissionResolver');
 const { authorizeRoleAssignment, isRoleDelegationError } = require('../../services/roleDelegationService');
 
 function isPlatformSuperuser(req, res) {
     const permissions = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    return permissions.includes('*');
+    return hasResolvedPermission(permissions, '*');
 }
 
 const ledgerTypeLabels = Object.freeze({
@@ -99,6 +101,7 @@ router.get('/transactions', ensureAuth, checkPerm('member_ledger.view'), async (
             ...row,
             displayType: ledgerDisplayType(row.type),
             memberName: row.member_name || row.user_id || '未知會員',
+            memberAvatarUrl: resolveAvatarUrl(row.user_id, row.member_avatar),
             operatorName: row.operator_id
                 ? (row.operator_global_name || row.operator_username || row.operator_id)
                 : '系統'
@@ -206,7 +209,7 @@ router.get('/', ensureAuth, checkPerm('members.view'), (req, res) => {
             res.render('members', {
                 members: sortedMembers,
                 currentUser: req.user,
-                userPerms: req.user ? (req.user.permissions || []) : [],
+                userPerms: Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [],
                 activePage: 'members',
                 success: req.query.success === '1',
                 errorMsg: req.query.error || null
@@ -218,7 +221,7 @@ router.get('/', ensureAuth, checkPerm('members.view'), (req, res) => {
 // 1.2 單一會員 Discord 資料刷新
 router.post('/sync/:id', ensureAuth, checkPerm('members.manage'), async (req, res) => {
     const targetUserId = req.params.id;
-    const platformAdmin = Array.isArray(res.locals.userPerms) && res.locals.userPerms.includes('*');
+    const platformAdmin = hasResolvedPermission(res.locals.userPerms, '*');
     try {
         const target = await dbGet('SELECT id, studio_id, username, global_name, avatar FROM users WHERE id = ?', [targetUserId]);
         if (!target) return res.status(404).send('找不到會員');

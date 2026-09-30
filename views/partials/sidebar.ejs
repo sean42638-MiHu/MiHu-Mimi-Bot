@@ -2,17 +2,15 @@
     const perms = (typeof userPerms !== 'undefined' && userPerms) ? userPerms : [];
     const currUser = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : {};
 
-    const isAdminUser = perms.includes('*');
+    const canAccess = typeof hasPerm === 'function'
+        ? hasPerm
+        : node => perms.includes('*') || perms.includes(node);
 
-    const hasPerm = (node) => {
-        if (isAdminUser) return true;
-        return perms.includes(node);
-    };
-
-    const hasPersonalSection = hasPerm('personal') || hasPerm('profile') || hasPerm('my_wallet') || hasPerm('my_income') || hasPerm('my_orders');
-    const hasManageSection = hasPerm('analytics.view') || hasPerm('members.view') || hasPerm('staff.view') || hasPerm('payroll.view') || hasPerm('payout.view') || hasPerm('orders.view');
-    const canManageCommissionPage = hasPerm('commission.view');
-    const hasSystemSection = canManageCommissionPage || hasPerm('vip.view') || hasPerm('roles.view') || hasPerm('audit_logs.view') || hasPerm('system_settings.view') || hasPerm('discord_control.view') || hasPerm('system_health.view');
+    const hasPersonalSection = canAccess('personal') || canAccess('profile') || canAccess('my_wallet') || canAccess('my_income') || canAccess('my_orders');
+    const hasMemberSection = canAccess('members.view') || canAccess('member_ledger.view');
+    const hasManageSection = canAccess('analytics.view') || hasMemberSection || canAccess('staff.view') || canAccess('payroll.view') || canAccess('payout.view') || canAccess('orders.view');
+    const canManageCommissionPage = canAccess('commission.view');
+    const hasSystemSection = canManageCommissionPage || canAccess('vip.view') || canAccess('roles.view') || canAccess('audit_logs.view') || canAccess('system_settings.view') || canAccess('discord_control.view') || canAccess('system_health.view');
 %>
 
 <link rel="stylesheet" href="/css/vip-badge.css">
@@ -158,7 +156,7 @@
     </div>
 
     <div class="sidebar-menu">
-        <% if (hasPerm('home')) { %>
+        <% if (canAccess('home')) { %>
             <div class="menu-label">首頁</div>
             <a href="/dashboard" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'dashboard' ? 'active' : '' %>">
                 <i class="fa-solid fa-house" style="color: #fbbf24;"></i>
@@ -169,28 +167,28 @@
         <% if (hasPersonalSection) { %>
             <div class="menu-label">個人</div>
             
-            <% if (hasPerm('profile')) { %>
+            <% if (canAccess('profile')) { %>
                 <a href="/profile" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'profile' ? 'active' : '' %>">
                     <i class="fa-solid fa-user-gear" style="color: #c084fc;"></i>
                     <span class="fw-semibold">個人檔案</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('my_wallet')) { %>
+            <% if (canAccess('my_wallet')) { %>
                 <a href="/wallet" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'wallet' ? 'active' : '' %>">
                     <i class="fa-solid fa-wallet" style="color: #38bdf8;"></i>
                     <span class="fw-semibold">我的錢包</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('my_income')) { %>
+            <% if (canAccess('my_income')) { %>
                 <a href="/income" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'income' ? 'active' : '' %>">
                     <i class="fa-solid fa-sack-dollar" style="color: #fde047;"></i>
                     <span class="fw-semibold">我的收入</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('my_orders')) { %>
+            <% if (canAccess('my_orders')) { %>
                 <a href="/my-orders" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'my_orders' ? 'active' : '' %>">
                     <i class="fa-solid fa-receipt" style="color: #ec4899;"></i>
                     <span class="fw-semibold">我的訂單</span>
@@ -201,7 +199,7 @@
         <% if (hasManageSection) { %>
             <div class="menu-label">管理</div>
 
-            <% if (hasPerm('analytics.view')) { %>
+            <% if (canAccess('analytics.view')) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseOperation" class="menu-item d-flex justify-content-between align-items-center" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="collapseOperation">
                         <div class="d-flex align-items-center gap-2">
@@ -221,7 +219,7 @@
                 </div>
             <% } %>
 
-            <% if (hasPerm('members.view')) { %>
+            <% if (hasMemberSection) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseMembers" class="menu-item d-flex justify-content-between align-items-center <%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'true' : 'false' %>" aria-controls="collapseMembers">
                         <div class="d-flex align-items-center gap-2">
@@ -232,11 +230,11 @@
                     </a>
                     <div class="collapse <%= typeof activePage !== 'undefined' && (activePage === 'members' || activePage === 'member_transactions') ? 'show' : '' %>" id="collapseMembers">
                         <div class="sidebar-submenu-items">
-                            <a href="/management/members" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'members' ? 'active-staff' : '' %>">
+                            <% if (canAccess('members.view')) { %><a href="/management/members" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'members' ? 'active-staff' : '' %>">
                                 <i class="fa-solid fa-users" style="color: #38bdf8;"></i>
                                 <span>會員名單</span>
-                            </a>
-                            <% if (hasPerm('member_ledger.view')) { %><a href="/management/members/transactions" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'member_transactions' ? 'active-staff' : '' %>">
+                            </a><% } %>
+                            <% if (canAccess('member_ledger.view')) { %><a href="/management/members/transactions" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'member_transactions' ? 'active-staff' : '' %>">
                                 <i class="fa-solid fa-wallet" style="color: #22d3ee;"></i>
                                 <span>會員資金明細</span>
                             </a><% } %>
@@ -245,25 +243,25 @@
                 </div>
             <% } %>
 
-            <% if (hasPerm('staff.view') || hasPerm('payroll.view') || hasPerm('payout.view')) { %>
+            <% if (canAccess('staff.view') || canAccess('payroll.view') || canAccess('payout.view')) { %>
                 <div class="sidebar-collapse-wrap">
                     <a href="#collapseStaff" class="menu-item d-flex justify-content-between align-items-center <%= typeof activePage !== 'undefined' && (activePage === 'staff' || activePage === 'payroll') ? 'active' : '' %>" data-bs-toggle="collapse" role="button" aria-expanded="<%= typeof activePage !== 'undefined' && (activePage === 'staff' || activePage === 'payroll') ? 'true' : 'false' %>" aria-controls="collapseStaff">
                         <div class="d-flex align-items-center gap-2">
                             <i class="fa-solid fa-id-badge" style="color: #10b981;"></i>
-                            <span class="text-white fw-semibold"><%= hasPerm('staff.view') ? '員工管理' : '薪資管理' %></span>
+                            <span class="text-white fw-semibold">員工管理</span>
                         </div>
                         <i class="fa-solid fa-chevron-down collapse-arrow small text-secondary"></i>
                     </a>
                     <div class="collapse <%= typeof activePage !== 'undefined' && (activePage === 'staff' || activePage === 'payroll') ? 'show' : '' %>" id="collapseStaff">
                         <div class="sidebar-submenu-items">
-                            <% if (hasPerm('staff.view')) { %>
+                            <% if (canAccess('staff.view')) { %>
                                 <a href="/management/staff" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'staff' ? 'active-staff' : '' %>">
                                     <i class="fa-solid fa-users-gear" style="color: #10b981;"></i>
                                     <span>員工列表</span>
                                 </a>
                             <% } %>
                             <!-- 🚀 正式開放進入薪轉管理頁面 -->
-                            <% if (hasPerm('payroll.view') || hasPerm('payout.view')) { %>
+                            <% if (canAccess('payroll.view') || canAccess('payout.view')) { %>
                                 <a href="/management/payroll" class="submenu-item <%= typeof activePage !== 'undefined' && activePage === 'payroll' ? 'active-staff' : '' %>">
                                     <i class="fa-solid fa-money-check-dollar" style="color: #fde047;"></i>
                                     <span>薪轉管理</span>
@@ -274,7 +272,7 @@
                 </div>
             <% } %>
 
-            <% if (hasPerm('orders.view')) { %>
+            <% if (canAccess('orders.view')) { %>
                 <a href="/management/orders" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'orders' ? 'active' : '' %>">
                     <i class="fa-solid fa-list-check" style="color: #ec4899;"></i>
                     <span class="fw-semibold">訂單管理</span>
@@ -285,7 +283,7 @@
         <% if (hasSystemSection) { %>
             <div class="menu-label">系統</div>
 
-            <% if (hasPerm('sys_settings') || hasPerm('discord_control.view')) { %>
+            <% if (canAccess('sys_settings') || canAccess('discord_control.view')) { %>
                 <a href="/system/bot-settings" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'bot_settings' ? 'active' : '' %>">
                     <i class="fa-solid fa-robot" style="color: #38bdf8;"></i>
                     <span class="fw-semibold">機器人設定</span>
@@ -299,34 +297,34 @@
                 </a>
             <% } %>
 
-            <% if (hasPerm('vip.view')) { %>
+            <% if (canAccess('vip.view')) { %>
                 <a href="/system/vip" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'vip' ? 'active' : '' %>">
                     <i class="fa-solid fa-crown" style="color: #fde047;"></i>
                     <span class="fw-semibold">VIP設定</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('roles.view')) { %>
+            <% if (canAccess('roles.view')) { %>
                 <a href="/system/roles" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'roles' ? 'active' : '' %>">
                     <i class="fa-solid fa-shield-halved" style="color: #34d399;"></i>
                     <span class="fw-semibold">身分管理</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('system_settings.view')) { %>
+            <% if (canAccess('system_settings.view')) { %>
                 <a href="/system/settings" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'system_settings' ? 'active' : '' %>">
                     <i class="fa-solid fa-sliders" style="color: #a78bfa;"></i>
                     <span class="fw-semibold">系統設定</span>
                 </a>
             <% } %>
 
-            <% if (hasPerm('audit_logs.view')) { %>
+            <% if (canAccess('audit_logs.view')) { %>
                 <a href="/system/audit-logs" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'audit_logs' ? 'active' : '' %>">
                     <i class="fa-solid fa-clock-rotate-left"></i>
                     <span>操作紀錄</span>
                 </a>
             <% } %>
-                <% if (hasPerm('system_health.view')) { %>
+                <% if (canAccess('system_health.view')) { %>
                     <a href="/system/health" class="menu-item <%= typeof activePage !== 'undefined' && activePage === 'system_health' ? 'active' : '' %>">
                         <i class="fa-solid fa-heart-pulse"></i>
                         <span>系統狀態</span>

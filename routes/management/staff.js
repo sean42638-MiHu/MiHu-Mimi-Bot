@@ -8,6 +8,7 @@ const { dbGet, dbRun } = require('../../utils/dbHelper');
 const { writeAuditLog } = require('../../utils/auditService');
 const { decryptSensitiveFields } = require('../../utils/sensitiveDataCrypto');
 const { withTransactionGate } = require('../../utils/transactionGate');
+const { hasResolvedPermission } = require('../../utils/permissionResolver');
 const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
@@ -16,9 +17,9 @@ const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_bra
 router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
     const canViewSensitive = typeof res.locals.hasPerm === 'function'
         ? res.locals.hasPerm('staff.view_sensitive')
-        : (res.locals.userPerms || []).includes('staff.view_sensitive');
+        : hasResolvedPermission(res.locals.userPerms, 'staff.view_sensitive');
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    const canViewAllStudios = userPerms.includes('*') || userPerms.includes('commission.manage');
+    const canViewAllStudios = hasResolvedPermission(userPerms, 'commission.manage');
     const actorStudioId = Number(req.user && req.user.studio_id);
     if (!canViewAllStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
         return res.status(403).send('找不到已授權的工作室範圍');
@@ -44,7 +45,7 @@ router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
     db.all('SELECT * FROM roles ORDER BY id ASC', [], (rolesError, roles) => {
         if (rolesError) return next(rolesError);
         const actor = { roleKey: req.user.role, permissions: userPerms };
-        const assignableRoles = userPerms.includes('*') || userPerms.includes('staff.manage')
+        const assignableRoles = hasResolvedPermission(userPerms, 'staff.manage')
             ? (roles || []).filter(role => canAssignRole(actor, role))
             : [];
         db.all(safeStaffSql, queryParams, (err, staffList) => {
@@ -67,7 +68,7 @@ router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
                     staffList: sorted,
                     canViewSensitive,
                     currentUser: req.user,
-                    userPerms: req.user ? (req.user.permissions || []) : [],
+                    userPerms,
                     assignableRoles,
                     activePage: 'staff',
                     success: req.query.success === '1',
@@ -89,7 +90,7 @@ router.get('/', ensureAuth, checkPerm('staff.view'), (req, res, next) => {
             staffList: sortedStaff,
             canViewSensitive,
             currentUser: req.user,
-            userPerms: req.user ? (req.user.permissions || []) : [],
+            userPerms,
             assignableRoles,
             activePage: 'staff',
             success: req.query.success === '1',
@@ -104,9 +105,9 @@ router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, re
     const targetStaffId = req.params.id;
     const { role, status, commission_rate, staff_channel_id } = req.body;
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    const isPlatformSuperuser = userPerms.includes('*');
-    const canManageStaff = isPlatformSuperuser || userPerms.includes('staff.manage');
-    const canEditCommission = isPlatformSuperuser || userPerms.includes('staff_edit_role_commission');
+    const isPlatformSuperuser = hasResolvedPermission(userPerms, '*');
+    const canManageStaff = hasResolvedPermission(userPerms, 'staff.manage');
+    const canEditCommission = hasResolvedPermission(userPerms, 'staff_edit_role_commission');
 
     if (!canManageStaff) return res.status(403).send('無權管理員工');
 
@@ -134,7 +135,7 @@ router.post('/update/:id', ensureAuth, checkPerm('staff.manage'), async (req, re
                     await authorizeRoleAssignment(req.user.id, newRole, 'staff.manage', db);
                 } else {
                     const currentActor = await loadActorContext(req.user.id, db);
-                    if (!currentActor.permissions.includes('*') && !currentActor.permissions.includes('staff.manage')) {
+                    if (!hasResolvedPermission(currentActor.permissions, 'staff.manage')) {
                         throw Object.assign(new Error('無權管理員工'), { name: 'RoleDelegationError', statusCode: 403 });
                     }
                 }

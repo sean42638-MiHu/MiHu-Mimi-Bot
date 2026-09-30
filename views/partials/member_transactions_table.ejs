@@ -9,16 +9,16 @@
         <tbody>
             <% if (transactions.length) { %>
                 <% transactions.forEach(transaction => { %>
-                    <% const avatar = transaction.member_avatar || '/images/logo.png'; const amount = Number(transaction.amount || 0); const amountClass = amount > 0 ? 'positive' : (amount < 0 ? 'negative' : ''); %>
+                    <% const amount = Number(transaction.amount || 0); const amountClass = amount > 0 ? 'positive' : (amount < 0 ? 'negative' : ''); %>
                     <tr>
                         <td class="member-transaction-meta" title="<%= transaction.id %>">#<span class="member-transaction-id"><%= transaction.id %></span></td>
                         <td class="member-transaction-meta"><%= transaction.created_at || '—' %></td>
-                        <td><div class="member-transaction-member"><img class="member-transaction-avatar" src="<%= avatar %>" alt="<%= transaction.memberName %> 頭像"><div><div class="member-transaction-member-name"><%= transaction.memberName %></div><div class="member-transaction-member-id"><%= transaction.user_id || '—' %></div></div></div></td>
+                        <td><div class="member-transaction-member"><img class="member-transaction-avatar" src="<%= transaction.memberAvatarUrl %>" alt="" onerror="this.onerror=null;this.src='/images/default-avatar.png'"><div class="member-transaction-identity"><div class="member-transaction-member-name"><%= transaction.memberName %></div><div class="member-transaction-member-id" title="<%= transaction.user_id || '—' %>"><%= transaction.user_id || '—' %></div></div></div></td>
                         <td><span class="member-transaction-type <%= transaction.displayType.tone %>"><i class="fa-solid <%= transaction.displayType.icon %>" aria-hidden="true"></i><%= transaction.displayType.label %></span><div class="member-transaction-meta mt-1"><%= transaction.type || 'unknown' %></div></td>
                         <td class="member-transaction-snapshot member-transaction-money"><%= transaction.balance_before === null || transaction.balance_before === undefined ? '—' : `NT$ ${Number(transaction.balance_before).toLocaleString()}` %></td>
                         <td class="member-transaction-amount member-transaction-money <%= amountClass %>"><%= amount > 0 ? '+' : amount < 0 ? '−' : '' %>NT$ <%= Math.abs(amount).toLocaleString() %></td>
                         <td class="member-transaction-snapshot member-transaction-money"><%= transaction.balance_after === null || transaction.balance_after === undefined ? '—' : `NT$ ${Number(transaction.balance_after).toLocaleString()}` %></td>
-                        <td><span class="member-transaction-member-name"><%= transaction.operatorName || '系統' %></span><% if (transaction.operator_id) { %><div class="member-transaction-meta"><%= transaction.operator_id %></div><% } %></td>
+                        <td class="member-transaction-operator"><span class="member-transaction-member-name"><%= transaction.operatorName || '系統' %></span><% if (transaction.operator_id) { %><div class="member-transaction-meta" title="<%= transaction.operator_id %>"><%= transaction.operator_id %></div><% } %></td>
                         <td class="member-transaction-note" title="<%= transaction.description || '' %>"><%= transaction.description || '—' %></td>
                     </tr>
                 <% }); %>

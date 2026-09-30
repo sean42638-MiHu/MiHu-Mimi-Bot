@@ -5,9 +5,10 @@ const { syncOrdersJsonFromDb, syncUsersJsonFromDb } = require('../../utils/dataS
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../../middleware/auth');
 const { refundOrder, refundOrders } = require('../../utils/walletService');
 const { getOrder, updateOrder, completeOrder } = require('../../utils/orderService');
+const { hasResolvedPermission } = require('../../utils/permissionResolver');
 
 function isPlatformSuperuser(res) {
-    return Array.isArray(res.locals.userPerms) && res.locals.userPerms.includes('*');
+    return hasResolvedPermission(res.locals.userPerms, '*');
 }
 
 function canManageOrderStudio(req, res, studioId) {
@@ -25,13 +26,11 @@ function requireUpdatePermission(req, res, next) {
 }
 
 function canApproveCompletedRefund(res) {
-    return Array.isArray(res.locals.userPerms)
-        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.refund_completed'));
+    return hasResolvedPermission(res.locals.userPerms, 'orders.refund_completed');
 }
 
 function canAdjustOrderPrice(res) {
-    return Array.isArray(res.locals.userPerms)
-        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.price_adjust'));
+    return hasResolvedPermission(res.locals.userPerms, 'orders.price_adjust');
 }
 
 // =========================================================================

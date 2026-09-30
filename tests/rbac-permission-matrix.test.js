@@ -85,8 +85,8 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
     assert.match(system, /router\.get\('\/system\/bot-settings', ensureAuth, checkPerm\('discord_control\.view'\)/);
     assert.match(system, /router\.get\('\/system\/roles', ensureAuth, checkPerm\('roles\.view'\)/);
     assert.match(system, /router\.post\('\/system\/roles\/add', ensureAuth, checkPerm\('roles\.manage'\)/);
-    assert.match(sidebar, /hasPerm\('roles\.view'\)/);
-    assert.match(sidebar, /hasPerm\('system_settings\.view'\)/);
+    assert.match(sidebar, /canAccess\('roles\.view'\)/);
+    assert.match(sidebar, /canAccess\('system_settings\.view'\)/);
     assert.match(system, /discord_commands\.deploy_dev/);
     assert.match(system, /discord_commands\.deploy_production/);
     assert.match(read('routes/management/orders.js'), /checkPerm\('orders\.manage'\)/);

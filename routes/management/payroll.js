@@ -12,6 +12,7 @@ const {
 } = require('../../services/payoutService');
 const { exportPayoutRequests, exportStaffBankAccounts } = require('../../services/payrollExportService');
 const { decryptSensitiveFields } = require('../../utils/sensitiveDataCrypto');
+const { hasResolvedPermission } = require('../../utils/permissionResolver');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 
@@ -23,11 +24,11 @@ function getActorStudioId(req) {
 function can(req, res, permission) {
     return typeof res.locals.hasPerm === 'function'
         ? res.locals.hasPerm(permission)
-        : (res.locals.userPerms || []).includes(permission);
+    : hasResolvedPermission(res.locals.userPerms, permission);
 }
 
 function requirePayrollAccess(req, res, next) {
-    if (can(req, res, 'staff_view_payroll') || can(req, res, 'payout.view')) return next();
+    if (can(req, res, 'payroll.view') || can(req, res, 'staff_view_payroll') || can(req, res, 'payout.view')) return next();
     return res.status(403).send('您的身分無權訪問薪轉管理頁面');
 }
 
@@ -39,7 +40,7 @@ router.get('/', ensureAuth, requirePayrollAccess, (req, res) => {
     }
     const canViewSensitive = can(req, res, 'payout.view_sensitive');
     const canViewPayouts = can(req, res, 'payout.view');
-    const canViewStaffPayroll = can(req, res, 'staff_view_payroll');
+    const canViewStaffPayroll = can(req, res, 'payroll.view') || can(req, res, 'staff_view_payroll');
     const sensitiveColumns = canViewSensitive
         ? ', u.real_name, u.bank_name, u.bank_code, u.bank_branch, u.bank_account'
         : '';
@@ -109,7 +110,7 @@ router.get('/', ensureAuth, requirePayrollAccess, (req, res) => {
             canExportBankAccounts,
             csrfToken: res.locals.csrfToken,
             currentUser: req.user,
-            userPerms: req.user ? (req.user.permissions || []) : [],
+            userPerms: Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [],
             activePage: 'payroll',
             successMsg: req.query.successMsg || null,
             errorMsg: req.query.error || null

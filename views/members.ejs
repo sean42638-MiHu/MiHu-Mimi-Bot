@@ -181,6 +181,8 @@
 </head>
 <body>
 
+<div class="app-layout">
+
 <!-- 🚀 1. 引入側邊欄 (Sidebar) -->
 <%- include('partials/sidebar', { activePage: 'members' }) %>
 
@@ -221,6 +223,7 @@
         <!-- 📊 3. 獨立模組：會員清單表格 -->
         <%- include('partials/members_table', { members: members, userPerms: typeof userPerms !== 'undefined' ? userPerms : [], currentUser: typeof currentUser !== 'undefined' ? currentUser : null }) %>
     </div>
+</div>
 </div>
 
 <!-- 🚀 4. 獨立模組：會員相關 Modal 群組 -->

@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
+const ejs = require('ejs');
+const { hasResolvedPermission } = require('../utils/permissionResolver');
 
 const pageViews = [
     'dashboard.ejs', 'members.ejs', 'member_transactions.ejs', 'system_settings.ejs',
@@ -9,6 +11,7 @@ const pageViews = [
     'profile.ejs', 'orders.ejs', 'my_orders.ejs', 'system_bot_settings.ejs'
 ];
 const migratedViews = ['members.ejs', 'member_transactions.ejs', 'system_settings.ejs', 'roles.ejs', 'staff.ejs', 'vip.ejs', 'payroll.ejs', 'income.ejs'];
+const canonicalLayoutViews = ['members.ejs', 'member_transactions.ejs', 'staff.ejs', 'payroll.ejs'];
 
 test('page-local layout CSS does not reintroduce sidebar offsets or viewport-wide main wrappers', () => {
     const viewsRoot = path.join(__dirname, '..', 'views');
@@ -39,4 +42,53 @@ test('migrated admin pages use the canonical content contract', () => {
     for (const fileName of migratedViews) {
         assert.match(fs.readFileSync(path.join(viewsRoot, fileName), 'utf8'), /admin-page-content/, fileName);
     }
+});
+
+test('member and staff admin pages wrap one sidebar and main wrapper in app-layout', () => {
+    const viewsRoot = path.join(__dirname, '..', 'views');
+    for (const fileName of canonicalLayoutViews) {
+        const source = fs.readFileSync(path.join(viewsRoot, fileName), 'utf8');
+        assert.equal((source.match(/class="app-layout"/g) || []).length, 1, fileName);
+        assert.equal((source.match(/partials\/sidebar/g) || []).length, 1, fileName);
+        assert.match(source, /<div class="app-layout">[\s\S]*partials\/sidebar[\s\S]*<div class="main-wrapper">/, fileName);
+    }
+});
+
+async function renderSidebar(permissions, activePage = '') {
+    return ejs.renderFile(path.join(__dirname, '..', 'views', 'partials', 'sidebar.ejs'), {
+        userPerms: permissions,
+        hasPerm: permission => hasResolvedPermission(permissions, permission),
+        currentUser: { id: 'test-user', username: 'test-user' },
+        activePage,
+        flashData: {}
+    });
+}
+
+test('wildcard renders every existing sidebar destination', async () => {
+    const html = await renderSidebar(['*']);
+    for (const href of [
+        '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
+        '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
+        '/management/orders', '/system/bot-settings', '/management/commission', '/system/vip', '/system/roles',
+        '/system/settings', '/system/audit-logs', '/system/health'
+    ]) {
+        assert.match(html, new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), href);
+    }
+    for (const label of ['首頁', '個人', '管理', '系統', '會員名單', '會員資金明細', '員工列表', '薪轉管理']) {
+        assert.match(html, new RegExp(label), label);
+    }
+});
+
+test('individual view permissions render only their destination and necessary parent', async () => {
+    const ledger = await renderSidebar(['member_ledger.view'], 'member_transactions');
+    assert.match(ledger, /會員管理/);
+    assert.match(ledger, /href="\/management\/members\/transactions"[^>]*active-staff/);
+    assert.doesNotMatch(ledger, /href="\/management\/members"/);
+    assert.doesNotMatch(ledger, /員工管理/);
+
+    const payroll = await renderSidebar(['payroll.view'], 'payroll');
+    assert.match(payroll, /員工管理/);
+    assert.match(payroll, /href="\/management\/payroll"[^>]*active-staff/);
+    assert.doesNotMatch(payroll, /href="\/management\/staff"/);
+    assert.doesNotMatch(payroll, /會員管理/);
 });

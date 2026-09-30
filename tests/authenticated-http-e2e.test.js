@@ -35,7 +35,9 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     const databasePath = path.join(tempDirectory, 'fixture.sqlite');
     const priorEnv = {
         NODE_ENV: process.env.NODE_ENV,
+        APP_ENV: process.env.APP_ENV,
         TEST_DATABASE_PATH: process.env.TEST_DATABASE_PATH,
+        DEVELOPMENT_DATA_DIR: process.env.DEVELOPMENT_DATA_DIR,
         TEST_AUTH_FIXTURE_ENABLED: process.env.TEST_AUTH_FIXTURE_ENABLED,
         PAYROLL_DATA_ENCRYPTION_KEY: process.env.PAYROLL_DATA_ENCRYPTION_KEY,
         DISCORD_ENABLED: process.env.DISCORD_ENABLED,
@@ -46,7 +48,9 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     };
     Object.assign(process.env, {
         NODE_ENV: 'test',
+        APP_ENV: 'development',
         TEST_DATABASE_PATH: databasePath,
+        DEVELOPMENT_DATA_DIR: path.join(tempDirectory, 'data'),
         PAYROLL_DATA_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'),
         TEST_AUTH_FIXTURE_ENABLED: 'true',
         DISCORD_ENABLED: 'false',
@@ -120,6 +124,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ('security-self','security-self','security_self',1),('security-cross','security-cross','security_cross',1),
         ('security-allow','security-allow','security_allow',1),('legacy-security','legacy-security','legacy_security',1),
         ('assignment-manager','assignment-manager','assignment_manager',1),('assignment-target','assignment-target','staff',1),
+        ('ledger-viewer','ledger-viewer','ledger_viewer',1),('payroll-viewer','payroll-viewer','payroll_viewer',1),
         ('star-actor','star-actor','star_actor',1)`);
     await run(`INSERT INTO roles (id,role_key,name,permissions) VALUES
         (1,'member','Member','["my_income","profile"]'),(2,'staff','Staff','["payout.view"]'),
@@ -132,6 +137,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (11,'legacy_security','Legacy Security','["sys_roles"]'),
         (12,'assignment_manager','Assignment Manager','["staff.manage","member_adjust_vip","members.view","staff.view"]'),
         (13,'star_actor','Star Actor','["*"]'),
+        (21,'ledger_viewer','Ledger Viewer','["member_ledger.view"]'),
+        (22,'payroll_viewer','Payroll Viewer','["payroll.view"]'),
         (17,'admin','店長','["orders.view","orders.manage","orders.price_adjust","orders.refund","orders.refund_completed"]'),
         (18,'cs','客服','["orders.view","orders.manage","orders_edit_and_reassign"]'),
         (19,'legacy_order_manager','Legacy Order Manager','["manage_orders"]'),
@@ -166,6 +173,10 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
                ('member-b', 'mystery_type', -25, 200, 175, 'wallet', 'LEDGER-B', 'Studio B fixture', 'manager-b', '2026-01-01 11:00:00')`);
+    await run("UPDATE users SET avatar='a_testAvatarHash' WHERE id='604610298581876746'");
+    await run(`INSERT INTO wallet_transactions
+        (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
+        VALUES ('604610298581876746', 'admin_adjustment', -10, 10, 0, 'wallet', 'LEDGER-AVATAR', 'Avatar hash fixture', 'manager-a', '2026-01-01 10:30:00')`);
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'order_payment', -100, 200, 100, 'order', '101', 'ORDER-A payment', 'member-a', '2026-01-01 12:00:00')`);
@@ -514,6 +525,44 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(ledgerA.body, /collapseMembers/);
         assert.doesNotMatch(ledgerA.body, /Studio B fixture/);
         assert.match(ledgerA.body, /active-staff/);
+        assert.match(ledgerA.body, /href="\/management\/members\/transactions" class="submenu-item active-staff"/);
+        assert.doesNotMatch(ledgerA.body, /href="\/management\/members" class="submenu-item active-staff"/);
+        assert.match(ledgerA.body, /src="\/images\/default-avatar\.png"/);
+        assert.match(ledgerA.body, /onerror="this\.onerror=null;this\.src='\/images\/default-avatar\.png'"/);
+        const emptyLedger = await createRequest(port, 'GET', '/management/members/transactions?q=no-such-member', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(emptyLedger.status, 200);
+        assert.match(emptyLedger.body, /目前沒有符合條件的資金異動紀錄/);
+        const avatarLedger = await createRequest(port, 'GET', '/management/members/transactions?q=604610298581876746', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(avatarLedger.status, 200);
+        assert.match(avatarLedger.body, /https:\/\/cdn\.discordapp\.com\/avatars\/604610298581876746\/a_testAvatarHash\.gif\?size=64/);
+        assert.match(avatarLedger.body, /fa-user-pen/);
+        const ledgerViewer = await createSession('ledger-viewer');
+        const ledgerOnlyPage = await createRequest(port, 'GET', '/management/members/transactions', {
+            Host: `127.0.0.1:${port}`, Cookie: ledgerViewer.cookie
+        });
+        assert.equal(ledgerOnlyPage.status, 200, ledgerOnlyPage.body);
+        assert.match(ledgerOnlyPage.body, /會員管理/);
+        assert.match(ledgerOnlyPage.body, /href="\/management\/members\/transactions" class="submenu-item active-staff"/);
+        assert.doesNotMatch(ledgerOnlyPage.body, /href="\/management\/members"/);
+        const ledgerViewerMembers = await createRequest(port, 'GET', '/management/members', {
+            Host: `127.0.0.1:${port}`, Cookie: ledgerViewer.cookie
+        });
+        assert.equal(ledgerViewerMembers.status, 403);
+        const payrollViewer = await createSession('payroll-viewer');
+        const payrollOnlyPage = await createRequest(port, 'GET', '/management/payroll', {
+            Host: `127.0.0.1:${port}`, Cookie: payrollViewer.cookie
+        });
+        assert.equal(payrollOnlyPage.status, 200, payrollOnlyPage.body);
+        assert.match(payrollOnlyPage.body, /href="\/management\/payroll" class="submenu-item active-staff"/);
+        assert.doesNotMatch(payrollOnlyPage.body, /href="\/management\/staff"/);
+        const payrollViewerStaff = await createRequest(port, 'GET', '/management/staff', {
+            Host: `127.0.0.1:${port}`, Cookie: payrollViewer.cookie
+        });
+        assert.equal(payrollViewerStaff.status, 403);
         const injectionLedger = await createRequest(port, 'GET', '/management/members/transactions?type=DROP%20TABLE%20users%3B--&q=%25%27%20OR%201%3D1%20--', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
         });
@@ -751,6 +800,19 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(breakGlassRoles.status, 200, breakGlassRoles.body);
         assert.match(breakGlassRoles.body, /id="permission_wildcard"/);
+        const sidebarDestinations = [
+            '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
+            '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
+            '/management/orders', '/system/bot-settings', '/management/commission', '/system/vip', '/system/roles',
+            '/system/settings', '/system/audit-logs', '/system/health'
+        ];
+        for (const destination of sidebarDestinations) {
+            assert.match(breakGlassRoles.body, new RegExp(`href="${destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), destination);
+            const response = await createRequest(port, 'GET', destination, {
+                Host: `127.0.0.1:${port}`, Cookie: admin.cookie
+            });
+            assert.equal(response.status, 200, `${destination}: ${response.body}`);
+        }
         const url = '/system/bot-settings/sync';
         const settings = await createRequest(port, 'GET', '/system/bot-settings', {
             Host: `127.0.0.1:${port}`, Cookie: admin.cookie

@@ -87,9 +87,16 @@ test('production deployment and sensitive payout permissions remain independent'
     const settingsActor = resolvePermissions(['sys_settings']);
     const roleManager = resolvePermissions(['roles.manage']);
     const staffManager = resolvePermissions(['staff.manage']);
+    const memberViewer = resolvePermissions(['members.view']);
+    const payrollViewer = resolvePermissions(['payroll.view']);
     assert.equal(settingsActor.includes('discord_commands.deploy_production'), false);
     assert.equal(roleManager.includes('discord_commands.deploy_production'), false);
     assert.equal(staffManager.includes('payout.view_sensitive'), false);
+    assert.equal(hasResolvedPermission(memberViewer, 'member_ledger.view'), false);
+    assert.equal(hasResolvedPermission(memberViewer, 'member_adjust_balance'), false);
+    assert.equal(hasResolvedPermission(memberViewer, 'payroll.view'), false);
+    assert.equal(hasResolvedPermission(payrollViewer, 'staff.view_sensitive'), false);
+    assert.equal(hasResolvedPermission(payrollViewer, 'payout.view'), false);
     assert.equal(resolvePermissions(['staff_view_payroll']).includes('staff.view_sensitive'), true);
     assert.equal(resolvePermissions(['payout.view_sensitive']).includes('staff.view_sensitive'), false);
     assert.equal(ALL_GRANULAR_PERMISSIONS.includes('discord_commands.deploy_production'), true);
@@ -137,6 +144,16 @@ test('granular route gates use the order, staff-sensitive and commission permiss
     assert.match(read('routes/orders.js'), /checkPerm\(permission\)/);
     assert.match(read('routes/management/members.js'), /checkPerm\('members\.manage'\)/);
     assert.match(read('routes/management/staff.js'), /hasPerm\('staff\.view_sensitive'\)/);
-    assert.match(read('routes/management/staff.js'), /includes\('commission\.manage'\)/);
-    assert.match(read('routes/system.js'), /includes\('commission\.manage'\)/);
+    assert.match(read('routes/management/staff.js'), /hasResolvedPermission\(userPerms, 'commission\.manage'\)/);
+    assert.match(read('routes/system.js'), /hasResolvedPermission\(userPerms, 'commission\.manage'\)/);
+});
+
+test('runtime capability checks use the wildcard-aware shared predicate', () => {
+    const authorizationFiles = [
+        'app.js', 'middleware/auth.js', 'routes/management/members.js', 'routes/management/orders.js',
+        'routes/management/payroll.js', 'routes/management/staff.js', 'routes/orders.js', 'routes/system.js'
+    ];
+    const directCapabilityCheck = /(?:permissions|userPerms|perms)\.includes\(['"](?!\*)[^'"]+['"]\)/;
+    const violations = authorizationFiles.filter(file => directCapabilityCheck.test(read(file)));
+    assert.deepEqual(violations, []);
 });

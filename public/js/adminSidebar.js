@@ -2,9 +2,42 @@
 
 (() => {
     const sidebar = document.getElementById('mihuSidebar');
+    if (!sidebar) return;
+
+    const storageKey = id => `mihu.sidebar.collapse.${id}`;
+    const readStoredState = id => {
+        try { return window.sessionStorage.getItem(storageKey(id)); }
+        catch { return null; }
+    };
+    const writeStoredState = (id, expanded) => {
+        try { window.sessionStorage.setItem(storageKey(id), String(expanded)); }
+        catch { /* Bootstrap collapse remains functional without storage. */ }
+    };
+
+    sidebar.querySelectorAll('[data-bs-toggle="collapse"][aria-controls]').forEach(toggleElement => {
+        const collapseId = toggleElement.getAttribute('aria-controls');
+        const collapseElement = collapseId && document.getElementById(collapseId);
+        if (!collapseElement || collapseElement.dataset.sidebarStateBound === 'true') return;
+
+        const isCurrentSection = toggleElement.classList.contains('active');
+        const storedState = readStoredState(collapseId);
+        const shouldExpand = isCurrentSection || storedState === 'true' || (storedState === null && collapseElement.classList.contains('show'));
+        collapseElement.classList.toggle('show', shouldExpand);
+        toggleElement.setAttribute('aria-expanded', String(shouldExpand));
+        collapseElement.dataset.sidebarStateBound = 'true';
+        collapseElement.addEventListener('shown.bs.collapse', () => {
+            toggleElement.setAttribute('aria-expanded', 'true');
+            writeStoredState(collapseId, true);
+        });
+        collapseElement.addEventListener('hidden.bs.collapse', () => {
+            toggleElement.setAttribute('aria-expanded', 'false');
+            writeStoredState(collapseId, false);
+        });
+    });
+
     const toggle = document.querySelector('.admin-sidebar-toggle');
     const closeButton = sidebar && sidebar.querySelector('.admin-sidebar-close');
-    if (!sidebar || !toggle || !closeButton) return;
+    if (!toggle || !closeButton) return;
 
     const mobileQuery = window.matchMedia('(max-width: 991.98px)');
     const appLayout = sidebar.closest('.app-layout');

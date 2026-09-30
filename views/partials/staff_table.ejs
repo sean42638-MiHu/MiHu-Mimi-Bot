@@ -167,7 +167,7 @@
                     const perms = (typeof userPerms !== 'undefined' && userPerms) ? userPerms : [];
                     const checkPermission = (node) => {
                         if (typeof hasPerm === 'function') return hasPerm(node);
-                        return perms.includes(node);
+                        return perms.includes('*') || perms.includes(node);
                     };
 
                     const canViewPayroll = checkPermission('staff.view_sensitive') || checkPermission('staff_view_payroll');

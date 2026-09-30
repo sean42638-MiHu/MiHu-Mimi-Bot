@@ -4,9 +4,10 @@ const db = require('../database');
 const { syncOrdersJsonFromDb } = require('../utils/dataSync');
 const { requireAuth: ensureAuth, requirePerm: checkPerm } = require('../middleware/auth');
 const { getOrder, updateOrder, cancelOrder } = require('../utils/orderService');
+const { hasResolvedPermission } = require('../utils/permissionResolver');
 
 function isPlatformSuperuser(res) {
-    return Array.isArray(res.locals.userPerms) && res.locals.userPerms.includes('*');
+    return hasResolvedPermission(res.locals.userPerms, '*');
 }
 
 function requireUpdatePermission(req, res, next) {
@@ -15,13 +16,11 @@ function requireUpdatePermission(req, res, next) {
 }
 
 function canApproveCompletedRefund(res) {
-    return Array.isArray(res.locals.userPerms)
-        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.refund_completed'));
+    return hasResolvedPermission(res.locals.userPerms, 'orders.refund_completed');
 }
 
 function canAdjustOrderPrice(res) {
-    return Array.isArray(res.locals.userPerms)
-        && (res.locals.userPerms.includes('*') || res.locals.userPerms.includes('orders.price_adjust'));
+    return hasResolvedPermission(res.locals.userPerms, 'orders.price_adjust');
 }
 
 /**

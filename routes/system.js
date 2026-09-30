@@ -16,7 +16,7 @@ const { GUILD_LABELS, getCommandGuildKeys, getCommandGuildLabels, getMinimumExec
 const { getGuildConfigurationStatus } = require('../utils/developmentRuntime');
 const { deployDiscordCommands } = require('../utils/discordDeploymentService');
 const { PERMISSION_METADATA } = require('../config/permissions');
-const { KNOWN_LEGACY_PERMISSIONS, LEGACY_IMPLICATIONS } = require('../utils/permissionResolver');
+const { hasResolvedPermission, KNOWN_LEGACY_PERMISSIONS, LEGACY_IMPLICATIONS } = require('../utils/permissionResolver');
 const {
     authorizeRoleCreation, authorizeRoleMutation, canGrantPermission, canModifyRole, isRoleDelegationError,
     loadActorContext, loadRoleById, loadRoleByKey, permissionDiff, validatePermissionGrant
@@ -30,7 +30,7 @@ const canonicalCategoryAliases = { '有獎單': '有獎', '冠名單': '冠名',
 
 function isCommissionAdministrator(req, res) {
     const userPerms = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
-    return req.user && (userPerms.includes('*') || userPerms.includes('commission.manage'));
+    return req.user && hasResolvedPermission(userPerms, 'commission.manage');
 }
 
 function requireStudioCommissionAccess(req, res, next) {
@@ -544,7 +544,7 @@ router.get('/system/roles', ensureAuth, checkPerm('roles.view'), async (req, res
         permissionMetadata: PERMISSION_METADATA, delegatablePermissions,
         legacyPermissionKeys: [...KNOWN_LEGACY_PERMISSIONS],
         legacyPermissionImplications: LEGACY_IMPLICATIONS,
-        canGrantWildcard: actor.permissions.includes('*')
+        canGrantWildcard: hasResolvedPermission(actor.permissions, '*')
     });
 });
 

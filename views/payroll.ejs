@@ -86,6 +86,7 @@
 </head>
 <body>
 
+<div class="app-layout">
 <%- include('partials/sidebar', { activePage: 'payroll' }) %>
 
 <div class="main-wrapper">
@@ -175,6 +176,7 @@
             <%- include('partials/payroll_table', { staffList: typeof staffList !== 'undefined' ? staffList : [], canViewSensitive }) %>
         <% } %>
     </div>
+</div>
 </div>
 
 <%- include('modals/payroll_export_modal', { canExportPayouts, canExportBankAccounts }) %>
