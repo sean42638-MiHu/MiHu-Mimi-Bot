@@ -7,6 +7,7 @@ const trustProxyHops = productionRuntime ? Number(process.env.TRUST_PROXY_HOPS) 
 
 const express = require('express');
 const session = require('express-session');
+const { SqliteSessionStore, resolveSessionDatabasePath } = require('./utils/sqliteSessionStore');
 const path = require('path');
 const db = require('./database');
 const { getRolesDataFromDb } = require('./utils/dataSync');
@@ -32,7 +33,16 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/healthz', (req, res) => res.status(200).type('text/plain').send('ok'));
 
+const sessionStore = productionRuntime ? new SqliteSessionStore({
+    filename: resolveSessionDatabasePath(process.env),
+    busyTimeout: Number(process.env.SQLITE_BUSY_TIMEOUT_MS)
+}) : null;
+if (sessionStore) sessionStore.on('error', () => console.error('Session storage maintenance failed.'));
+app.locals.sessionStore = sessionStore;
+app.locals.sessionStoreReady = sessionStore ? sessionStore.ready : Promise.resolve();
+
 app.use(session({
+    ...(sessionStore ? { store: sessionStore } : {}),
     secret: process.env.SESSION_SECRET || 'mihu_gaming_secret_2026',
     resave: false,
     saveUninitialized: false,

@@ -34,3 +34,8 @@ data/development/talents.json
 data/development/vip.json
 data/development/commands.json
 data/development/payouts.json
+
+# SQLite session journal files must never be committed.
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
