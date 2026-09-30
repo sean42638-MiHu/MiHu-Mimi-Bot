@@ -6,6 +6,13 @@ const { withTransactionGate } = require('./transactionGate');
 const { writeAuditLog } = require('./auditService');
 const { calculateDiscount } = require('./discountHelper');
 const {
+    normalizeStatus,
+    assertKnownMutationStatus,
+    assertInlineUpdateTransition,
+    assertStartTransitionAllowed,
+    assertCompleteTransitionAllowed
+} = require('./orderStatus');
+const {
     calculateCommissionByCategory,
     getPersonalTalentShareRate,
     normalizeTalentShareRate,
@@ -227,9 +234,10 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
     try {
         const order = await getOrder(orderIdentifier);
         if (!order) throw new Error('找不到目標訂單');
-        const currentStatus = String(order.status || '').toLowerCase();
-        if (['completed', 'cancelled', 'refunded'].includes(currentStatus)) {
-            throw new Error('已完成或已取消訂單不可編輯');
+        const currentStatus = normalizeStatus(order.status);
+        assertKnownMutationStatus(currentStatus, '編輯');
+        if (['completed', 'cancelled', 'refunded', 'rejected'].includes(currentStatus)) {
+            throw new Error('已完成、已取消或已駁回訂單不可編輯');
         }
 
         const studioId = Number(input.studio_id ?? order.studio_id);
@@ -288,11 +296,9 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
             category, finalAmount, rawPrice > 0 ? rawPrice : finalAmount, personalRate, { studioId, serviceId }
         );
         const status = input.status ?? order.status;
-        const requestedStatus = String(status || '').toLowerCase();
-        if (requestedStatus !== currentStatus && !(currentStatus === 'pending' && requestedStatus === 'accepted')) {
-            throw new Error('訂單狀態變更必須使用專用 lifecycle operation');
-        }
-        if (['completed', 'cancelled', 'refunded'].includes(String(order.status || '').toLowerCase())
+        const requestedStatus = normalizeStatus(status);
+        assertInlineUpdateTransition(currentStatus, requestedStatus);
+        if (['completed', 'cancelled', 'refunded', 'rejected'].includes(String(order.status || '').toLowerCase())
             && Math.abs(Number(order.total_amount || 0) - finalAmount) > 0.000001) {
             throw new Error('終結訂單的價格異動需要人工財務處理');
         }
@@ -380,7 +386,7 @@ async function assignOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
     try {
         const order = await getOrder(orderIdentifier);
         if (!order) throw new Error('找不到目標訂單');
-        if (['completed', 'cancelled', 'refunded'].includes(String(order.status || '').toLowerCase())) {
+        if (['completed', 'cancelled', 'refunded', 'rejected'].includes(String(order.status || '').toLowerCase())) {
             throw new Error('訂單狀態不可重新指派');
         }
         const studioId = Number(order.studio_id);
@@ -437,7 +443,7 @@ async function assignOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
             UPDATE orders SET talent_id = ?, staff_id = ?, studio_id = ?, service_id = ?,
                 commission_rate_snapshot = ?, platform_commission = ?, talent_earning = ?,
                 unit_price = ?, discount = ?, total_amount = ?, status = 'accepted'
-            WHERE id = ? AND status NOT IN ('completed', 'cancelled', 'refunded')
+            WHERE id = ? AND status NOT IN ('completed', 'cancelled', 'refunded', 'rejected')
         `, [
             talentId, talentId, studioId, serviceId, commission.talentShareRate,
             commission.platformCommission, commission.talentNetEarning,
@@ -475,10 +481,11 @@ function startOrder(orderIdentifier, operatorId = null) {
 }
 
 async function startOrderInternal(orderIdentifier, operatorId = null) {
-    const order = await getOrder(orderIdentifier);
-    if (!order) throw new Error('找不到目標訂單');
     await dbRun('BEGIN IMMEDIATE');
     try {
+        const order = await getOrder(orderIdentifier);
+        if (!order) throw new Error('找不到目標訂單');
+        assertStartTransitionAllowed(order.status);
         const result = await dbRun(`
             UPDATE orders SET status = 'in_progress', start_time = ?
             WHERE (id = ? OR order_no = ?) AND status = 'accepted'
@@ -512,44 +519,48 @@ function completeOrder(orderIdentifier, operatorId = null, talentMessage = null)
 }
 
 async function completeOrderInternal(orderIdentifier, operatorId = null, talentMessage = null) {
-    const order = await getOrder(orderIdentifier);
-    if (!order) throw new Error('找不到目標訂單');
-    if (String(order.status || '').toLowerCase() === 'completed') return order;
-    const studioId = Number(order.studio_id);
-    if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('訂單缺少有效工作室');
-
-    const duration = Number(order.duration || 1);
-    const unitPrice = Number(order.unit_price || 0);
-    const finalAmount = Number(order.total_amount || 0);
-    const discount = Number(order.discount || 0);
-    const originalAmount = unitPrice > 0 ? duration * unitPrice : finalAmount + discount;
-    const talentId = order.talent_id || order.staff_id;
-    let talentShareRate = normalizeTalentShareRate(order.commission_rate_snapshot);
-    let platformCommission = Number(order.platform_commission);
-    let talentNetEarning = Number(order.talent_earning);
-
-    if (talentShareRate === null) {
-        const serviceId = order.service_id || await resolveServiceId(studioId, order.game, order.category || '陪玩單');
-        const personalRate = talentId ? await getPersonalTalentShareRate(talentId) : null;
-        const commission = await calculateCommissionByCategory(
-            order.category || '陪玩單', finalAmount, originalAmount > 0 ? originalAmount : finalAmount,
-            personalRate, { studioId, serviceId }
-        );
-        talentShareRate = commission.talentShareRate;
-        platformCommission = commission.platformCommission;
-        talentNetEarning = commission.talentNetEarning;
-    } else {
-        talentNetEarning = Number.isFinite(talentNetEarning) ? talentNetEarning : Math.round(originalAmount * talentShareRate);
-        platformCommission = Number.isFinite(platformCommission) ? platformCommission : Math.max(0, finalAmount - talentNetEarning);
-    }
-
     await dbRun('BEGIN IMMEDIATE');
     try {
+        const order = await getOrder(orderIdentifier);
+        if (!order) throw new Error('找不到目標訂單');
+        const completeCheck = assertCompleteTransitionAllowed(order.status);
+        if (completeCheck === 'already_completed') {
+            await dbRun('COMMIT');
+            return order;
+        }
+        const studioId = Number(order.studio_id);
+        if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('訂單缺少有效工作室');
+
+        const duration = Number(order.duration || 1);
+        const unitPrice = Number(order.unit_price || 0);
+        const finalAmount = Number(order.total_amount || 0);
+        const discount = Number(order.discount || 0);
+        const originalAmount = unitPrice > 0 ? duration * unitPrice : finalAmount + discount;
+        const talentId = order.talent_id || order.staff_id;
+        let talentShareRate = normalizeTalentShareRate(order.commission_rate_snapshot);
+        let platformCommission = Number(order.platform_commission);
+        let talentNetEarning = Number(order.talent_earning);
+
+        if (talentShareRate === null) {
+            const serviceId = order.service_id || await resolveServiceId(studioId, order.game, order.category || '陪玩單');
+            const personalRate = talentId ? await getPersonalTalentShareRate(talentId) : null;
+            const commission = await calculateCommissionByCategory(
+                order.category || '陪玩單', finalAmount, originalAmount > 0 ? originalAmount : finalAmount,
+                personalRate, { studioId, serviceId }
+            );
+            talentShareRate = commission.talentShareRate;
+            platformCommission = commission.platformCommission;
+            talentNetEarning = commission.talentNetEarning;
+        } else {
+            talentNetEarning = Number.isFinite(talentNetEarning) ? talentNetEarning : Math.round(originalAmount * talentShareRate);
+            platformCommission = Number.isFinite(platformCommission) ? platformCommission : Math.max(0, finalAmount - talentNetEarning);
+        }
+
         const result = await dbRun(`
             UPDATE orders SET status = 'completed', commission_rate_snapshot = ?,
                 platform_commission = ?, talent_earning = ?, end_time = DATETIME('now', 'localtime'),
                 talent_message = COALESCE(?, talent_message)
-            WHERE (id = ? OR order_no = ?) AND status NOT IN ('completed', 'cancelled', 'refunded')
+            WHERE (id = ? OR order_no = ?) AND status NOT IN ('completed', 'cancelled', 'refunded', 'rejected')
         `, [talentShareRate, platformCommission, talentNetEarning, talentMessage, orderIdentifier, orderIdentifier]);
         if (result.changes !== 1) throw new Error('訂單已完成或狀態不可轉為完成');
         await writeAuditLog({

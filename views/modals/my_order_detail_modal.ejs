@@ -27,7 +27,9 @@
                         </div>
                         <div class="col-md-4">
                             <div class="text-secondary small">🎧 訂單狀態 / 客服</div>
-                            <div class="fw-bold text-info small" id="myDetailStatus">--</div>
+                            <div class="fw-bold text-info small" id="myDetailStatus">
+                                <%- include('../partials/order_status_badge', { badge: orderStatus.getOrderStatusMeta('') }) %>
+                            </div>
                         </div>
                     </div>
                 </div>

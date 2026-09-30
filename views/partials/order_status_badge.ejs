@@ -1,0 +1,20 @@
+<%
+const badgeData = (badge && typeof badge === 'object') ? badge : {};
+const badgeClass = badgeData.badgeClass || 'status-badge-unknown';
+const badgeIcon = badgeData.icon || 'fa-circle-question';
+const badgeLabel = badgeData.label || '未知狀態';
+const badgeTag = badgeData.tag || null;
+const badgeCanonical = badgeData.canonical || 'unknown';
+const badgeRaw = badgeData.raw || '';
+%>
+<span
+    class="status-badge <%= badgeClass %>"
+    data-status-canonical="<%= badgeCanonical %>"
+    data-status-raw="<%= badgeRaw %>"
+>
+    <i class="fa-solid <%= badgeIcon %>"></i>
+    <span><%= badgeLabel %></span>
+    <% if (badgeTag && badgeTag !== badgeLabel) { %>
+        <small class="status-badge-tag"><%= badgeTag %></small>
+    <% } %>
+</span>

@@ -72,13 +72,6 @@
     .badge-冠名單, .badge-冠名 { background: rgba(245, 158, 11, 0.18); border: 1px solid rgba(245, 158, 11, 0.4); color: #fde047; }
     .badge-獎金     { background: rgba(16, 185, 129, 0.18); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; }
 
-    .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 0.76rem; font-weight: 700; }
-    .status-badge-pending   { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fde047; }
-    .status-badge-active    { background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; }
-    .status-badge-completed { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; }
-    .status-badge-cancelled { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; }
-    .status-badge-rejected  { background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(148, 163, 184, 0.3); color: #94a3b8; }
-
     /* 🚀 勾選框獨立自訂樣式 */
     .order-checkbox-custom {
         width: 16px;
@@ -139,17 +132,7 @@
                         const contentTier = o.content_tier || o.note || '-';
                         const unit = o.unit || '小時';
 
-                        const statusMap = {
-                            'pending': { name: '派單中', class: 'status-badge-pending', icon: 'fa-clock', group: 'pending' },
-                            'accepted': { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' },
-                            'active': { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' },
-                            'in_progress': { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' },
-                            'completed': { name: '已完成', class: 'status-badge-completed', icon: 'fa-circle-check', group: 'completed' },
-                            'cancelled': { name: '已取消', class: 'status-badge-cancelled', icon: 'fa-ban', group: 'cancelled' },
-                            'refunded': { name: '已退款', class: 'status-badge-cancelled', icon: 'fa-rotate-left', group: 'refunded' },
-                            'rejected': { name: '已駁回', class: 'status-badge-rejected', icon: 'fa-ban', group: 'rejected' }
-                        };
-                        const statusObj = statusMap[o.status] || { name: '進行中', class: 'status-badge-active', icon: 'fa-gamepad', group: 'active' };
+                        const statusObj = orderStatus.getOrderStatusMeta(o.status);
 
                         const totalAmount = Number(o.total_amount || 0);
                         const discount = Number(o.discount || 0);
@@ -187,7 +170,8 @@
                             note: o.note || '無特別備註',
                             talentMessage: o.talent_message || o.review_comment || '尚無留言',
                             status: o.status,
-                            statusName: statusObj.name,
+                            statusName: statusObj.label,
+                            statusMeta: statusObj,
                             startTime: o.start_time || '尚未開始',
                             endTime: o.end_time || '尚未結束',
                             createdAt: o.created_at || o.created_time || o.order_date || '未記錄時間',
@@ -199,7 +183,7 @@
                         };
                     %>
                         <tr class="order-row" 
-                            data-status="<%= statusObj.group %>"
+                            data-status="<%= statusObj.filterKey %>"
                             data-search="<%= `${o.order_no} ${csName} ${bossName} ${talentName} ${category} ${itemName} ${contentTier}`.toLowerCase() %>"
                             onclick="openUnifiedModal(this)">
                             
@@ -253,10 +237,7 @@
                             <td><span class="font-monospace text-warning fw-bold">$<%= Number(o.total_amount).toLocaleString() %></span> <span class="small text-secondary">NTD</span></td>
 
                             <td class="text-center">
-                                <span class="status-badge <%= statusObj.class %>">
-                                    <i class="fa-solid <%= statusObj.icon %>"></i>
-                                    <span><%= statusObj.name %></span>
-                                </span>
+                                <%- include('./order_status_badge', { badge: statusObj }) %>
                             </td>
                         </tr>
                     <% }) %>

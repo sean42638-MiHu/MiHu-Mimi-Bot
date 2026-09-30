@@ -9,7 +9,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
     process.env.NODE_ENV = 'test';
     process.env.TEST_DATABASE_PATH = path.join(tempDirectory, 'fixture.sqlite');
     const db = require('../database');
-    const { createOrder, assignOrder, updateOrder, completeOrder } = require('../utils/orderService');
+    const { createOrder, assignOrder, updateOrder, startOrder, completeOrder } = require('../utils/orderService');
     const { refundOrder, refundOrders } = require('../utils/walletService');
 
     const run = (sql, params = []) => new Promise((resolve, reject) => {
@@ -284,8 +284,40 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         const refundedState = await snapshot();
         await assert.rejects(updateOrder(created.id, {
             status: 'pending', original_price: 250, unit_price: 250, discount: 0, operatorId: 'operator'
-        }), /已完成或已取消訂單不可編輯/);
+        }), /已完成、已取消或已駁回訂單不可編輯/);
         assert.deepEqual(await snapshot(), refundedState);
+
+        const rejectedOrder = await createOrder({
+            ...input,
+            orderNo: 'TEST-REJECTED-STATE',
+            finalAmount: 40,
+            originalAmount: 40,
+            unitPrice: 40,
+            walletDelta: -40,
+            status: 'accepted'
+        });
+        await run('UPDATE orders SET status = ? WHERE id = ?', ['rejected', rejectedOrder.id]);
+        const beforeRejectedMutation = await snapshot();
+        await assert.rejects(updateOrder(rejectedOrder.id, {
+            status: 'cancelled',
+            original_price: 40,
+            unit_price: 40,
+            duration: 1,
+            discount: 0,
+            operatorId: 'operator'
+        }, { allowPriceAdjustment: true }), /已完成、已取消或已駁回訂單不可編輯/);
+        await assert.rejects(updateOrder(rejectedOrder.id, {
+            status: 'refunded',
+            original_price: 40,
+            unit_price: 40,
+            duration: 1,
+            discount: 0,
+            operatorId: 'operator'
+        }, { allowPriceAdjustment: true }), /已完成、已取消或已駁回訂單不可編輯/);
+        await assert.rejects(refundOrder(rejectedOrder.id, 'admin', 'rejected-regression', { allowCompleted: true }), /不可重複退款/);
+        await assert.rejects(startOrder(rejectedOrder.id, 'operator'), /不可開始服務/);
+        await assert.rejects(completeOrder(rejectedOrder.id, 'operator'), /無法標記完成/);
+        assert.deepEqual(await snapshot(), beforeRejectedMutation);
 
         const middleA = await createOrder({ ...input, orderNo: 'TEST-MIDDLE-A', finalAmount: 10, originalAmount: 10, unitPrice: 10, walletDelta: -10 });
         const middleB = await createOrder({ ...input, orderNo: 'TEST-MIDDLE-B', finalAmount: 10, originalAmount: 10, unitPrice: 10, walletDelta: -10 });
@@ -295,12 +327,14 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund'")).count, 3);
 
         const { adjustUserWallet } = require('../utils/walletHelper');
+        const beforeConcurrentWalletAdjust = Number((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance || 0);
         await Promise.all([
             adjustUserWallet({ userId: 'boss', addAmount: -10, reason: 'concurrent wallet mutation A', operatorId: 'operator' }),
             adjustUserWallet({ userId: 'boss', addAmount: -20, reason: 'concurrent wallet mutation B', operatorId: 'operator' })
         ]);
-        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 950);
-        assert.equal((await get('SELECT balance FROM users WHERE id = ?', ['boss'])).balance, 950);
+        const expectedWalletBalance = beforeConcurrentWalletAdjust - 30;
+        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, expectedWalletBalance);
+        assert.equal((await get('SELECT balance FROM users WHERE id = ?', ['boss'])).balance, expectedWalletBalance);
         assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'order_payment' AND reference_type = 'wallet'")).count, 2);
     } finally {
         await new Promise(resolve => db.close(resolve));

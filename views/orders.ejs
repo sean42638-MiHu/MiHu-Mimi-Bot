@@ -6,6 +6,7 @@
     <title>訂單管理 · 米胡電競 MiHu Gaming</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/order-status-badge.css">
     <style>
         html, body {
             background-color: #0b0914 !important;
@@ -169,6 +170,7 @@
         <%- include('partials/navbar', { activePage: 'orders' }) %>
 
         <div class="content-body">
+            <% const filterOptions = orderStatusFilters || []; %>
             <div class="page-header-content">
                 <div>
                     <div class="h4 fw-bold text-white mb-1">
@@ -187,13 +189,11 @@
             <!-- 🚀 3. 狀態標籤篩選器 & 店長專屬批量刪除隱藏 Form -->
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <div class="filter-tabs">
-                    <button type="button" class="filter-tab-btn active" data-filter="all">全部訂單 (<%= orders ? orders.length : 0 %>)</button>
-                    <button type="button" class="filter-tab-btn" data-filter="pending">派單中</button>
-                    <button type="button" class="filter-tab-btn" data-filter="active">進行中</button>
-                    <button type="button" class="filter-tab-btn" data-filter="completed">已完成</button>
-                    <button type="button" class="filter-tab-btn" data-filter="cancelled">已取消</button>
-                    <button type="button" class="filter-tab-btn" data-filter="refunded">已退款</button>
-                    <button type="button" class="filter-tab-btn" data-filter="rejected">已駁回</button>
+                    <% filterOptions.forEach(option => { %>
+                        <button type="button" class="filter-tab-btn <%= option.key === 'all' ? 'active' : '' %>" data-filter="<%= option.key %>">
+                            <%= option.key === 'all' ? `${option.label}訂單 (${orders ? orders.length : 0})` : option.label %>
+                        </button>
+                    <% }) %>
                 </div>
 
                 <% if (canBatchDeleteOrders) { %>
@@ -267,6 +267,7 @@
 <% } %>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/order-status-dom.js"></script>
 <script>
     function setVal(id, val) {
         const el = document.getElementById(id);
@@ -275,6 +276,22 @@
     function setText(id, txt) {
         const el = document.getElementById(id);
         if (el) el.textContent = (txt !== undefined && txt !== null) ? txt : '--';
+    }
+
+    function setOrderStatusField(value, statusMeta) {
+        const select = document.getElementById('editOrderStatus');
+        if (!select) return;
+        const rawValue = String(value || '').trim();
+        const hasOption = Array.from(select.options || []).some(option => option.value === rawValue);
+        if (!hasOption && rawValue) {
+            const label = (statusMeta && statusMeta.label) ? statusMeta.label : rawValue;
+            const option = document.createElement('option');
+            option.value = rawValue;
+            option.textContent = `${label} (Legacy)`;
+            option.setAttribute('data-legacy-option', 'true');
+            select.appendChild(option);
+        }
+        select.value = rawValue || 'pending';
     }
 
     function getOrderData(rowEl) {
@@ -296,16 +313,19 @@
         window.currentOrderCanEdit = !!data.canEdit;
         window.currentOrderCanReassign = !!data.canReassign;
         window.currentOrderCanAdjustPrice = !!data.canAdjustPrice;
+        const canonicalStatus = (data.statusMeta && data.statusMeta.canonical) ? data.statusMeta.canonical : data.status;
+        const isCancelledFamily = (data.statusMeta && data.statusMeta.filterKey === 'cancelled')
+            || ['cancelled', 'refunded', 'rejected'].includes(String(data.status || '').toLowerCase());
         window.currentOrderCanRefund = !!data.canRefund
-            && !['cancelled', 'refunded'].includes(data.status)
-            && (data.status !== 'completed' || !!data.canRefundCompleted);
+            && !isCancelledFamily
+            && (canonicalStatus !== 'completed' || !!data.canRefundCompleted);
 
         const form = document.getElementById('modalOrderEditForm');
         if (form) form.action = `/management/orders/update/${data.id}`;
 
         setText('detailOrderNo', data.orderNo);
         setText('detailCreatedAt', data.createdAt);
-        setText('detailStatusAndCs', `${data.statusName || '進行中'} / ${data.csName || '米胡客服'}`);
+        setOrderStatusBadgeWithCs('detailStatusAndCs', data.statusMeta || null, data.csName || '米胡客服');
         setText('detailCsInfo', data.csName ? `${data.csName} (@${data.csId || 'CS'})` : '米胡客服');
         setText('detailBossInfo', data.bossName ? `${data.bossName} (@${data.bossId})` : '--');
         setText('detailTalentInfo', data.talentId ? `${data.talentName} (@${data.talentId})` : '派單中 (尚未指派)');
@@ -321,7 +341,7 @@
         setVal('editDuration', data.duration || 1);
         setVal('editUnit', data.unit || '小時');
         setVal('editTalentId', data.talentId || '');
-        setVal('editOrderStatus', data.status || 'pending');
+        setOrderStatusField(data.status || 'pending', data.statusMeta || null);
         setVal('editTalentMessage', data.talentMessage);
         setVal('editNote', data.note);
 
@@ -334,6 +354,16 @@
             const instance = bootstrap.Modal.getOrCreateInstance(modalEl);
             instance.show();
         }
+    }
+
+    function setOrderStatusBadgeWithCs(containerId, statusMeta, csName) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (window.MiHuOrderStatusDom && typeof window.MiHuOrderStatusDom.renderStatusBadgeWithCs === 'function') {
+            window.MiHuOrderStatusDom.renderStatusBadgeWithCs(el, statusMeta || null, csName || '米胡客服');
+            return;
+        }
+        el.textContent = '未知狀態';
     }
 
     document.addEventListener('DOMContentLoaded', () => {

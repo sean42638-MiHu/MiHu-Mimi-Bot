@@ -77,7 +77,10 @@
                             </div>
                             <div class="col-4">
                                 <span class="info-detail-label">訂單狀態</span>
-                                <div class="info-detail-val text-info fs-6" id="detailStatusAndCs">--</div>
+                                <div class="info-detail-val text-info fs-6 d-flex align-items-center flex-wrap gap-1" id="detailStatusAndCs">
+                                    <%- include('../partials/order_status_badge', { badge: orderStatus.getOrderStatusMeta('') }) %>
+                                    <span class="ms-1 text-info">/ 米胡客服</span>
+                                </div>
                             </div>
 
                             <!-- 第二排：闆闆 / 陪陪 / 訂單客服 (移除小字) -->
@@ -137,12 +140,11 @@
                         <div class="mb-2">
                             <label class="small text-secondary mb-1">訂單狀態</label>
                             <select id="editOrderStatus" name="status" class="form-select form-control-glass text-warning fw-bold" disabled>
-                                <option value="pending">派單中 (Pending)</option>
-                                <option value="accepted">進行中 (Accepted)</option>
+                                <option value="pending">待接單 (Pending)</option>
                                 <option value="in_progress">進行中 (In Progress)</option>
                                 <option value="completed">已完成 (Completed)</option>
-                                <option value="cancelled">售後中 (Cancelled)</option>
-                                <option value="rejected">已駁回 (Rejected)</option>
+                                <option value="disputed">爭議中 (Disputed)</option>
+                                <option value="cancelled">已取消 (Cancelled)</option>
                             </select>
                         </div>
                     </div>

@@ -12,6 +12,7 @@ const path = require('path');
 const db = require('./database');
 const { getRolesDataFromDb } = require('./utils/dataSync');
 const { getRoleInfo } = require('./utils/roleHelper');
+const orderStatus = require('./utils/orderStatus');
 const passport = require('./config/passport');
 const { sameOriginGuard } = require('./middleware/csrf');
 const { initializationWindowGuard, isRbacInitializationWindow } = require('./middleware/initializationWindowGuard');
@@ -60,6 +61,8 @@ app.use(sameOriginGuard);
 
 app.use((req, res, next) => {
     res.locals.getRoleInfo = getRoleInfo;
+    res.locals.orderStatus = orderStatus;
+    res.locals.orderStatusFilters = orderStatus.getOrderStatusFilterOptions();
 
     if (req.isAuthenticated() && req.user) {
         db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (userError, freshUser) => {

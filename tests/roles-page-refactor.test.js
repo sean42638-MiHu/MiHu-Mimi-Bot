@@ -104,6 +104,7 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     const ordersPage = fs.readFileSync(path.join(root, 'views/orders.ejs'), 'utf8');
     const table = fs.readFileSync(path.join(root, 'views/partials/orders_table.ejs'), 'utf8');
     const modal = fs.readFileSync(path.join(root, 'views/modals/order_detail_modal.ejs'), 'utf8');
+    const orderStatus = fs.readFileSync(path.join(root, 'utils/orderStatus.js'), 'utf8');
     assert.match(ordersPage, /hasPerm\('action_order_batch_delete'\)/);
     assert.match(ordersPage, /batch-delete\/preview/);
     assert.match(ordersPage, /批量刪除訂單並退款確認/);
@@ -112,8 +113,10 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     assert.match(table, /hasPerm\('action_order_price'\)/);
     assert.match(table, /hasPerm\('action_order_refund'\)/);
     assert.match(table, /hasPerm\('action_order_refund_completed'\)/);
-    assert.match(table, /'cancelled': \{ name: '已取消'/);
-    assert.match(table, /'refunded': \{ name: '已退款'/);
+    assert.match(table, /orderStatus\.getOrderStatusMeta\(o\.status\)/);
+    assert.match(table, /include\('\.\/order_status_badge'/);
+    assert.match(orderStatus, /refunded:[\s\S]*label:\s*'已退款'/);
+    assert.match(orderStatus, /rejected:[\s\S]*canonical:\s*'cancelled'/);
     assert.match(table, /const canBatchDeleteThisOrder = canBatchDelete/);
     assert.match(ordersPage, /window\.currentOrderCanAdjustPrice = !!data\.canAdjustPrice/);
     assert.match(ordersPage, /window\.currentOrderCanReassign = !!data\.canReassign/);

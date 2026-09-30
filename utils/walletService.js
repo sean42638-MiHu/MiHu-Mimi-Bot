@@ -1,6 +1,7 @@
 const db = require('../database');
 const { writeAuditLog } = require('./auditService');
 const { withTransactionGate } = require('./transactionGate');
+const { normalizeStatus, assertRefundTransitionAllowed } = require('./orderStatus');
 
 function createWalletError(message, code) {
     const error = new Error(message);
@@ -164,11 +165,15 @@ function dbGet(sql, params = []) {
 async function applyRefundInTransaction(orderIdentifier, operatorId, source, { allowCompleted = false } = {}) {
     const order = await dbGet('SELECT * FROM orders WHERE id = ? OR order_no = ?', [orderIdentifier, orderIdentifier]);
     if (!order) throw new Error('找不到目標訂單');
-    const status = String(order.status || '').toLowerCase();
-    if (['cancelled', 'refunded'].includes(status)) {
-        throw new Error(`訂單 ${order.order_no} 已退款或取消，不可重複退款`);
+    const status = normalizeStatus(order.status);
+    try {
+        assertRefundTransitionAllowed(status, { allowCompleted });
+    } catch (error) {
+        if (status === 'cancelled' || status === 'refunded') {
+            throw new Error(`訂單 ${order.order_no} 已退款或取消，不可重複退款`);
+        }
+        throw error;
     }
-    if (status === 'completed' && !allowCompleted) throw new Error('已完成訂單退款需由店長審核');
 
     const refundAmount = Math.max(0, Number(order.total_amount || 0));
     const wallet = await dbGet(`
