@@ -147,7 +147,7 @@
 
     #manualCreateOrderModal .manual-wallet-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
     }
 
@@ -242,7 +242,7 @@
         }
 
         #manualCreateOrderModal .manual-wallet-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 
@@ -276,7 +276,7 @@
                 <div class="modal-body manual-create-body">
                     <div class="alert manual-create-error py-2 px-3 small" id="manualCreateOrderError" style="display:none;" role="alert"></div>
                     <div class="alert manual-create-warning py-2 px-3 small mb-3">
-                        建立訂單將立即扣除所選會員錢包餘額；進行中訂單於完成後才結算收益與累積消費。
+                        建立訂單將優先扣除會員贈送金，不足部分再扣實充餘額；進行中訂單於完成後才結算收益與累積消費。
                     </div>
 
                     <div class="row g-3 mb-2">
@@ -289,9 +289,14 @@
                             <div id="manualMemberSelected" style="display:none;"></div>
                             <div id="manualMemberWalletPreview" class="manual-wallet-card" style="display:none;" aria-live="polite">
                                 <div class="manual-wallet-grid">
-                                    <div><span class="manual-preview-label">可付款主餘額</span><span class="manual-wallet-value" id="manualWalletBalance">$0</span></div>
-                                    <div><span class="manual-preview-label">贈送金（本次不合併扣款）</span><span class="manual-wallet-value" id="manualWalletBonus">$0</span></div>
-                                    <div><span class="manual-preview-label">扣款後主餘額</span><span class="manual-wallet-value" id="manualWalletAfter">$0</span></div>
+                                    <div><span class="manual-preview-label">可用總餘額</span><span class="manual-wallet-value" id="manualWalletTotal">$0</span></div>
+                                    <div><span class="manual-preview-label">實充餘額</span><span class="manual-wallet-value" id="manualWalletBalance">$0</span></div>
+                                    <div><span class="manual-preview-label">贈送金餘額</span><span class="manual-wallet-value" id="manualWalletBonus">$0</span></div>
+                                    <div><span class="manual-preview-label">本次扣贈送金</span><span class="manual-wallet-value" id="manualWalletBonusDebit">$0</span></div>
+                                    <div><span class="manual-preview-label">本次扣實充</span><span class="manual-wallet-value" id="manualWalletPrincipalDebit">$0</span></div>
+                                    <div><span class="manual-preview-label">扣款後總餘額</span><span class="manual-wallet-value" id="manualWalletTotalAfter">$0</span></div>
+                                    <div><span class="manual-preview-label">扣款後實充</span><span class="manual-wallet-value" id="manualWalletAfter">$0</span></div>
+                                    <div><span class="manual-preview-label">扣款後贈送金</span><span class="manual-wallet-value" id="manualWalletBonusAfter">$0</span></div>
                                 </div>
                                 <div class="small mt-2" id="manualWalletPaymentPreview"></div>
                             </div>
@@ -441,9 +446,14 @@
         const memberHidden = document.getElementById('manualOrderBossId');
         const memberSelected = document.getElementById('manualMemberSelected');
         const memberWalletPreview = document.getElementById('manualMemberWalletPreview');
+        const walletTotal = document.getElementById('manualWalletTotal');
         const walletBalance = document.getElementById('manualWalletBalance');
         const walletBonus = document.getElementById('manualWalletBonus');
+        const walletBonusDebit = document.getElementById('manualWalletBonusDebit');
+        const walletPrincipalDebit = document.getElementById('manualWalletPrincipalDebit');
+        const walletTotalAfter = document.getElementById('manualWalletTotalAfter');
         const walletAfter = document.getElementById('manualWalletAfter');
+        const walletBonusAfter = document.getElementById('manualWalletBonusAfter');
         const walletPaymentPreview = document.getElementById('manualWalletPaymentPreview');
 
         const talentInput = document.getElementById('manualTalentSearch');
@@ -523,18 +533,28 @@
             memberWalletPreview.style.display = 'block';
             const balance = Number(selectedMemberSnapshot.balance || 0);
             const bonus = Number(selectedMemberSnapshot.bonusBalance || 0);
-            const after = amount === null ? balance : Number((balance - amount).toFixed(2));
+            const total = Number((balance + bonus).toFixed(2));
+            const plannedBonusDebit = amount === null ? 0 : Math.min(bonus, amount);
+            const plannedPrincipalDebit = amount === null ? 0 : Math.min(balance, Math.max(0, amount - plannedBonusDebit));
+            const afterPrincipal = Number((balance - plannedPrincipalDebit).toFixed(2));
+            const afterBonus = Number((bonus - plannedBonusDebit).toFixed(2));
+            const totalAfter = Number((afterPrincipal + afterBonus).toFixed(2));
+            const insufficient = amount !== null && amount > total;
             if (walletBalance) walletBalance.textContent = formatCurrency(balance);
             if (walletBonus) walletBonus.textContent = formatCurrency(bonus);
-            if (walletAfter) walletAfter.textContent = formatCurrency(after);
-            const enough = amount !== null && after >= 0;
+            if (walletTotal) walletTotal.textContent = formatCurrency(total);
+            if (walletBonusDebit) walletBonusDebit.textContent = formatCurrency(plannedBonusDebit);
+            if (walletPrincipalDebit) walletPrincipalDebit.textContent = formatCurrency(plannedPrincipalDebit);
+            if (walletTotalAfter) walletTotalAfter.textContent = formatCurrency(totalAfter);
+            if (walletAfter) walletAfter.textContent = formatCurrency(afterPrincipal);
+            if (walletBonusAfter) walletBonusAfter.textContent = formatCurrency(afterBonus);
             if (walletPaymentPreview) {
-                walletPaymentPreview.className = `small mt-2 ${enough ? '' : 'manual-wallet-insufficient'}`;
+                walletPaymentPreview.className = `small mt-2 ${insufficient ? 'manual-wallet-insufficient' : ''}`;
                 walletPaymentPreview.textContent = amount === null
                     ? '請輸入合法金額後預覽扣款。'
-                    : (enough
-                        ? `本次由主餘額扣款 ${formatCurrency(amount)}。贈送金維持獨立，不列入可付款額。`
-                        : `主餘額不足，尚缺 ${formatCurrency(Math.abs(after))}；送出時伺服器會再次核對。`);
+                    : (insufficient
+                        ? `總餘額不足，尚缺 ${formatCurrency(amount - total)}；送出時伺服器會再次核對。`
+                        : `依序扣除贈送金 ${formatCurrency(plannedBonusDebit)}，再扣實充 ${formatCurrency(plannedPrincipalDebit)}。`);
             }
             if (submitSummary) {
                 submitSummary.textContent = `${selectedMemberSnapshot.nickname} (${selectedMemberSnapshot.id}) · 本次扣款 ${amount === null ? '金額無效' : formatCurrency(amount)}`;
@@ -548,8 +568,10 @@
             const durationRaw = String(durationInput && durationInput.value || '').trim();
             const durationValid = /^(0|[1-9]\d*)(\.\d{1,2})?$/.test(durationRaw)
                 && Number.isFinite(Number(durationRaw)) && Number(durationRaw) > 0 && Number(durationRaw) <= 10000;
+            const totalBalance = Number(selectedMemberSnapshot && selectedMemberSnapshot.balance || 0)
+                + Number(selectedMemberSnapshot && selectedMemberSnapshot.bonusBalance || 0);
             const walletReady = Boolean(selectedMemberSnapshot && selectedMemberSnapshot.id === String(memberHidden.value)
-                && amount !== null && Number(selectedMemberSnapshot.balance) >= amount);
+                && amount !== null && totalBalance >= amount);
             const ready = Boolean(memberHidden.value && talentHidden.value && walletReady && durationValid
                 && String(gameInput && gameInput.value || '').trim() && !submitting);
             submitBtn.disabled = !ready;
@@ -559,7 +581,7 @@
                 else if (!talentHidden.value) validationText.textContent = '請選擇有效接單人。';
                 else if (amount === null) validationText.textContent = '金額需為 0 至 1,000,000,000，最多兩位小數。';
                 else if (!durationValid) validationText.textContent = '時長/數量需大於 0，最多兩位小數。';
-                else if (!walletReady) validationText.textContent = '錢包主餘額不足或尚未載入。';
+                else if (!walletReady) validationText.textContent = '總餘額不足或尚未載入。';
                 else if (!String(gameInput && gameInput.value || '').trim()) validationText.textContent = '請填寫服務項目。';
                 else validationText.textContent = '';
             }
@@ -791,8 +813,9 @@
                 setError('會員錢包尚未載入，請稍候或重新選擇會員。');
                 return;
             }
-            if (Number(selectedMemberSnapshot.balance) < amount) {
-                setError('會員錢包主餘額不足，請確認最新餘額。');
+            const totalBalance = Number(selectedMemberSnapshot.balance || 0) + Number(selectedMemberSnapshot.bonusBalance || 0);
+            if (totalBalance < amount) {
+                setError(`總餘額不足，尚缺 ${formatCurrency(amount - totalBalance)}。`);
                 updateWalletPreview();
                 return;
             }

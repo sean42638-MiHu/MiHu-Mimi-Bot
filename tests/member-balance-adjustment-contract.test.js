@@ -53,6 +53,7 @@ async function createSchema(db) {
         amount REAL,
         balance_before REAL,
         balance_after REAL,
+        bonus_amount REAL NOT NULL DEFAULT 0,
         reference_type TEXT,
         reference_id TEXT,
         description TEXT,

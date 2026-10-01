@@ -173,7 +173,7 @@ async function getRefundLedgerSummary(order) {
     }
 
     const paymentRows = await dbAll(`
-        SELECT id, user_id, type, amount, reference_type, reference_id, description
+        SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
         FROM wallet_transactions
         WHERE user_id = ?
           AND reference_type = 'order'
@@ -183,7 +183,7 @@ async function getRefundLedgerSummary(order) {
     `, [bossId, orderReference, ...PAYMENT_LEDGER_TYPES]);
 
     const refundRows = await dbAll(`
-        SELECT id, user_id, type, amount, reference_type, reference_id, description
+        SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
         FROM wallet_transactions
         WHERE user_id = ?
           AND reference_type = 'order'
@@ -193,7 +193,7 @@ async function getRefundLedgerSummary(order) {
     `, [bossId, orderReference]);
 
     const unknownOrderLinkedRows = await dbAll(`
-        SELECT id, user_id, type, amount, reference_type, reference_id, description
+        SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
         FROM wallet_transactions
         WHERE user_id = ?
           AND reference_type = 'order'
@@ -203,7 +203,7 @@ async function getRefundLedgerSummary(order) {
     `, [bossId, orderReference, ...PAYMENT_LEDGER_TYPES]);
 
     const adjustmentRows = await dbAll(`
-        SELECT id, user_id, type, amount, reference_type, reference_id, description
+        SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
         FROM wallet_transactions
         WHERE user_id = ?
           AND type = 'order_adjustment'
@@ -295,9 +295,16 @@ async function evaluateOrder(order, actorContext, tableState) {
         reasons.push('存在未知訂單帳務流水類型，無法安全計算退款');
     }
 
-    const hasInvalidPaymentDirection = paymentRows.some(row => !Number.isFinite(Number(row.amount)) || Number(row.amount) >= 0);
-    const hasInvalidRefundDirection = refundRows.some(row => !Number.isFinite(Number(row.amount)) || Number(row.amount) < 0);
-    const hasInvalidAdjustment = adjustmentRows.some(row => !Number.isFinite(Number(row.amount)) || Number(row.amount) === 0);
+    const hasInvalidComposition = rows => rows.some(row => {
+        const amount = Number(row.amount);
+        const bonusAmount = Number(row.bonus_amount || 0);
+        return !Number.isFinite(amount) || !Number.isFinite(bonusAmount)
+            || Math.abs(bonusAmount) > Math.abs(amount) + 0.000001
+            || (amount !== 0 && bonusAmount !== 0 && Math.sign(amount) !== Math.sign(bonusAmount));
+    });
+    const hasInvalidPaymentDirection = paymentRows.some(row => Number(row.amount) >= 0) || hasInvalidComposition(paymentRows);
+    const hasInvalidRefundDirection = refundRows.some(row => Number(row.amount) < 0) || hasInvalidComposition(refundRows);
+    const hasInvalidAdjustment = adjustmentRows.some(row => Number(row.amount) === 0) || hasInvalidComposition(adjustmentRows);
 
     if (hasInvalidPaymentDirection) {
         reasons.push('付款流水方向異常，無法安全計算退款');
@@ -310,10 +317,14 @@ async function evaluateOrder(order, actorContext, tableState) {
     }
 
     const paymentSum = paymentRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const paymentBonusSum = paymentRows.reduce((sum, row) => sum + Number(row.bonus_amount || 0), 0);
     const adjustmentSum = adjustmentRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const adjustmentBonusSum = adjustmentRows.reduce((sum, row) => sum + Number(row.bonus_amount || 0), 0);
     const refundSum = refundRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const refundBonusSum = refundRows.reduce((sum, row) => sum + Number(row.bonus_amount || 0), 0);
 
     let refundableAmount = 0;
+    let refundableBonusAmount = 0;
     let actualCharged = 0;
     let alreadyRefunded = Math.max(0, refundSum);
 
@@ -331,24 +342,37 @@ async function evaluateOrder(order, actorContext, tableState) {
             }
         } else {
             const netCharged = -(paymentSum + adjustmentSum);
-            if (!Number.isFinite(netCharged) || netCharged < 0) {
+            const netBonusCharged = -(paymentBonusSum + adjustmentBonusSum);
+            if (!Number.isFinite(netCharged) || netCharged < 0
+                || !Number.isFinite(netBonusCharged) || netBonusCharged < -0.000001
+                || netBonusCharged > netCharged + 0.000001
+                || refundBonusSum > refundSum + 0.000001
+                || refundBonusSum > netBonusCharged + 0.000001) {
                 reasons.push('訂單扣款/沖銷總額異常，無法安全計算退款');
             } else {
                 actualCharged = Math.max(0, netCharged);
                 alreadyRefunded = Math.max(0, refundSum);
+                const bonusAlreadyRefunded = Math.max(0, refundBonusSum);
 
                 if (CLOSED_ORDER_STATUSES.has(status)) {
                     const diff = actualCharged - alreadyRefunded;
+                    const bonusDiff = netBonusCharged - bonusAlreadyRefunded;
                     if (diff > 0.000001) {
                         reasons.push('狀態顯示已取消/退款，但帳務仍有未退差額，禁止直接刪除');
                     } else if (diff < -0.000001) {
                         reasons.push('退款金額高於實際扣款，存在超額退款風險，禁止直接刪除');
+                    } else if (Math.abs(bonusDiff) > 0.000001) {
+                        reasons.push('狀態顯示已取消/退款，但贈送金退款組成不一致，禁止直接刪除');
                     }
                     refundableAmount = 0;
                 } else {
                     refundableAmount = Math.max(0, actualCharged - alreadyRefunded);
+                    refundableBonusAmount = Math.max(0, netBonusCharged - bonusAlreadyRefunded);
                     if (refundableAmount > 0 && refundCount > 0) {
                         reasons.push('此訂單已有部分退款。受現行唯一索引限制，為避免重複退款請改走人工對帳流程。');
+                    }
+                    if (refundableBonusAmount > refundableAmount + 0.000001) {
+                        reasons.push('可退贈送金高於可退款總額，無法安全計算退款');
                     }
                 }
             }
@@ -362,6 +386,8 @@ async function evaluateOrder(order, actorContext, tableState) {
         bossId: String(order.boss_id || ''),
         studioId: Number(order.studio_id),
         refundableAmount,
+        refundableBonusAmount,
+        refundablePrincipalAmount: Math.max(0, refundableAmount - refundableBonusAmount),
         deleteOnly: refundableAmount <= 0,
         chargedAmount: actualCharged,
         refundedAmount: alreadyRefunded,
@@ -457,6 +483,7 @@ async function executeBatchDeleteAndRefund(orderIds, actorContext, { source = '�
                         await applyWalletDeltaInTransaction({
                             userId: item.bossId,
                             amount: item.refundableAmount,
+                            bonusAmount: item.refundableBonusAmount,
                             operatorId: currentActorContext.actorId,
                             studioId: item.studioId,
                             reason: `${source} 退款 - 訂單 ${item.orderNo}`,

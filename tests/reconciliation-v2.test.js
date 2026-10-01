@@ -23,7 +23,7 @@ test('reconciliation v2 reports linked, unlinked and missing evidence without wr
         await run('CREATE TABLE user_wallets (user_id TEXT PRIMARY KEY, balance REAL, bonus_balance REAL, manual_spent REAL, manual_deposited REAL)');
         await run(`CREATE TABLE wallet_transactions (
             id INTEGER PRIMARY KEY, user_id TEXT, type TEXT, amount REAL,
-            balance_before REAL, balance_after REAL, reference_type TEXT, reference_id TEXT,
+            balance_before REAL, balance_after REAL, bonus_amount REAL NOT NULL DEFAULT 0, reference_type TEXT, reference_id TEXT,
             description TEXT, operator_id TEXT, created_at TEXT
         )`);
         await run(`CREATE TABLE orders (
@@ -42,14 +42,16 @@ test('reconciliation v2 reports linked, unlinked and missing evidence without wr
             reserved_before REAL, reserved_after REAL, operator_id TEXT, reason TEXT, created_at TEXT
         )`);
         await run('CREATE TABLE audit_logs (id INTEGER PRIMARY KEY, action TEXT, target_type TEXT, target_id TEXT)');
-        await run("INSERT INTO users VALUES ('u-ledger', 1), ('u-missing', 2), ('u-cross', 2)");
-        await run("INSERT INTO user_wallets VALUES ('u-ledger', 50, 0, 0, 0), ('u-missing', 25, 0, 0, 0), ('u-cross', 50, 0, 0, 0)");
+        await run("INSERT INTO users VALUES ('u-ledger', 1), ('u-missing', 2), ('u-cross', 2), ('u-composition', 1)");
+        await run("INSERT INTO user_wallets VALUES ('u-ledger', 50, 0, 0, 0), ('u-missing', 25, 0, 0, 0), ('u-cross', 50, 0, 0, 0), ('u-composition', 100, 0, 0, 0)");
         await run(`INSERT INTO wallet_transactions VALUES
-            (1, 'u-ledger', 'order_payment', -50, 100, 50, 'wallet', NULL, 'candidate', 'operator', '2026-09-27 01:00:00'),
-            (2, 'u-cross', 'order_payment', -50, 100, 50, 'order', '1', 'cross-studio', 'operator', '2026-09-27 01:00:00')`);
+            (1, 'u-ledger', 'order_payment', -50, 100, 50, 0, 'wallet', NULL, 'candidate', 'operator', '2026-09-27 01:00:00'),
+            (2, 'u-cross', 'order_payment', -50, 100, 50, 0, 'order', '1', 'cross-studio', 'operator', '2026-09-27 01:00:00'),
+            (4, 'u-composition', 'order_payment', -400, 300, 100, -200, 'order', '3', 'mixed principal and bonus', 'operator', '2026-09-27 01:00:00')`);
         await run(`INSERT INTO orders VALUES
             (1, 'O-1', 'u-ledger', 1, 'completed', 50, 0, 50, 1, 40, 0.8, 10, 'talent', NULL, '2026-09-27 01:00:00', '2026-09-27 01:10:00'),
-            (2, 'O-2', 'u-missing', 2, 'completed', 25, 0, 25, 1, 20, 0.8, 5, 'talent', NULL, '2026-09-27 01:00:00', '2026-09-27 01:10:00')`);
+            (2, 'O-2', 'u-missing', 2, 'completed', 25, 0, 25, 1, 20, 0.8, 5, 'talent', NULL, '2026-09-27 01:00:00', '2026-09-27 01:10:00'),
+            (3, 'O-3', 'u-composition', 1, 'completed', 400, 0, 400, 1, 320, 0.8, 80, 'talent', NULL, '2026-09-27 01:00:00', '2026-09-27 01:10:00')`);
         await run(`INSERT INTO payouts VALUES
             (1, 'u-missing', NULL, NULL, 10, 'completed', '2026-09-27 01:00:00'),
             (2, 'u-missing', 2, 'WD-PENDING', 20, 'pending', '2026-09-27 01:00:00'),
@@ -62,7 +64,7 @@ test('reconciliation v2 reports linked, unlinked and missing evidence without wr
             (3, 4, 'WD-REJECTED', 'u-cross', 2, 'PAYOUT_RESERVE', 40, 50, 10, 0, 40, 'operator', NULL, '2026-09-27 01:00:00'),
             (4, 999, 'WD-ORPHAN', 'u-cross', 2, 'PAYOUT_RESERVE', 5, 50, 45, 0, 5, 'operator', NULL, '2026-09-27 01:00:00'),
             (5, 5, 'WD-CROSS', 'u-cross', 1, 'PAYOUT_RESERVE', 50, 50, 0, 0, 50, 'operator', NULL, '2026-09-27 01:00:00')`);
-        await run("INSERT INTO wallet_transactions VALUES (3, 'u-ledger', 'payout', 0, 50, 50, 'payout', '3', 'unexpected payout wallet event', 'operator', '2026-09-27 01:00:00')");
+        await run("INSERT INTO wallet_transactions VALUES (3, 'u-ledger', 'payout', 0, 50, 50, 0, 'payout', '3', 'unexpected payout wallet event', 'operator', '2026-09-27 01:00:00')");
 
         const before = {
             wallet: await get("SELECT SUM(balance) AS amount FROM user_wallets"),
@@ -84,6 +86,7 @@ test('reconciliation v2 reports linked, unlinked and missing evidence without wr
         const missingWallet = report.wallets.find(row => row.user_id === 'u-missing');
         const linkedCandidateOrder = report.orders.find(row => row.order_id === 1);
         const missingOrder = report.orders.find(row => row.order_id === 2);
+        const compositionOrder = report.orders.find(row => row.order_id === 3);
         const payout = report.payouts.find(row => row.payout_id === 1);
         const pendingPayout = report.payouts.find(row => row.payout_id === 2);
         const paidPayout = report.payouts.find(row => row.payout_id === 3);
@@ -103,6 +106,10 @@ test('reconciliation v2 reports linked, unlinked and missing evidence without wr
         assert.ok(linkedCandidateOrder.anomalies.includes('UNLINKED_PAYMENT_CANDIDATE'));
         assert.ok(linkedCandidateOrder.anomalies.includes('CROSS_STUDIO_LEDGER_MISMATCH'));
         assert.equal(missingOrder.payment_found, false);
+        assert.equal(compositionOrder.payment_found, true);
+        assert.equal(compositionOrder.payment_principal_amount, 200);
+        assert.equal(compositionOrder.payment_bonus_amount, 200);
+        assert.equal(compositionOrder.anomalies.includes('INVALID_PAYMENT_COMPOSITION'), false);
         assert.equal(payout.ledger_found, false);
         assert.equal(payout.audit_found, false);
         assert.ok(payout.anomalies.includes('LEGACY_PAYOUT_UNVERIFIED'));

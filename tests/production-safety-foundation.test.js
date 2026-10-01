@@ -353,6 +353,26 @@ test('explicit migration and restore contracts round-trip only an isolated tempo
     const backupDirectory = path.join(directory, 'backups');
     fs.mkdirSync(dataDirectory, { recursive: true });
     const setup = new sqlite3.Database(databasePath);
+    await new Promise((resolve, reject) => setup.run(`
+        CREATE TABLE wallet_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            balance_before REAL NOT NULL,
+            balance_after REAL NOT NULL,
+            reference_type TEXT,
+            reference_id TEXT,
+            description TEXT,
+            operator_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `, error => error ? reject(error) : resolve()));
+    await new Promise((resolve, reject) => setup.run(`
+        INSERT INTO wallet_transactions
+            (user_id,type,amount,balance_before,balance_after,reference_type,reference_id,description)
+        VALUES ('legacy-member','order_payment',-500,1000,500,'order','legacy-1','legacy principal-only payment')
+    `, error => error ? reject(error) : resolve()));
     await new Promise(resolve => setup.close(resolve));
 
     const testEnv = {
@@ -380,6 +400,20 @@ test('explicit migration and restore contracts round-trip only an isolated tempo
         });
         assert.equal(migration.status, 0, migration.stderr || migration.stdout);
         assert.match(migration.stdout, /MIGRATION_AND_READINESS_PASS/);
+
+        const migratedWalletLedger = new sqlite3.Database(databasePath, sqlite3.OPEN_READONLY);
+        const compositionColumn = await new Promise((resolve, reject) => migratedWalletLedger.get(
+            "SELECT name FROM pragma_table_info('wallet_transactions') WHERE name='bonus_amount'",
+            (error, row) => error ? reject(error) : resolve(row || null)
+        ));
+        const legacyComposition = await new Promise((resolve, reject) => migratedWalletLedger.get(
+            "SELECT amount, bonus_amount FROM wallet_transactions WHERE reference_id='legacy-1'",
+            (error, row) => error ? reject(error) : resolve(row || null)
+        ));
+        await new Promise(resolve => migratedWalletLedger.close(resolve));
+        assert.ok(compositionColumn);
+        assert.equal(legacyComposition.amount, -500);
+        assert.equal(legacyComposition.bonus_amount, 0);
 
         const seedProductionLike = new sqlite3.Database(databasePath);
         const approverPermissions = [

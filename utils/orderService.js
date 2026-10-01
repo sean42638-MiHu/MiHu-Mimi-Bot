@@ -1,7 +1,12 @@
 const db = require('../database');
 const crypto = require('crypto');
-const { dbRun, dbGet: dbGetQuery } = require('./dbHelper');
-const { refundOrder, applyWalletDeltaInTransaction } = require('./walletService');
+const { dbRun, dbGet: dbGetQuery, dbAll: dbAllQuery } = require('./dbHelper');
+const {
+    refundOrder,
+    applyWalletDeltaInTransaction,
+    readOrderPayerWalletSnapshot,
+    assertOrderWalletDebitAllowed
+} = require('./walletService');
 const { withTransactionGate } = require('./transactionGate');
 const { writeAuditLog } = require('./auditService');
 const { calculateDiscount } = require('./discountHelper');
@@ -54,6 +59,56 @@ function hasLinkedPayment(order) {
             LIMIT 1
         `, [order.boss_id, String(order.id)], (error, row) => error ? reject(error) : resolve(Boolean(row)));
     });
+}
+
+async function getOutstandingOrderBonusCharge(order) {
+    const referenceId = String(order.id);
+    const adjustmentDescription = `Order price adjustment ${String(order.order_no)}`;
+    const [payments, adjustments, refunds] = await Promise.all([
+        dbAllQuery(`
+            SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
+            FROM wallet_transactions
+            WHERE user_id = ? AND reference_type = 'order' AND reference_id = ?
+              AND type IN ('order_payment', 'payment')
+        `, [String(order.boss_id), referenceId]),
+        dbAllQuery(`
+            SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
+            FROM wallet_transactions
+            WHERE user_id = ? AND type = 'order_adjustment'
+              AND reference_type = 'order_adjustment' AND description = ?
+        `, [String(order.boss_id), adjustmentDescription]),
+        dbAllQuery(`
+            SELECT COALESCE(bonus_amount, 0) AS bonus_amount
+            FROM wallet_transactions
+            WHERE user_id = ? AND reference_type = 'order' AND reference_id = ? AND type = 'refund'
+        `, [String(order.boss_id), referenceId])
+    ]);
+    const rows = [...payments, ...adjustments];
+    if (rows.some(row => !Number.isFinite(Number(row.amount)) || !Number.isFinite(Number(row.bonus_amount))
+        || Math.abs(Number(row.bonus_amount)) > Math.abs(Number(row.amount)) + 0.000001
+        || (Number(row.amount) !== 0 && Number(row.bonus_amount) !== 0
+            && Math.sign(Number(row.amount)) !== Math.sign(Number(row.bonus_amount))))) {
+        throw new Error('訂單付款組成異常，無法安全調整金額');
+    }
+    const chargedBonus = -rows.reduce((sum, row) => sum + Number(row.bonus_amount || 0), 0)
+        - refunds.reduce((sum, row) => sum + Number(row.bonus_amount || 0), 0);
+    if (!Number.isFinite(chargedBonus) || chargedBonus < -0.000001) {
+        throw new Error('訂單贈送金扣款組成異常，無法安全調整金額');
+    }
+    return Math.max(0, Number(chargedBonus.toFixed(2)));
+}
+
+async function calculateOrderAdjustmentBonusDelta(order, walletDelta, studioId) {
+    const delta = Number(walletDelta);
+    if (!Number.isFinite(delta) || delta === 0) return 0;
+    const outstandingBonusCharge = await getOutstandingOrderBonusCharge(order);
+    if (delta < 0) {
+        if (outstandingBonusCharge <= 0) return 0;
+        const snapshot = await readOrderPayerWalletSnapshot({ userId: order.boss_id, studioId });
+        const debit = assertOrderWalletDebitAllowed(snapshot, -delta, { includeBonusBalance: true });
+        return -Number(debit.bonusDebit || 0);
+    }
+    return Math.min(delta, outstandingBonusCharge);
 }
 
 function assertNoWalletCredit(walletDelta) {
@@ -201,6 +256,7 @@ async function createOrderInternal(input = {}, { transactionContext = null } = {
             await applyWalletDeltaInTransaction({
                 userId: bossId,
                 amount: Number(input.walletDelta),
+                bonusAmount: Number(input.walletBonusDelta || 0),
                 operatorId: input.operatorId,
                 studioId,
                 reason: input.walletReason || `Order payment ${orderNo}`,
@@ -337,9 +393,11 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
         };
 
         if (walletDelta !== 0) {
+            const walletBonusDelta = await calculateOrderAdjustmentBonusDelta(order, walletDelta, studioId);
             await applyWalletDeltaInTransaction({
                 userId: order.boss_id,
                 amount: walletDelta,
+                bonusAmount: walletBonusDelta,
                 operatorId: input.operatorId,
                 studioId,
                 reason: `Order price adjustment ${order.order_no}`,
@@ -441,9 +499,11 @@ async function assignOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
             if (!(await hasLinkedPayment(order))) {
                 throw new Error('找不到可追蹤付款 Ledger，禁止調整歷史訂單金額');
             }
+            const walletBonusDelta = await calculateOrderAdjustmentBonusDelta(order, walletDelta, studioId);
             await applyWalletDeltaInTransaction({
                 userId: order.boss_id,
                 amount: walletDelta,
+                bonusAmount: walletBonusDelta,
                 studioId,
                 operatorId: input.operatorId,
                 reason: `Order price adjustment ${order.order_no}`,

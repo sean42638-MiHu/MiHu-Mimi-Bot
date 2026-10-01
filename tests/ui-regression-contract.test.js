@@ -27,6 +27,9 @@ test('Member Transactions preserves the dark table presentation contract', () =>
     assert.match(css, /tbody[^}]*background-color:\s*transparent\s*!important/);
     assert.match(view, /admin-data-panel/);
     assert.match(table, /admin-data-table-wrap/);
+    assert.match(read('routes/management/members.js'), /COALESCE\(wt\.bonus_amount, 0\) AS bonus_amount/);
+    assert.match(table, /贈送金扣款|贈送金退回/);
+    assert.match(table, /實充扣款|實充退回/);
 });
 
 test('Admin components remain presentation-scoped', () => {

@@ -5,7 +5,7 @@ const REQUIRED_COLUMNS = Object.freeze({
     users: ['id', 'username', 'global_name', 'custom_nickname', 'avatar', 'role', 'balance', 'bonus_balance', 'manual_spent', 'manual_deposited', 'vip_level', 'studio_id', 'real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account', 'email', 'email_verified', 'email_verified_at'],
     roles: ['role_key', 'name', 'category', 'tier_level', 'color_badge', 'description', 'permissions'],
     user_wallets: ['user_id', 'balance', 'bonus_balance'],
-    wallet_transactions: ['id', 'user_id', 'type', 'amount'],
+    wallet_transactions: ['id', 'user_id', 'type', 'amount', 'bonus_amount'],
     talents: ['id', 'user_id', 'status'],
     commission_settings: ['category', 'rate'],
     studio_commissions: ['studio_id', 'category', 'talent_share_rate'],
