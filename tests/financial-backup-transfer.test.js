@@ -101,3 +101,18 @@ test('VPS receipt acceptance is one-shot and rejects replay', async () => {
             '--release', transferManifest.releaseCommit, '--fingerprint', transferManifest.previewFingerprint]), /already accepted/);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('download runner freezes writers before transfer and keeps final confirmations interactive', () => {
+    const runner = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'runProductionFinancialClear.sh'), 'utf8');
+    assert.match(runner, /OFFSITE_MODE=.*download/);
+    assert.match(runner, /sudo systemctl stop "\$WEB" "\$BOT"/);
+    assert.match(runner, /fuser "\$DB"/);
+    assert.match(runner, /scripts\/prepareFinancialBackupTransfer\.js/);
+    assert.match(runner, /scripts\/verifyFinancialBackupReceipt\.js --mode vps/);
+    assert.match(runner, /Type TRANSFER_READY/);
+    assert.match(runner, /Type YES/);
+    assert.match(runner, /CLEAR_ALL_FINANCIAL_HISTORY/);
+    assert.doesNotMatch(runner, /confirm-remote-retention YES/);
+    assert.match(runner, /No clear was started; attempting to restore the original services/);
+    assert.match(runner, /Keep both writers stopped until DB state and backup are verified/);
+});

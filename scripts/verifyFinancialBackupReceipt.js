@@ -5,8 +5,17 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { compareFiles, parseArgs, requireArg, verifyReceipt } = require('../utils/financialTransferContract');
 const { verifySqliteIntegrity } = require('../utils/backupContract');
+const readline = require('node:readline');
 
 function hashFile(filePath) { return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'); }
+
+function askForRetentionConfirmation() {
+    const input = readline.createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise(resolve => input.question('Confirm the Windows copy is stored safely. Type YES: ', answer => {
+        input.close();
+        resolve(answer === 'YES');
+    }));
+}
 
 async function main(argv = process.argv.slice(2)) {
     const args = parseArgs(argv);
@@ -28,7 +37,8 @@ async function main(argv = process.argv.slice(2)) {
             releaseCommit: manifest.releaseCommit,
             previewFingerprint: manifest.previewFingerprint,
             localVerification: 'PASS',
-            remoteRetentionConfirmed: String(args['confirm-remote-retention'] || '') === 'YES',
+            remoteRetentionConfirmed: String(args['confirm-remote-retention'] || '') === 'YES'
+                || (!args['confirm-remote-retention'] && await askForRetentionConfirmation()),
             verifiedAt: new Date().toISOString(),
             files,
             note: 'Local verification proves downloaded bytes only; it does not independently prove remote retention.'
