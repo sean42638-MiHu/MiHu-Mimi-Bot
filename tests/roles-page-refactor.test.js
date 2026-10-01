@@ -129,6 +129,10 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     assert.match(ordersPage, /window\.currentOrderCanRefund = !!data\.canRefund/);
     assert.match(modal, /data-price-field/);
     assert.match(modal, /data-reassign-field/);
+    assert.match(modal, /<button type="button" id="btnEnableEdit"[\s\S]*>\s*<i class="fa-solid fa-pen-to-square/);
+    assert.doesNotMatch(modal, /id="btnEnableEdit"[^>]*style="[^"]*display:\s*none/);
+    assert.match(modal, /if \(btnEnableEdit\) btnEnableEdit\.style\.display = 'inline-block'/);
+    assert.doesNotMatch(modal, /btnEnableEdit && window\.currentOrderCanEdit/);
     assert.match(modal, /!window\.currentOrderCanAdjustPrice/);
     assert.match(modal, /!window\.currentOrderCanReassign/);
     assert.match(modal, /btnDeleteOrderModal && window\.currentOrderCanRefund/);
