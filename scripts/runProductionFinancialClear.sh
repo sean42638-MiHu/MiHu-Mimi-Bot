@@ -100,6 +100,9 @@ if [ "$OFFSITE_MODE" = mounted ]; then
   [ "$(stat -c %d "$DB")" != "$(stat -c %d "$CLEAR_OFFSITE_MOUNT")" ] || fail 'Offsite path is on DB device'
 fi
 for command in node curl sha256sum fuser; do command -v "$command" >/dev/null || fail "Missing $command"; done
+if [ -x scripts/testFinancialTransferPermissions.sh ]; then
+  bash scripts/testFinancialTransferPermissions.sh
+fi
 
 echo "Reviewed release: $CLEAR_RELEASE_COMMIT"
 echo "Reviewed preview fingerprint: $CLEAR_PREVIEW_FINGERPRINT"
@@ -151,9 +154,17 @@ else
     --backup-dir "$BACKUPS" --backup-file "$backup_name" --manifest-file "$manifest_name" \
     --data-dir "$DATA" --output-dir "$transfer_tmp" --backup-id "$transfer_id" \
     --release "$CLEAR_RELEASE_COMMIT" --fingerprint "$CLEAR_PREVIEW_FINGERPRINT" >/dev/null
-  sudo chown -R deploy:deploy "$transfer_tmp"
+  sudo chown -R deploy:mihu "$transfer_tmp"
+  sudo find "$transfer_tmp" -type d -exec chmod 2770 {} +
+  sudo find "$transfer_tmp" -type f -exec chmod 640 {} +
   sudo mv -- "$transfer_tmp" "$transfer_root"
-  sudo chmod 700 "$transfer_root"
+  sudo chown -R deploy:mihu "$transfer_root"
+  sudo find "$transfer_root" -type d -exec chmod 2770 {} +
+  sudo find "$transfer_root" -type f -exec chmod 640 {} +
+  sudo -u deploy test -r "$transfer_root/transfer-manifest.json"
+  sudo -u mihu test -x "$transfer_root"
+  sudo -u mihu test -r "$transfer_root/transfer-manifest.json"
+  sudo -u mihu test -r "$transfer_root/database.sqlite"
   transfer_receipt="$transfer_root/receipt.json"
   windows_transfer_root="$WINDOWS_BACKUP_ROOT/$transfer_id"
   echo "Download bundle: $transfer_root"
@@ -163,7 +174,10 @@ else
   echo "Windows: scp '$windows_transfer_root/receipt.json' ${SCP_TARGET}:${transfer_receipt}"
   read -r -p 'After Windows hash verification and receipt upload, type TRANSFER_READY: ' transfer_ready
   [ "$transfer_ready" = TRANSFER_READY ] || fail 'Transfer receipt was not uploaded'
-  sudo chown -R mihu:mihu "$transfer_root"
+  sudo chgrp mihu "$transfer_receipt"
+  sudo chmod 640 "$transfer_receipt"
+  sudo -u deploy test -r "$transfer_receipt"
+  sudo -u mihu test -r "$transfer_receipt"
   run_mihu /usr/bin/node scripts/verifyFinancialBackupReceipt.js --mode vps \
     --root "$transfer_root" --receipt "$transfer_receipt" --release "$CLEAR_RELEASE_COMMIT" \
     --fingerprint "$CLEAR_PREVIEW_FINGERPRINT" >/dev/null
