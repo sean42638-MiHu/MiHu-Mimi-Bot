@@ -230,7 +230,56 @@
     </div>
 </div>
 
+<div class="modal fade" id="orderPermissionDeniedModal" tabindex="-1" aria-labelledby="orderPermissionDeniedTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content modal-content-glass">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-warning" id="orderPermissionDeniedTitle">權限不足</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body text-light" id="orderPermissionDeniedMessage">您沒有「編輯訂單」權限，請聯絡管理員。</div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-primary rounded-pill px-4" data-bs-dismiss="modal">我知道了</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+    let orderPermissionModalRestore = null;
+
+    function showOrderPermissionDenied(feature = '編輯訂單') {
+        const orderModalEl = document.getElementById('orderDetailModal');
+        const permissionModalEl = document.getElementById('orderPermissionDeniedModal');
+        const messageEl = document.getElementById('orderPermissionDeniedMessage');
+        if (!permissionModalEl) return;
+        const message = feature === '調整訂單價格'
+            ? '您沒有「調整訂單價格」權限，請聯絡管理員。'
+            : feature === '改派訂單'
+                ? '您沒有「改派訂單」權限，請聯絡管理員。'
+                : '您沒有「編輯訂單」權限，請聯絡管理員。';
+        if (messageEl) messageEl.textContent = message;
+        const permissionModal = bootstrap.Modal.getOrCreateInstance(permissionModalEl);
+        const orderModal = orderModalEl ? bootstrap.Modal.getOrCreateInstance(orderModalEl) : null;
+        const restoreOrderModal = () => {
+            if (orderPermissionModalRestore !== restoreOrderModal) return;
+            orderPermissionModalRestore = null;
+            if (orderModal && orderModalEl.dataset.permissionRestore === 'true') {
+                delete orderModalEl.dataset.permissionRestore;
+                orderModal.show();
+            }
+        };
+        orderPermissionModalRestore = restoreOrderModal;
+        permissionModalEl.addEventListener('hidden.bs.modal', restoreOrderModal, { once: true });
+        if (orderModal && orderModalEl.classList.contains('show')) {
+            orderModalEl.dataset.permissionRestore = 'true';
+            orderModalEl.addEventListener('hidden.bs.modal', () => permissionModal.show(), { once: true });
+            orderModal.hide();
+        } else {
+            permissionModal.show();
+        }
+    }
+
     function switchEditMode(isEdit) {
         const formCard = document.getElementById('detailFormCard');
         const headerTitle = document.getElementById('modalHeaderTitle');
@@ -244,6 +293,10 @@
         const btnRemoveOrderModal = document.getElementById('btnRemoveOrderModal');
 
         if (isEdit) {
+            if (!window.currentOrderCanEdit) {
+                showOrderPermissionDenied('編輯訂單');
+                return false;
+            }
             inputs.forEach(input => input.disabled = false);
             if (!window.currentOrderCanAdjustPrice) {
                 document.querySelectorAll('#orderDetailModal [data-price-field]').forEach(input => input.disabled = true);
@@ -278,6 +331,7 @@
             if (btnDeleteOrderModal) btnDeleteOrderModal.style.display = 'none';
             if (btnRemoveOrderModal) btnRemoveOrderModal.style.display = 'none';
         }
+        return true;
     }
 
     function submitModalDeleteOrder(event) {
@@ -315,6 +369,44 @@
                 price?.focus();
                 return;
             }
+            event.preventDefault();
+            if (form.dataset.savePending === 'true') return;
+            form.dataset.savePending = 'true';
+            const errorBox = document.getElementById('orderRefundError');
+            errorBox.hidden = true;
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' },
+                    body: new URLSearchParams(new FormData(form))
+                });
+                if (response.status === 403) {
+                    let feature = '編輯訂單';
+                    try {
+                        const payload = await response.json();
+                        feature = payload.feature || feature;
+                    } catch (error) {
+                        const text = await response.text().catch(() => '');
+                        if (text.includes('調整訂單價格')) feature = '調整訂單價格';
+                        if (text.includes('改派訂單')) feature = '改派訂單';
+                    }
+                    showOrderPermissionDenied(feature);
+                    return;
+                }
+                if (response.redirected) {
+                    location.assign(response.url);
+                    return;
+                }
+                errorBox.textContent = '訂單更新未完成，請確認資料與最新訂單狀態。';
+                errorBox.hidden = false;
+            } catch (error) {
+                errorBox.textContent = '無法確認訂單更新結果，請先重新查詢訂單狀態。';
+                errorBox.hidden = false;
+            } finally {
+                delete form.dataset.savePending;
+            }
+            return;
         }
         if (event.submitter?.id !== 'btnDeleteOrderModal') {
             document.getElementById('isDeleteInputModal')?.remove();
