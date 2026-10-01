@@ -45,7 +45,7 @@ function canAdjustOrderPrice(res) {
 }
 
 function canReassignOrder(res) {
-    return hasResolvedPermission(res.locals.userPerms, 'action_order_edit_reassign');
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_reassign');
 }
 
 function requireManualOrderAccess(req, res, next) {

@@ -285,7 +285,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         const refundedState = await snapshot();
         await assert.rejects(updateOrder(created.id, {
             status: 'pending', original_price: 250, unit_price: 250, discount: 0, operatorId: 'operator'
-        }), /已完成、已取消或已駁回訂單不可編輯/);
+        }), /已取消、已退款或已駁回訂單不可編輯/);
         assert.deepEqual(await snapshot(), refundedState);
 
         const rejectedOrder = await createOrder({
@@ -306,7 +306,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             duration: 1,
             discount: 0,
             operatorId: 'operator'
-        }, { allowPriceAdjustment: true }), /已完成、已取消或已駁回訂單不可編輯/);
+        }, { allowPriceAdjustment: true }), /已取消、已退款或已駁回訂單不可編輯/);
         await assert.rejects(updateOrder(rejectedOrder.id, {
             status: 'refunded',
             original_price: 40,
@@ -314,7 +314,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             duration: 1,
             discount: 0,
             operatorId: 'operator'
-        }, { allowPriceAdjustment: true }), /已完成、已取消或已駁回訂單不可編輯/);
+        }, { allowPriceAdjustment: true }), /已取消、已退款或已駁回訂單不可編輯/);
         await assert.rejects(refundOrder(rejectedOrder.id, 'admin', 'rejected-regression', { allowCompleted: true }), /不可重複退款/);
         await assert.rejects(startOrder(rejectedOrder.id, 'operator'), /不可開始服務/);
         await assert.rejects(completeOrder(rejectedOrder.id, 'operator'), /無法標記完成/);
