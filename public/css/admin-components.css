@@ -267,14 +267,27 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	padding: 4px 10px;
-	border-radius: 999px;
+	min-width: 0;
+	max-width: min(100%, 18ch);
+	box-sizing: border-box;
+	padding: 4px 16px;
+	border-radius: 50px;
 	border: 1px solid transparent;
-	font-size: .76rem;
-	font-weight: 700;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: .5px;
 	line-height: 1.2;
-	box-shadow: 0 0 8px transparent;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	vertical-align: middle;
+	box-shadow: 0 0 10px rgba(0, 0, 0, .3);
+	transition:
+		transform .25s cubic-bezier(.4, 0, .2, 1),
+		filter .25s cubic-bezier(.4, 0, .2, 1);
 }
+.role-badge:hover { transform: translateY(-1px); filter: brightness(1.2); }
+.role-pill-badge { display: inline-flex; max-width: 100%; vertical-align: middle; }
 .role-badge-admin,
 .role-badge-owner {
 	border-color: #ff4655;
@@ -342,6 +355,10 @@
 .role-text-talent { color: #f472b6; }
 .role-text-member { color: #9ca3af; }
 .role-text-default { color: #cbd5e1; }
+@media (prefers-reduced-motion: reduce) {
+	.role-badge { transition: none; }
+	.role-badge:hover { transform: none; filter: none; }
+}
 .admin-empty-state { padding: 36px 20px; color: #94a3b8; text-align: center; }
 .admin-empty-state__icon { margin-bottom: 10px; color: #a78bfa; font-size: 1.45rem; }
 .admin-empty-state__title { margin: 0; color: #e2e8f0; font-size: .92rem; font-weight: 700; }
