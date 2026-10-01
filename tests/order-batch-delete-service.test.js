@@ -52,6 +52,7 @@ async function createSchema(db) {
         amount REAL NOT NULL,
         balance_before REAL NOT NULL,
         balance_after REAL NOT NULL,
+        bonus_amount REAL NOT NULL DEFAULT 0,
         reference_type TEXT,
         reference_id TEXT,
         description TEXT,
@@ -185,27 +186,34 @@ function actor(actorId = 'operator-a') {
 
 test('appended order_adjustment debits/credits are included in refundable amount', async () => {
     await withFixture(async ({ db, service }) => {
+        await run(db, "UPDATE user_wallets SET bonus_balance=80 WHERE user_id='member-a'");
+        await run(db, "UPDATE users SET bonus_balance=80 WHERE id='member-a'");
         await run(db, `INSERT INTO orders (id, order_no, boss_id, status, total_amount, studio_id, created_at)
             VALUES (501, 'ORDER-501', 'member-a', 'accepted', 150, 1, '2026-01-05 12:00:00')`);
         await run(db, `INSERT INTO wallet_transactions
-            (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id)
+            (user_id, type, amount, balance_before, balance_after, bonus_amount, reference_type, reference_id, description, operator_id)
             VALUES
-            ('member-a', 'order_payment', -120, 220, 100, 'order', '501', 'payment', 'member-a'),
-            ('member-a', 'order_adjustment', -40, 100, 60, 'order_adjustment', 'adj-501-a', 'Order price adjustment ORDER-501', 'operator-a'),
-            ('member-a', 'order_adjustment', 10, 60, 70, 'order_adjustment', 'adj-501-b', 'Order price adjustment ORDER-501', 'operator-a')`);
+            ('member-a', 'order_payment', -120, 100, 60, -80, 'order', '501', 'payment', 'member-a'),
+            ('member-a', 'order_adjustment', -40, 60, 20, 0, 'order_adjustment', 'adj-501-a', 'Order price adjustment ORDER-501', 'operator-a'),
+            ('member-a', 'order_adjustment', 10, 20, 30, 0, 'order_adjustment', 'adj-501-b', 'Order price adjustment ORDER-501', 'operator-a')`);
+        await run(db, "UPDATE user_wallets SET balance=30, bonus_balance=0 WHERE user_id='member-a'");
+        await run(db, "UPDATE users SET balance=30, bonus_balance=0 WHERE id='member-a'");
 
         const preview = await service.previewBatchDeleteAndRefund(['501'], actor());
         assert.equal(preview.summary.canProceed, true);
         assert.equal(preview.summary.refundableTotal, 150);
+        assert.equal(preview.items[0].refundableBonusAmount, 80);
+        assert.equal(preview.items[0].refundablePrincipalAmount, 70);
 
         const result = await service.executeBatchDeleteAndRefund(['501'], actor(), { source: 'test-delete' });
         assert.equal(result.success, true);
         assert.equal(result.summary.deletedCount, 1);
         assert.equal(result.summary.refundedCount, 1);
         assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM orders WHERE id = 501')).count, 0);
-        assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")).balance, 250);
-        assert.equal((await get(db, "SELECT balance FROM users WHERE id = 'member-a'")).balance, 250);
-        assert.equal((await get(db, "SELECT amount FROM wallet_transactions WHERE type = 'refund' AND reference_id = '501'")) .amount, 150);
+        assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")).balance, 100);
+        assert.equal((await get(db, "SELECT bonus_balance FROM user_wallets WHERE user_id = 'member-a'")).bonus_balance, 80);
+        assert.equal((await get(db, "SELECT balance FROM users WHERE id = 'member-a'")).balance, 100);
+        assert.deepEqual(await get(db, "SELECT amount, bonus_amount FROM wallet_transactions WHERE type = 'refund' AND reference_id = '501'"), { amount: 150, bonus_amount: 80 });
     });
 });
 

@@ -322,7 +322,8 @@ router.get('/create/member-wallet/:memberId', ensureAuth, requireManualOrderAcce
                 studioId: Number(row.studio_id),
                 balance,
                 bonusBalance,
-                payableBalance: balance
+                totalBalance: Number((balance + bonusBalance).toFixed(2)),
+                payableBalance: Number((balance + bonusBalance).toFixed(2))
             }
         });
     } catch (error) {
@@ -472,7 +473,8 @@ router.post('/create', ensureAuth, requireManualOrderAccess, async (req, res) =>
             wallet: {
                 balance: Number(error.walletSnapshot.balance || 0),
                 bonusBalance: Number(error.walletSnapshot.bonusBalance || 0),
-                payableBalance: Number(error.walletSnapshot.balance || 0)
+                totalBalance: Number(error.walletSnapshot.totalBalance || 0),
+                payableBalance: Number(error.walletSnapshot.totalBalance || 0)
             }
         } : null);
     }

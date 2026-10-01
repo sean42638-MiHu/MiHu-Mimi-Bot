@@ -342,7 +342,8 @@ function initializeDatabase({ explicitMigration = false } = {}) {
     initialized = true;
     const payoutStartup = createDeferred();
     const commissionStartup = createDeferred();
-    startupReady = Promise.all([payoutStartup.promise, commissionStartup.promise])
+    const walletCompositionStartup = createDeferred();
+    startupReady = Promise.all([payoutStartup.promise, commissionStartup.promise, walletCompositionStartup.promise])
         .then(() => assertDatabaseReady(db))
         .then(() => undefined);
     startupReady.catch(() => {});
@@ -490,18 +491,23 @@ function initializeDatabase({ explicitMigration = false } = {}) {
             amount REAL NOT NULL,
             balance_before REAL NOT NULL,
             balance_after REAL NOT NULL,
+            bonus_amount REAL NOT NULL DEFAULT 0,
             reference_type TEXT,
             reference_id TEXT,
             description TEXT,
             operator_id TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    `, () => {
-        db.run(`
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_transactions_reference
-            ON wallet_transactions (reference_type, reference_id, type)
-            WHERE reference_type IS NOT NULL AND reference_id IS NOT NULL
-        `);
+    `, createError => {
+        if (createError) return walletCompositionStartup.reject(createError);
+        ensureColumn('wallet_transactions', 'bonus_amount REAL NOT NULL DEFAULT 0', columnError => {
+            if (columnError) return walletCompositionStartup.reject(columnError);
+            db.run(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_transactions_reference
+                ON wallet_transactions (reference_type, reference_id, type)
+                WHERE reference_type IS NOT NULL AND reference_id IS NOT NULL
+            `, indexError => indexError ? walletCompositionStartup.reject(indexError) : walletCompositionStartup.resolve());
+        });
     });
 
     // 2. 陪玩師資產/細節資料表 (自動與 data/talents.json 雙向同步)

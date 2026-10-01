@@ -16,7 +16,7 @@ Status: Hosting-neutral code contract only. No Production runtime, database, bac
 1. Stop all Web, Bot, worker, and maintenance writers; set `PRODUCTION_WRITES_DISABLED=YES` only after confirming they are stopped.
 2. Create a timestamped backup to externally verified storage and preserve its manifest.
 3. Set `MIGRATION_BACKUP_MANIFEST` to that manifest and `MIGRATION_CONFIRM=YES` for one command.
-4. Run `npm run db:migrate`. It verifies backup identity/checksum/integrity, then invokes the existing migration initializer and checks the required schema/migration markers.
+4. Run `npm run db:migrate`. It verifies backup identity/checksum/integrity, then invokes the existing migration initializer and checks the required schema/migration markers. The wallet-composition migration adds `wallet_transactions.bonus_amount` (`NOT NULL DEFAULT 0`). Existing ledger rows remain zero in this column and are treated as principal-only; the migration does not infer, split, or rewrite historical payment/refund composition.
 5. Any validation, migration, or readiness failure exits non-zero; do not start Web/Bot. The command never continues after a rejected migration.
 
 Production migration has not been executed by this foundation task.

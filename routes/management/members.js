@@ -119,6 +119,7 @@ router.get('/transactions', ensureAuth, checkPerm('view_member_ledger'), async (
         const currentPage = Math.min(page, totalPages);
         const rows = await queryAll(`
             SELECT wt.id, wt.user_id, wt.type, wt.amount, wt.balance_before, wt.balance_after,
+                COALESCE(wt.bonus_amount, 0) AS bonus_amount,
                 wt.reference_type, wt.reference_id, wt.description, wt.operator_id, wt.created_at,
                 ${memberIdentityExpression()} AS member_name,
                 member.username AS member_username, member.global_name AS member_global_name,

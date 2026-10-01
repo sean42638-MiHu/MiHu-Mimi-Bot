@@ -57,7 +57,7 @@ async function createFixture(databasePath, orders, walletBalance) {
     )`);
     await execute(db, `CREATE TABLE wallet_transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, type TEXT, amount REAL,
-        balance_before REAL, balance_after REAL, reference_type TEXT, reference_id TEXT,
+        balance_before REAL, balance_after REAL, bonus_amount REAL NOT NULL DEFAULT 0, reference_type TEXT, reference_id TEXT,
         description TEXT, operator_id TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`);
     await execute(db, `CREATE TABLE orders (

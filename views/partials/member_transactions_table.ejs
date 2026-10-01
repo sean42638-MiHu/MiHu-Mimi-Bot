@@ -3,20 +3,20 @@
         <thead>
             <tr>
                 <th>交易編號</th><th>日期時間</th><th>會員</th><th>交易類型</th>
-                <th class="member-transaction-money-head">變動前</th><th class="member-transaction-money-head">變動金額</th><th class="member-transaction-money-head">變動後</th><th>經手人</th><th>備註</th>
+                <th class="member-transaction-money-head">實充變動前</th><th class="member-transaction-money-head">變動金額</th><th class="member-transaction-money-head">實充變動後</th><th>經手人</th><th>備註</th>
             </tr>
         </thead>
         <tbody>
             <% if (transactions.length) { %>
                 <% transactions.forEach(transaction => { %>
-                    <% const amount = Number(transaction.amount || 0); const amountClass = amount > 0 ? 'positive' : (amount < 0 ? 'negative' : ''); %>
+                    <% const amount = Number(transaction.amount || 0); const bonusAmount = Number(transaction.bonus_amount || 0); const principalAmount = Number((amount - bonusAmount).toFixed(2)); const amountClass = amount > 0 ? 'positive' : (amount < 0 ? 'negative' : ''); %>
                     <tr>
                         <td class="member-transaction-meta" title="<%= transaction.id %>">#<span class="member-transaction-id"><%= transaction.id %></span></td>
                         <td class="member-transaction-meta"><%= transaction.created_at || '—' %></td>
                         <td><div class="member-transaction-member"><img class="member-transaction-avatar" src="<%= transaction.memberAvatarUrl %>" alt="" onerror="this.onerror=null;this.src='/images/default-avatar.png'"><div class="member-transaction-identity"><div class="member-transaction-member-name"><%= transaction.memberName %></div><div class="member-transaction-member-id" title="<%= transaction.user_id || '—' %>"><%= transaction.user_id || '—' %></div></div></div></td>
                         <td><span class="member-transaction-type <%= transaction.displayType.tone %>"><i class="fa-solid <%= transaction.displayType.icon %>" aria-hidden="true"></i><%= transaction.displayType.label %></span><div class="member-transaction-meta mt-1"><%= transaction.type || 'unknown' %></div></td>
                         <td class="member-transaction-snapshot member-transaction-money"><%= transaction.balance_before === null || transaction.balance_before === undefined ? '—' : `NT$ ${Number(transaction.balance_before).toLocaleString()}` %></td>
-                        <td class="member-transaction-amount member-transaction-money <%= amountClass %>"><%= amount > 0 ? '+' : amount < 0 ? '−' : '' %>NT$ <%= Math.abs(amount).toLocaleString() %></td>
+                        <td class="member-transaction-amount member-transaction-money <%= amountClass %>"><%= amount > 0 ? '+' : amount < 0 ? '−' : '' %>NT$ <%= Math.abs(amount).toLocaleString() %><% if (bonusAmount !== 0) { %><div class="member-transaction-meta"><%= bonusAmount < 0 ? '贈送金扣款' : '贈送金退回' %> NT$ <%= Math.abs(bonusAmount).toLocaleString() %> · <%= principalAmount < 0 ? '實充扣款' : '實充退回' %> NT$ <%= Math.abs(principalAmount).toLocaleString() %></div><% } %></td>
                         <td class="member-transaction-snapshot member-transaction-money"><%= transaction.balance_after === null || transaction.balance_after === undefined ? '—' : `NT$ ${Number(transaction.balance_after).toLocaleString()}` %></td>
                         <td class="member-transaction-operator"><span class="member-transaction-member-name"><%= transaction.operatorName || '系統' %></span><% if (transaction.operator_id) { %><div class="member-transaction-meta" title="<%= transaction.operator_id %>"><%= transaction.operator_id %></div><% } %></td>
                         <td class="member-transaction-note" title="<%= transaction.description || '' %>"><%= transaction.description || '—' %></td>

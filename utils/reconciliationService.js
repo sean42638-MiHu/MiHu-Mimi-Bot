@@ -79,6 +79,7 @@ async function generateReconciliationReport() {
         read(payoutQuery),
         read(`
             SELECT id AS ledger_id, user_id, type, amount, balance_before, balance_after,
+                COALESCE(bonus_amount, 0) AS bonus_amount,
                 reference_type, reference_id, description, operator_id, created_at
             FROM wallet_transactions ORDER BY id
         `),
@@ -165,6 +166,15 @@ async function generateReconciliationReport() {
         const linkedRefunds = linkedOrderRows.filter(row => row.type === 'refund');
         const paymentRows = linkedPayments.filter(row => row.user_id === order.user_id);
         const refundRows = linkedRefunds.filter(row => row.user_id === order.user_id);
+        const hasInvalidComposition = rows => rows.some(row => {
+            const amount = Number(row.amount);
+            const bonusAmount = Number(row.bonus_amount || 0);
+            return !Number.isFinite(amount) || !Number.isFinite(bonusAmount)
+                || Math.abs(bonusAmount) > Math.abs(amount) + 0.000001
+                || (amount !== 0 && bonusAmount !== 0 && Math.sign(amount) !== Math.sign(bonusAmount));
+        });
+        const paymentCompositionInvalid = hasInvalidComposition(paymentRows);
+        const refundCompositionInvalid = hasInvalidComposition(refundRows);
         const crossStudioRows = linkedOrderRows.filter(row => {
             const ledgerStudio = userStudios.get(row.user_id);
             return row.user_id !== order.user_id
@@ -219,6 +229,10 @@ async function generateReconciliationReport() {
             orderAnomalies.push('ORDER_LEDGER_AMOUNT_MISMATCH');
             addAnomaly(anomalies, 'ORDER_LEDGER_AMOUNT_MISMATCH', 'order', order.order_id);
         }
+        if (paymentCompositionInvalid) {
+            orderAnomalies.push('INVALID_PAYMENT_COMPOSITION');
+            addAnomaly(anomalies, 'INVALID_PAYMENT_COMPOSITION', 'order', order.order_id);
+        }
         if (refundExpected && refundRows.length === 0) {
             orderAnomalies.push('MISSING_REFUND_LEDGER');
             addAnomaly(anomalies, 'MISSING_REFUND_LEDGER', 'order', order.order_id);
@@ -226,6 +240,10 @@ async function generateReconciliationReport() {
         if (refundRows.length > 1) {
             orderAnomalies.push('DUPLICATE_REFUND');
             addAnomaly(anomalies, 'DUPLICATE_REFUND', 'order', order.order_id);
+        }
+        if (refundCompositionInvalid) {
+            orderAnomalies.push('INVALID_REFUND_COMPOSITION');
+            addAnomaly(anomalies, 'INVALID_REFUND_COMPOSITION', 'order', order.order_id);
         }
         if (crossStudioRows.length) {
             orderAnomalies.push('CROSS_STUDIO_LEDGER_MISMATCH');
@@ -250,10 +268,14 @@ async function generateReconciliationReport() {
             payment_expected: paymentExpected,
             payment_found: paymentRows.length > 0,
             payment_ledger_ids: paymentRows.map(row => row.ledger_id),
+            payment_bonus_amount: Number((-paymentRows.reduce((sum, row) => sum + numeric(row.bonus_amount), 0)).toFixed(2)),
+            payment_principal_amount: Number((-paymentRows.reduce((sum, row) => sum + numeric(row.amount) - numeric(row.bonus_amount), 0)).toFixed(2)),
             unlinked_payment_candidates: paymentCandidates,
             refund_expected: refundExpected,
             refund_found: refundRows.length > 0,
             refund_ledger_ids: refundRows.map(row => row.ledger_id),
+            refund_bonus_amount: Number(refundRows.reduce((sum, row) => sum + numeric(row.bonus_amount), 0).toFixed(2)),
+            refund_principal_amount: Number(refundRows.reduce((sum, row) => sum + numeric(row.amount) - numeric(row.bonus_amount), 0).toFixed(2)),
             commission_expected: commissionExpected,
             commission_found: Boolean(commissionFound),
             commission_source: commissionFound ? 'orders_snapshot_not_ledger' : 'NOT_FOUND',

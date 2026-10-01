@@ -266,9 +266,10 @@ async function createManualOrder(input) {
             }
 
             let walletSnapshot;
+            let walletDebit;
             try {
                 walletSnapshot = await readOrderPayerWalletSnapshot({ userId: bossId, studioId });
-                assertOrderWalletDebitAllowed(walletSnapshot, finalAmount);
+                walletDebit = assertOrderWalletDebitAllowed(walletSnapshot, finalAmount, { includeBonusBalance: true });
             } catch (error) {
                 if (error && error.code === 'WALLET_INSUFFICIENT_BALANCE' && walletSnapshot) {
                     error.walletSnapshot = walletSnapshot;
@@ -277,7 +278,7 @@ async function createManualOrder(input) {
                     const current = walletSnapshot || await readOrderPayerWalletSnapshot({ userId: bossId, studioId }).catch(() => null);
                     if (current) error.walletSnapshot = current;
                     error.statusCode = 400;
-                    error.message = '會員錢包主餘額不足，請確認最新餘額。';
+                    error.message = '會員錢包總餘額不足，請確認最新餘額。';
                 }
                 throw error;
             }
@@ -306,6 +307,7 @@ async function createManualOrder(input) {
                 studioId,
                 status: initialStatus,
                 walletDelta: finalAmount > 0 ? -finalAmount : 0,
+                walletBonusDelta: finalAmount > 0 ? -Number(walletDebit.bonusDebit || 0) : 0,
                 walletReason: `手動建立訂單扣款 (${category})`,
                 operatorId: actorId,
                 source: 'management-manual-order',
@@ -336,8 +338,11 @@ async function createManualOrder(input) {
                 studioId,
                 status: targetStatus,
                 wallet: {
-                    balance: Number((walletSnapshot.balance - finalAmount).toFixed(2)),
-                    bonusBalance: walletSnapshot.bonusBalance,
+                    balance: Number((walletSnapshot.balance - Number(walletDebit.principalDebit || 0)).toFixed(2)),
+                    bonusBalance: Number((walletSnapshot.bonusBalance - Number(walletDebit.bonusDebit || 0)).toFixed(2)),
+                    totalBalance: Number((walletDebit.totalAvailableBalance - finalAmount).toFixed(2)),
+                    principalDebit: Number(walletDebit.principalDebit || 0),
+                    bonusDebit: Number(walletDebit.bonusDebit || 0),
                     deductedAmount: finalAmount
                 }
             };

@@ -85,7 +85,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run('CREATE TABLE user_wallets (user_id TEXT PRIMARY KEY, balance REAL, bonus_balance REAL, manual_spent REAL, manual_deposited REAL, updated_at TEXT)');
     await run(`CREATE TABLE wallet_transactions (
         id INTEGER PRIMARY KEY, user_id TEXT, type TEXT, amount REAL, balance_before REAL,
-        balance_after REAL, reference_type TEXT, reference_id TEXT, description TEXT, operator_id TEXT, created_at TEXT
+        balance_after REAL, bonus_amount REAL NOT NULL DEFAULT 0, reference_type TEXT, reference_id TEXT, description TEXT, operator_id TEXT, created_at TEXT
     )`);
     await run(`CREATE TABLE orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT, order_no TEXT, boss_id TEXT, cs_id TEXT, cs_name TEXT, category TEXT,
@@ -190,7 +190,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,discount,total_amount,status,created_at,studio_id)
         VALUES (606,'ORDER-REFUND-OPEN','member-a','陪玩單','game','standard',1,'h',45,0,45,'accepted',CURRENT_TIMESTAMP,1),
                (607,'ORDER-REFUND-DONE','member-a','陪玩單','game','standard',1,'h',35,0,35,'completed',CURRENT_TIMESTAMP,1),
-               (608,'CSRF-BATCH-608','member-a','陪玩單','game','standard',1,'h',25,0,25,'accepted',CURRENT_TIMESTAMP,1)`);
+               (608,'CSRF-BATCH-608','member-a','陪玩單','game','standard',1,'h',25,0,25,'accepted',CURRENT_TIMESTAMP,1),
+               (609,'LEGACY-NO-PAYMENT-609','member-a','陪玩單','game','standard',1,'h',20,0,20,'completed',CURRENT_TIMESTAMP,1)`);
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
@@ -205,6 +206,12 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'order_payment', -25, 100, 75, 'order', '608', 'CSRF-BATCH-608 payment', 'member-a', '2026-01-01 12:10:00')`);
+    await run(`INSERT INTO wallet_transactions
+        (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
+        VALUES ('member-a', 'order_payment', -45, 100, 55, 'order', '606', 'legacy principal-only payment', 'member-a', '2026-01-01 12:15:00')`);
+    await run(`INSERT INTO wallet_transactions
+        (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
+        VALUES ('member-a', 'order_payment', -35, 55, 20, 'order', '607', 'legacy principal-only payment', 'member-a', '2026-01-01 12:20:00')`);
     await new Promise(resolve => setup.close(resolve));
 
     const discord = require('discord.js');
@@ -1430,7 +1437,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(managerOrdersWithCreate.status, 200, managerOrdersWithCreate.body);
         assert.match(managerOrdersWithCreate.body, /手動建立訂單/);
-        assert.match(managerOrdersWithCreate.body, /建立訂單將立即扣除所選會員錢包餘額；進行中訂單於完成後才結算收益與累積消費。/);
+        assert.match(managerOrdersWithCreate.body, /建立訂單將優先扣除會員贈送金，不足部分再扣實充餘額；進行中訂單於完成後才結算收益與累積消費。/);
         assert.doesNotMatch(managerOrdersWithCreate.body, /不會扣除會員錢包/);
         assert.match(managerOrdersWithCreate.body, /#f3f4f6/);
         assert.match(managerOrdersWithCreate.body, /#9ca3af/);
@@ -1472,7 +1479,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(createOnlyWalletPreview.status, 200, createOnlyWalletPreview.body);
         assert.deepEqual(JSON.parse(createOnlyWalletPreview.body).member, {
-            id: 'member-a', nickname: 'member-a-renamed', studioId: 1, balance: 125, bonusBalance: 0, payableBalance: 125
+            id: 'member-a', nickname: 'member-a-renamed', studioId: 1, balance: 125, bonusBalance: 0, totalBalance: 125, payableBalance: 125
         });
         const crossStudioWalletPreview = await createRequest(port, 'GET', '/management/orders/create/member-wallet/member-b', {
             Host: `127.0.0.1:${port}`, Cookie: createOnlyActor.cookie, Accept: 'application/json'
@@ -1575,7 +1582,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             assert.equal(categoryCreate.response.status, 200, `${category}: ${categoryCreate.response.body}`);
             assert.equal(categoryCreate.payload.wallet.deductedAmount, 1);
             assert.equal(await new Promise((resolve, reject) => db.get(
-                "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=? AND user_id='member-a' AND amount=-1",
+                "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=? AND user_id='member-a' AND amount=-1 AND bonus_amount=-1",
                 [String(categoryCreate.payload.orderId)],
                 (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
             )), 1, category);
@@ -1586,11 +1593,136 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         }
 
         await new Promise((resolve, reject) => db.run(
-            "UPDATE user_wallets SET balance=50 WHERE user_id='member-a'",
+            "UPDATE user_wallets SET balance=0, bonus_balance=500 WHERE user_id='member-a'",
             error => error ? reject(error) : resolve()
         ));
         await new Promise((resolve, reject) => db.run(
-            "UPDATE users SET balance=50 WHERE id='member-a'",
+            "UPDATE users SET balance=0, bonus_balance=500 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        const bonusOnlyOrder = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_bonus_only_${Date.now()}`,
+            final_amount: '500',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(bonusOnlyOrder.response.status, 200, bonusOnlyOrder.response.body);
+        assert.deepEqual(bonusOnlyOrder.payload.wallet, {
+            balance: 0, bonusBalance: 0, totalBalance: 0, principalDebit: 0, bonusDebit: 500, deductedAmount: 500
+        });
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 0, bonus_balance: 0 });
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT amount, bonus_amount, balance_before, balance_after FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=?",
+            [String(bonusOnlyOrder.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(row)
+        )).then(row => row && row.amount === -500 && row.bonus_amount === -500 && row.balance_before === 0 && row.balance_after === 0), true);
+        const bonusRefundActor = await createSession('aftersales-orders');
+        const bonusOnlyRefund = await orderPost(bonusRefundActor, `/management/orders/cancel/${bonusOnlyOrder.payload.orderId}`, {});
+        assert.equal(bonusOnlyRefund.status, 303, bonusOnlyRefund.headers.location || bonusOnlyRefund.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 0, bonus_balance: 500 });
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT amount, bonus_amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+            [String(bonusOnlyOrder.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(row)
+        )).then(row => row && row.amount === 500 && row.bonus_amount === 500), true);
+        const bonusOnlyBeforeInsufficient = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const bonusOnlyInsufficient = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_bonus_insufficient_${Date.now()}`,
+            final_amount: '501',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(bonusOnlyInsufficient.response.status, 400, bonusOnlyInsufficient.response.body);
+        assert.equal(bonusOnlyInsufficient.payload.wallet.totalBalance, 500);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), bonusOnlyBeforeInsufficient);
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=300, bonus_balance=200 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=300, bonus_balance=200 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        const mixedOrder = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_mixed_${Date.now()}`,
+            final_amount: '400',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(mixedOrder.response.status, 200, mixedOrder.response.body);
+        assert.deepEqual(mixedOrder.payload.wallet, {
+            balance: 100, bonusBalance: 0, totalBalance: 100, principalDebit: 200, bonusDebit: 200, deductedAmount: 400
+        });
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT amount, bonus_amount FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=?",
+            [String(mixedOrder.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(row)
+        )).then(row => row && row.amount === -400 && row.bonus_amount === -200), true);
+        const mixedOrderPriceIncrease = await orderPost(ordinaryAdmin, `/management/orders/update/${mixedOrder.payload.orderId}`, {
+            original_price: '500', unit_price: '500', duration: '1', discount: '0', status: 'in_progress'
+        });
+        assert.equal(mixedOrderPriceIncrease.status, 303, mixedOrderPriceIncrease.headers.location || mixedOrderPriceIncrease.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 0, bonus_balance: 0 });
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT amount, bonus_amount FROM wallet_transactions WHERE type='order_adjustment' AND description LIKE ?",
+            [`Order price adjustment %`],
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { amount: -100, bonus_amount: 0 });
+        const mixedRefund = await orderPost(bonusRefundActor, `/management/orders/cancel/${mixedOrder.payload.orderId}`, {});
+        assert.equal(mixedRefund.status, 303, mixedRefund.headers.location || mixedRefund.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 300, bonus_balance: 200 });
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT amount, bonus_amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+            [String(mixedOrder.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { amount: 500, bonus_amount: 200 });
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=300, bonus_balance=0 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=300, bonus_balance=0 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        const principalOnlyOrder = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_principal_only_${Date.now()}`,
+            final_amount: '300',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(principalOnlyOrder.response.status, 200, principalOnlyOrder.response.body);
+        assert.deepEqual(principalOnlyOrder.payload.wallet, {
+            balance: 0, bonusBalance: 0, totalBalance: 0, principalDebit: 300, bonusDebit: 0, deductedAmount: 300
+        });
+        const principalOnlyRefund = await orderPost(bonusRefundActor, `/management/orders/cancel/${principalOnlyOrder.payload.orderId}`, {});
+        assert.equal(principalOnlyRefund.status, 303, principalOnlyRefund.headers.location || principalOnlyRefund.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 300, bonus_balance: 0 });
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=50, bonus_balance=80 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=50, bonus_balance=80 WHERE id='member-a'",
             error => error ? reject(error) : resolve()
         ));
         const exactBalanceOrder = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
@@ -1602,7 +1734,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.deepEqual(await new Promise((resolve, reject) => db.get(
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
             (error, row) => error ? reject(error) : resolve(row)
-        )), { balance: 0, bonus_balance: 80 });
+        )), { balance: 50, bonus_balance: 30 });
         const exactBalanceRefundActor = await createSession('aftersales-orders');
         const exactBalanceRefund = await orderPost(exactBalanceRefundActor, `/management/orders/cancel/${exactBalanceOrder.payload.orderId}`, {});
         assert.equal(exactBalanceRefund.status, 303, exactBalanceRefund.headers.location || exactBalanceRefund.body);
@@ -1610,18 +1742,18 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
             (error, row) => error ? reject(error) : resolve(row)
         )), { balance: 50, bonus_balance: 80 });
-        assert.equal(await new Promise((resolve, reject) => db.get(
-            "SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT amount, bonus_amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
             [String(exactBalanceOrder.payload.orderId)],
-            (error, row) => error ? reject(error) : resolve(Number(row && row.amount || 0))
-        )), 50);
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { amount: 50, bonus_amount: 50 });
 
         await new Promise((resolve, reject) => db.run(
-            "UPDATE user_wallets SET balance=5000 WHERE user_id='member-a'",
+            "UPDATE user_wallets SET balance=5000, bonus_balance=80 WHERE user_id='member-a'",
             error => error ? reject(error) : resolve()
         ));
         await new Promise((resolve, reject) => db.run(
-            "UPDATE users SET balance=5000 WHERE id='member-a'",
+            "UPDATE users SET balance=5000, bonus_balance=80 WHERE id='member-a'",
             error => error ? reject(error) : resolve()
         ));
         const orderSpentBeforeManualCreate = await new Promise((resolve, reject) => db.get(
@@ -1734,19 +1866,20 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ));
         assert.equal(afterManualCreateLedgerCount, beforeManualCreateLedgerCount + 1);
         const manualPaymentLedger = await new Promise((resolve, reject) => db.get(
-            "SELECT user_id, type, amount, balance_before, balance_after, reference_type, reference_id FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=?",
+            "SELECT user_id, type, amount, balance_before, balance_after, bonus_amount, reference_type, reference_id FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=?",
             [String(createdOrderId)],
             (error, row) => error ? reject(error) : resolve(row || null)
         ));
         assert.deepEqual(manualPaymentLedger, {
             user_id: 'member-a', type: 'order_payment', amount: -321,
-            balance_before: 5000, balance_after: 4679, reference_type: 'order', reference_id: String(createdOrderId)
+            balance_before: 5000, balance_after: 4759, bonus_amount: -80,
+            reference_type: 'order', reference_id: String(createdOrderId)
         });
         const manualWalletAfterCreate = await new Promise((resolve, reject) => db.get(
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
             (error, row) => error ? reject(error) : resolve(row)
         ));
-        assert.deepEqual(manualWalletAfterCreate, { balance: 4679, bonus_balance: 80 });
+        assert.deepEqual(manualWalletAfterCreate, { balance: 4759, bonus_balance: 0 });
 
         const insufficientBefore = await new Promise((resolve, reject) => db.get(
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
@@ -1758,13 +1891,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ));
         const insufficientCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
             request_key: `manual_insufficient_${Date.now()}`,
-            final_amount: '4680',
+            final_amount: '4760',
             manual_status: 'in_progress'
         }));
         assert.equal(insufficientCreate.response.status, 400, insufficientCreate.response.body);
         assert.equal(insufficientCreate.payload.code, 'WALLET_INSUFFICIENT_BALANCE');
-        assert.equal(insufficientCreate.payload.wallet.balance, 4679);
-        assert.equal(insufficientCreate.payload.wallet.bonusBalance, 80);
+        assert.equal(insufficientCreate.payload.wallet.balance, 4759);
+        assert.equal(insufficientCreate.payload.wallet.bonusBalance, 0);
+        assert.equal(insufficientCreate.payload.wallet.totalBalance, 4759);
         assert.deepEqual(await new Promise((resolve, reject) => db.get(
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
             (error, row) => error ? reject(error) : resolve(row)
@@ -1919,7 +2053,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             "SELECT balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
             (error, row) => error ? reject(error) : resolve(row)
         ));
-        assert.equal(beforeProgressCancel.balance, 4394);
+        assert.equal(beforeProgressCancel.balance, 4474);
         const manualRefundAfterSalesSession = await createSession('aftersales-orders');
         const progressRefund = await orderPost(manualRefundAfterSalesSession, `/management/orders/cancel/${cancelledProgress.payload.orderId}`, {});
         assert.equal(progressRefund.status, 303, progressRefund.headers.location || progressRefund.body);
@@ -1964,11 +2098,11 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
 
         const concurrencyBalance = 100;
         await new Promise((resolve, reject) => db.run(
-            "UPDATE user_wallets SET balance=? WHERE user_id='member-a'",
+            "UPDATE user_wallets SET balance=?, bonus_balance=0 WHERE user_id='member-a'",
             [concurrencyBalance], error => error ? reject(error) : resolve()
         ));
         await new Promise((resolve, reject) => db.run(
-            "UPDATE users SET balance=? WHERE id='member-a'",
+            "UPDATE users SET balance=?, bonus_balance=0 WHERE id='member-a'",
             [concurrencyBalance], error => error ? reject(error) : resolve()
         ));
         const concurrentCreates = await Promise.all([
@@ -2164,13 +2298,26 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(legacyEndpoint.status, 404);
 
         const aftersalesSession = await createSession('aftersales-orders');
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET bonus_balance=30 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET bonus_balance=30 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
         const beforeOpenRefund = await orderSecuritySnapshot(606);
         const aftersalesOpenRefund = await orderPost(aftersalesSession, '/management/orders/cancel/606', {});
         assert.equal(aftersalesOpenRefund.status, 303);
         const afterOpenRefund = await orderSecuritySnapshot(606);
         assert.equal(afterOpenRefund.status, 'cancelled');
         assert.equal(afterOpenRefund.wallet_balance, beforeOpenRefund.wallet_balance + 45);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.bonus_balance || 0))
+        )), 30);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_id='606'", (error, row) => error ? reject(error) : resolve(row.amount))), 45);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT bonus_amount FROM wallet_transactions WHERE type='refund' AND reference_id='606'", (error, row) => error ? reject(error) : resolve(row.bonus_amount))), 0);
 
         const beforeCompletedAfterSales = await orderSecuritySnapshot(607);
         const deniedCompletedRefund = await orderPost(aftersalesSession, '/management/orders/cancel/607', {});
@@ -2184,6 +2331,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(afterAdminRefund.status, 'cancelled');
         assert.equal(afterAdminRefund.wallet_balance, beforeCompletedAfterSales.wallet_balance + 35);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_id='607'", (error, row) => error ? reject(error) : resolve(row.amount))), 35);
+
+        const beforeUnverifiedLegacyRefund = await orderSecuritySnapshot(609);
+        const unverifiedLegacyRefund = await orderPost(ordinaryAdmin, '/management/orders/cancel/609', {});
+        assert.equal(unverifiedLegacyRefund.status, 303);
+        const afterUnverifiedLegacyRefund = await orderSecuritySnapshot(609);
+        assert.equal(afterUnverifiedLegacyRefund.status, 'cancelled');
+        assert.equal(afterUnverifiedLegacyRefund.wallet_balance, beforeUnverifiedLegacyRefund.wallet_balance);
+        assert.equal(afterUnverifiedLegacyRefund.ledger_count, beforeUnverifiedLegacyRefund.ledger_count);
 
         const beforeAdminPriceChange = await orderSecuritySnapshot(101);
         const adminPriceChange = await orderPost(ordinaryAdmin, '/management/orders/update/101', {

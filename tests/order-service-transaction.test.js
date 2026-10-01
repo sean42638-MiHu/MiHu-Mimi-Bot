@@ -42,7 +42,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         )`);
         await run(`CREATE TABLE wallet_transactions (
             id INTEGER PRIMARY KEY, user_id TEXT, type TEXT, amount REAL,
-            balance_before REAL, balance_after REAL, reference_type TEXT,
+            balance_before REAL, balance_after REAL, bonus_amount REAL NOT NULL DEFAULT 0, reference_type TEXT,
             reference_id TEXT, description TEXT, operator_id TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )`);
         await run(`CREATE TABLE orders (
