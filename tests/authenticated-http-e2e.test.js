@@ -95,6 +95,15 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         start_time TEXT, end_time TEXT, created_at TEXT, studio_id INTEGER, service_id INTEGER,
         commission_rate_snapshot REAL, platform_commission REAL, talent_earning REAL
     )`);
+    await run(`CREATE TABLE order_creation_idempotency (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_key TEXT UNIQUE,
+        request_digest TEXT,
+        order_id INTEGER,
+        operator_id TEXT,
+        studio_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`);
     await run(`CREATE TABLE payouts (
         id INTEGER PRIMARY KEY AUTOINCREMENT, withdrawal_no TEXT, user_id TEXT, studio_id INTEGER,
         withdrawal_period TEXT, amount REAL, status TEXT, requested_at TEXT, paid_at TEXT, rejected_at TEXT,
@@ -156,6 +165,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (16,'delegatable_target','Delegatable Target','["view_manage_members","view_manage_staff"]')`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','manager-b')");
     await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP),('cs-orders',0,0,0,0,CURRENT_TIMESTAMP),('legacy-orders',0,0,0,0,CURRENT_TIMESTAMP),('aftersales-orders',0,0,0,0,CURRENT_TIMESTAMP)");
+    await run("INSERT INTO talents (user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions) VALUES ('talent-a','Talent A','chan-talent-a',0.82,'idle','[]')");
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,headcount,discount,total_amount,status,created_at,studio_id)
         VALUES (101,'ORDER-A','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,1),
                (202,'ORDER-B','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,2)`);
@@ -1324,6 +1334,39 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: session.cookie,
             'X-CSRF-Token': session.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, new URLSearchParams(body).toString());
+        const orderPostJson = async (session, route, body) => {
+            const response = await createRequest(port, 'POST', route, {
+                Host: `127.0.0.1:${port}`,
+                Origin: `http://127.0.0.1:${port}`,
+                Cookie: session.cookie,
+                'X-CSRF-Token': session.csrfToken,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Accept: 'application/json'
+            }, new URLSearchParams(body).toString());
+            let payload = null;
+            try {
+                payload = JSON.parse(response.body || '{}');
+            } catch (_error) {
+                payload = null;
+            }
+            return { response, payload };
+        };
+
+        const manualCreatePayload = overrides => ({
+            request_key: `manual_req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+            boss_id: 'member-a',
+            talent_id: 'talent-a',
+            category: '陪玩單',
+            game: 'Manual Fixture Game',
+            content_tier: '標準',
+            duration: '1',
+            unit: '小時',
+            final_amount: '321',
+            manual_status: 'completed',
+            note: 'manual create e2e',
+            talent_message: 'manual message',
+            ...overrides
+        });
         const beforeNoPricePermission = await orderSecuritySnapshot(101);
         const directPriceAttemptWithoutPermission = await orderPost(await createSession('cs-orders'), '/management/orders/update/101', {
             original_price: '125', unit_price: '125', duration: '1', discount: '0', status: 'pending'
@@ -1334,6 +1377,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             { name: 'cs', session: await createSession('cs-orders') },
             { name: 'manager with manage_orders alias', session: managerA }
         ];
+        const csSession = orderStaff[0].session;
         for (const { name, session } of orderStaff) {
             const ordersPage = await createRequest(port, 'GET', '/management/orders', {
                 Host: `127.0.0.1:${port}`, Cookie: session.cookie
@@ -1378,7 +1422,297 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             }
         }
 
-        const csSession = orderStaff[0].session;
+        const managerOrdersWithCreate = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(managerOrdersWithCreate.status, 200, managerOrdersWithCreate.body);
+        assert.match(managerOrdersWithCreate.body, /手動建立訂單/);
+
+        const csOrdersWithCreate = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: csSession.cookie
+        });
+        assert.equal(csOrdersWithCreate.status, 200, csOrdersWithCreate.body);
+        assert.match(csOrdersWithCreate.body, /手動建立訂單/);
+
+        const memberSearchAllowed = await createRequest(port, 'GET', '/management/orders/create/member-options?q=member', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie, Accept: 'application/json'
+        });
+        assert.equal(memberSearchAllowed.status, 200, memberSearchAllowed.body);
+        const memberSearchPayload = JSON.parse(memberSearchAllowed.body);
+        assert.equal(memberSearchPayload.success, true);
+        assert.ok(Array.isArray(memberSearchPayload.members));
+        assert.equal(memberSearchPayload.members.some(member => member.id === 'member-a'), true);
+
+        const takerSearchAllowed = await createRequest(port, 'GET', '/management/orders/create/taker-options?q=talent', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie, Accept: 'application/json'
+        });
+        assert.equal(takerSearchAllowed.status, 200, takerSearchAllowed.body);
+        const takerSearchPayload = JSON.parse(takerSearchAllowed.body);
+        assert.equal(takerSearchPayload.success, true);
+        assert.ok(Array.isArray(takerSearchPayload.takers));
+        assert.equal(takerSearchPayload.takers.some(taker => taker.id === 'talent-a'), true);
+
+        const memberSearchDenied = await createRequest(port, 'GET', '/management/orders/create/member-options?q=member', {
+            Host: `127.0.0.1:${port}`, Cookie: memberA.cookie, Accept: 'application/json'
+        });
+        assert.equal(memberSearchDenied.status, 403);
+
+        const deniedMemberCreate = await orderPost(memberA, '/management/orders/create', manualCreatePayload());
+        assert.equal(deniedMemberCreate.status, 403);
+
+        const deniedOverrideByCs = await orderPostJson(csSession, '/management/orders/create', manualCreatePayload({
+            enable_ratio_override: '1',
+            ratio_mode: 'talent_share',
+            ratio_value: '88'
+        }));
+        assert.equal(deniedOverrideByCs.response.status, 403, deniedOverrideByCs.response.body);
+
+        const orderSpentBeforeManualCreate = await new Promise((resolve, reject) => db.get(
+            "SELECT COALESCE(SUM(total_amount), 0) AS total FROM orders WHERE boss_id = 'member-a' AND status = 'completed'",
+            (error, row) => error ? reject(error) : resolve(Number(row.total || 0))
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET manual_spent = 500 WHERE id = 'member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET manual_spent = 500 WHERE user_id = 'member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        const manualSpentBeforeCreate = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+
+        const beforeManualCreateLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        const beforeManualCreateOrderCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+
+        const idemKey = `manual_key_${Date.now()}`;
+        const manualCreateFirst = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({ request_key: idemKey }));
+        assert.equal(manualCreateFirst.response.status, 200, manualCreateFirst.response.body);
+        assert.equal(manualCreateFirst.payload && manualCreateFirst.payload.success, true);
+        assert.equal(manualCreateFirst.payload && manualCreateFirst.payload.code, 'CREATED');
+        const createdOrderNo = manualCreateFirst.payload.orderNo;
+        const createdOrderId = manualCreateFirst.payload.orderId;
+        assert.ok(createdOrderId > 0);
+
+        const createdCompletedOrder = await new Promise((resolve, reject) => db.get(
+            'SELECT id, order_no, status, boss_id, talent_id, studio_id, start_time, end_time FROM orders WHERE id = ?',
+            [createdOrderId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(createdCompletedOrder.order_no, createdOrderNo);
+        assert.equal(createdCompletedOrder.status, 'completed');
+        assert.equal(createdCompletedOrder.boss_id, 'member-a');
+        assert.equal(createdCompletedOrder.talent_id, 'talent-a');
+        assert.equal(createdCompletedOrder.studio_id, 1);
+        assert.ok(createdCompletedOrder.start_time);
+        assert.ok(createdCompletedOrder.end_time);
+
+        const createdCommissionSnapshot = await new Promise((resolve, reject) => db.get(
+            'SELECT commission_rate_snapshot, talent_earning, platform_commission, total_amount FROM orders WHERE id = ?',
+            [createdOrderId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(Number(createdCommissionSnapshot.commission_rate_snapshot), 0.82);
+        assert.equal(Number(createdCommissionSnapshot.talent_earning), Math.round(Number(createdCommissionSnapshot.total_amount) * 0.82));
+        assert.equal(Number(createdCommissionSnapshot.platform_commission), Number(createdCommissionSnapshot.total_amount) - Number(createdCommissionSnapshot.talent_earning));
+
+        const afterManualCreateOrderCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        assert.equal(afterManualCreateOrderCount, beforeManualCreateOrderCount + 1);
+        const afterManualCreateLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        assert.equal(afterManualCreateLedgerCount, beforeManualCreateLedgerCount);
+
+        const manualCreateReplay = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: idemKey
+        }));
+        assert.equal(manualCreateReplay.response.status, 200, manualCreateReplay.response.body);
+        assert.equal(manualCreateReplay.payload && manualCreateReplay.payload.success, true);
+        assert.equal(manualCreateReplay.payload && manualCreateReplay.payload.code, 'IDEMPOTENT_REPLAY');
+        assert.equal(manualCreateReplay.payload && manualCreateReplay.payload.orderId, createdOrderId);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), afterManualCreateOrderCount);
+
+        const replayByOtherOperator = await orderPostJson(csSession, '/management/orders/create', manualCreatePayload({
+            request_key: idemKey
+        }));
+        assert.equal(replayByOtherOperator.response.status, 403, replayByOtherOperator.response.body);
+        assert.equal(replayByOtherOperator.payload && replayByOtherOperator.payload.code, 'IDEMPOTENCY_REPLAY_FORBIDDEN');
+        assert.equal(replayByOtherOperator.payload && replayByOtherOperator.orderId, undefined);
+
+        await new Promise((resolve, reject) => db.run("UPDATE users SET role = 'member' WHERE id = 'manager-a'", error => error ? reject(error) : resolve()));
+        const replayWithoutCurrentPermission = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: idemKey
+        }));
+        assert.equal(replayWithoutCurrentPermission.response.status, 403, replayWithoutCurrentPermission.response.body);
+        await new Promise((resolve, reject) => db.run("UPDATE users SET role = 'manager' WHERE id = 'manager-a'", error => error ? reject(error) : resolve()));
+
+        const manualCreateConflict = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: idemKey,
+            final_amount: '322'
+        }));
+        assert.equal(manualCreateConflict.response.status, 409, manualCreateConflict.response.body);
+        assert.equal(manualCreateConflict.payload && manualCreateConflict.payload.code, 'IDEMPOTENCY_CONFLICT');
+
+        const spentAfterCompletedCreate = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        assert.equal(spentAfterCompletedCreate, manualSpentBeforeCreate + 321);
+        const spentSyncSnapshot = await new Promise((resolve, reject) => db.get(
+            "SELECT order_spent FROM user_order_spent_sync WHERE user_id = 'member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.ok(spentSyncSnapshot && Number.isFinite(Number(spentSyncSnapshot.order_spent)));
+        const orderSpentAfterCompletedCreate = await new Promise((resolve, reject) => db.get(
+            "SELECT COALESCE(SUM(total_amount), 0) AS total FROM orders WHERE boss_id = 'member-a' AND status = 'completed'",
+            (error, row) => error ? reject(error) : resolve(Number(row.total || 0))
+        ));
+        assert.equal(orderSpentAfterCompletedCreate, orderSpentBeforeManualCreate + 321);
+
+        const inProgressBeforeSpent = spentAfterCompletedCreate;
+        const inProgressBeforeLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        const inProgressCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_progress_${Date.now()}`,
+            manual_status: 'in_progress',
+            final_amount: '210'
+        }));
+        assert.equal(inProgressCreate.response.status, 200, inProgressCreate.response.body);
+        assert.equal(inProgressCreate.payload && inProgressCreate.payload.code, 'CREATED');
+        const inProgressOrder = await new Promise((resolve, reject) => db.get(
+            'SELECT status, end_time FROM orders WHERE id = ?',
+            [inProgressCreate.payload.orderId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(inProgressOrder.status, 'in_progress');
+        assert.equal(inProgressOrder.end_time, null);
+        const inProgressAfterSpent = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        assert.equal(inProgressAfterSpent, inProgressBeforeSpent);
+
+        const firstCompleteInProgress = await orderPost(managerA, `/management/orders/complete/${inProgressCreate.payload.orderId}`, {});
+        assert.equal(firstCompleteInProgress.status, 303, firstCompleteInProgress.headers.location || firstCompleteInProgress.body);
+        const spentAfterFirstInProgressComplete = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        assert.equal(spentAfterFirstInProgressComplete, inProgressBeforeSpent + 210);
+        const secondCompleteInProgress = await orderPost(managerA, `/management/orders/complete/${inProgressCreate.payload.orderId}`, {});
+        assert.equal(secondCompleteInProgress.status, 303, secondCompleteInProgress.headers.location || secondCompleteInProgress.body);
+        const spentAfterSecondInProgressComplete = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        assert.equal(spentAfterSecondInProgressComplete, spentAfterFirstInProgressComplete);
+        const inProgressCompleteAuditCount = await new Promise((resolve, reject) => db.get(
+            "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'order_complete' AND target_id = ?",
+            [String(inProgressCreate.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        assert.equal(inProgressCompleteAuditCount, 1);
+        const inProgressAfterRepeatLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        assert.equal(inProgressAfterRepeatLedgerCount, inProgressBeforeLedgerCount);
+
+        await new Promise((resolve, reject) => db.run(
+            "INSERT OR REPLACE INTO vip_tiers (level, name, spent_threshold, deposit_threshold, rewards, color, updated_at) VALUES (1, 'VIP 1', 1, 0, '[]', '#A855F7', CURRENT_TIMESTAMP)",
+            error => error ? reject(error) : resolve()
+        ));
+
+        const rollbackAuditKey = `manual_rollback_audit_${Date.now()}`;
+        const beforeRollbackAuditOrderCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        const beforeRollbackAuditSpent = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        await new Promise((resolve, reject) => db.run(`
+            CREATE TRIGGER fail_manual_order_create_audit
+            BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'order_create'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced manual order create audit failure');
+            END
+        `, error => error ? reject(error) : resolve()));
+        const rollbackAuditAttempt = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({ request_key: rollbackAuditKey }));
+        assert.equal(rollbackAuditAttempt.response.status, 500, rollbackAuditAttempt.response.body);
+        await new Promise((resolve, reject) => db.run('DROP TRIGGER fail_manual_order_create_audit', error => error ? reject(error) : resolve()));
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), beforeRollbackAuditOrderCount);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        )), beforeRollbackAuditSpent);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM order_creation_idempotency WHERE request_key = ?',
+            [rollbackAuditKey],
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), 0);
+
+        await new Promise((resolve, reject) => db.run("UPDATE users SET vip_level = 0 WHERE id = 'member-a'", error => error ? reject(error) : resolve()));
+        const rollbackVipKey = `manual_rollback_vip_${Date.now()}`;
+        const beforeRollbackVipOrderCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        const beforeRollbackVipSpent = await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        await new Promise((resolve, reject) => db.run(`
+            CREATE TRIGGER fail_manual_vip_recalc_audit
+            BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'vip_auto_recalculation'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced vip recalc audit failure');
+            END
+        `, error => error ? reject(error) : resolve()));
+        const rollbackVipAttempt = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: rollbackVipKey,
+            final_amount: '55',
+            manual_status: 'completed'
+        }));
+        assert.equal(rollbackVipAttempt.response.status, 500, rollbackVipAttempt.response.body);
+        await new Promise((resolve, reject) => db.run('DROP TRIGGER fail_manual_vip_recalc_audit', error => error ? reject(error) : resolve()));
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), beforeRollbackVipOrderCount);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT manual_spent FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        )), beforeRollbackVipSpent);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM order_creation_idempotency WHERE request_key = ?',
+            [rollbackVipKey],
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), 0);
+
         const managerReassignDeniedSnapshot = await orderSecuritySnapshot(101);
         const managerReassignDenied = await orderPost(managerA, '/management/orders/update/101', {
             talent_id: 'talent-a', note: 'manager reassign', status: 'pending'

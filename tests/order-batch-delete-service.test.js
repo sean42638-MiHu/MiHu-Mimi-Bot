@@ -237,6 +237,8 @@ test('partial refund is blocked with explicit message due unique-index strategy'
 
 test('fully refunded cancelled order can be deleted with refund amount 0', async () => {
     await withFixture(async ({ db, service }) => {
+        await run(db, "UPDATE users SET manual_spent = 300 WHERE id = 'member-a'");
+        await run(db, "UPDATE user_wallets SET manual_spent = 300 WHERE user_id = 'member-a'");
         await run(db, `INSERT INTO orders (id, order_no, boss_id, status, total_amount, studio_id, created_at)
             VALUES (520, 'ORDER-520', 'member-a', 'cancelled', 100, 1, '2026-01-05 12:00:00')`);
         await run(db, `INSERT INTO wallet_transactions
@@ -259,6 +261,7 @@ test('fully refunded cancelled order can be deleted with refund amount 0', async
         assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM orders WHERE id = 520')).count, 0);
         assert.equal((await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund' AND reference_id = '520'")) .count, refundCountBefore);
         assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")) .balance, balanceBefore);
+        assert.equal((await get(db, "SELECT manual_spent FROM users WHERE id = 'member-a'")) .manual_spent, 300);
     });
 });
 

@@ -111,6 +111,28 @@
             transform: translateY(-1px);
         }
 
+        .btn-manual-create {
+            background: linear-gradient(135deg, #fb7185 0%, #ec4899 100%);
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 0.84rem;
+            border-radius: 20px;
+            padding: 7px 15px;
+            border: 1px solid rgba(251, 113, 133, 0.45);
+            box-shadow: 0 6px 16px rgba(236, 72, 153, 0.35);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+        .btn-manual-create:hover {
+            color: #fff;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 22px rgba(236, 72, 153, 0.48);
+        }
+
         .batch-delete-modal .modal-content {
             background: linear-gradient(165deg, rgba(10, 8, 18, 0.98), rgba(33, 13, 56, 0.95));
             border: 1px solid rgba(168, 85, 247, 0.32);
@@ -161,6 +183,9 @@
     const activeCurrUser = typeof currentUser !== 'undefined' && currentUser ? currentUser : ((typeof user !== 'undefined' && user) ? user : {});
     const canBatchDeleteOrders = typeof hasPerm === 'function' && hasPerm('action_order_batch_delete');
     const canRefundCompletedOrders = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
+    const canCreateManualOrderView = typeof canCreateManualOrder !== 'undefined'
+        ? !!canCreateManualOrder
+        : (typeof hasPerm === 'function' && hasPerm('action_order_manage'));
 %>
 
 <div class="app-layout">
@@ -179,10 +204,19 @@
                     <p class="text-secondary small mb-0">即時監控與核算工作室訂單收益 (點擊任意訂單列即可檢視詳情或進行編輯)</p>
                 </div>
 
-                <div class="search-box-wrap">
-                    <i class="fa-solid fa-magnifying-glass search-icon-left"></i>
-                    <input type="text" id="orderSearchInput" class="search-input-glass" placeholder="搜尋單號 / 客服 / 闆闆 / 陪陪 / 類別 / 項目...">
-                    <button type="button" id="clearSearchBtn" class="search-clear-btn" title="清除搜尋"><i class="fa-solid fa-circle-xmark"></i></button>
+                <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                    <% if (canCreateManualOrderView) { %>
+                        <button type="button" class="btn-manual-create" data-bs-toggle="modal" data-bs-target="#manualCreateOrderModal">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>手動建立訂單</span>
+                        </button>
+                    <% } %>
+
+                    <div class="search-box-wrap">
+                        <i class="fa-solid fa-magnifying-glass search-icon-left"></i>
+                        <input type="text" id="orderSearchInput" class="search-input-glass" placeholder="搜尋單號 / 客服 / 闆闆 / 陪陪 / 類別 / 項目...">
+                        <button type="button" id="clearSearchBtn" class="search-clear-btn" title="清除搜尋"><i class="fa-solid fa-circle-xmark"></i></button>
+                    </div>
                 </div>
             </div>
 
@@ -233,6 +267,11 @@
 </div>
 
 <%- include('modals/order_detail_modal') %>
+<%- include('modals/create_order_modal', {
+    canCreateManualOrder: canCreateManualOrderView,
+    canAdjustOrderPrice: typeof canAdjustOrderPrice !== 'undefined' ? canAdjustOrderPrice : (typeof hasPerm === 'function' && hasPerm('action_order_price')),
+    defaultTalentShareRates: typeof defaultTalentShareRates !== 'undefined' ? defaultTalentShareRates : null
+}) %>
 
 <% if (canBatchDeleteOrders) { %>
 <div class="modal fade batch-delete-modal" id="batchDeletePreviewModal" tabindex="-1" aria-hidden="true">

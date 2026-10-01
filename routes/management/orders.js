@@ -6,6 +6,8 @@ const { denyPermission, requireAuth: ensureAuth, requirePerm: checkPerm } = requ
 const { refundOrder } = require('../../utils/walletService');
 const { getOrder, updateOrder, completeOrder } = require('../../utils/orderService');
 const { hasResolvedPermission } = require('../../utils/permissionResolver');
+const { DEFAULT_TALENT_SHARE_RATES, normalizeTalentShareRate } = require('../../utils/commissionHelper');
+const { createManualOrder } = require('../../services/manualOrderCreateService');
 const {
     previewBatchDeleteAndRefund,
     executeBatchDeleteAndRefund
@@ -59,6 +61,94 @@ function hasOwn(body, key) {
 function wantsJson(req) {
     const accept = String(req.get('accept') || '').toLowerCase();
     return accept.includes('application/json') || accept.includes('text/json') || req.xhr === true;
+}
+
+function dbGetAsync(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (error, row) => {
+            if (error) reject(error);
+            else resolve(row || null);
+        });
+    });
+}
+
+function dbAllAsync(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (error, rows) => {
+            if (error) reject(error);
+            else resolve(rows || []);
+        });
+    });
+}
+
+function parseMoneyValue(rawValue, label, { min = 0, max = 1_000_000_000 } = {}) {
+    const raw = String(rawValue || '').trim();
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(raw)) {
+        const error = new Error(`${label} 格式無效，最多保留兩位小數。`);
+        error.code = 'INVALID_MONEY_FORMAT';
+        throw error;
+    }
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric) || numeric < min || numeric > max) {
+        const error = new Error(`${label} 必須介於 ${min} 到 ${max} 之間。`);
+        error.code = 'INVALID_MONEY_RANGE';
+        throw error;
+    }
+    return Number(numeric.toFixed(2));
+}
+
+function parseDurationValue(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(raw)) {
+        const error = new Error('時長/數量格式無效，最多保留兩位小數。');
+        error.code = 'INVALID_DURATION_FORMAT';
+        throw error;
+    }
+    const duration = Number(raw);
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 10_000) {
+        const error = new Error('時長/數量必須大於 0 且不可超過 10000。');
+        error.code = 'INVALID_DURATION_RANGE';
+        throw error;
+    }
+    return duration;
+}
+
+function normalizeManualOrderStatus(rawValue) {
+    const normalized = String(rawValue || '').trim().toLowerCase();
+    if (normalized === 'completed') return 'completed';
+    if (normalized === 'in_progress') return 'in_progress';
+    const error = new Error('手動建單狀態僅支援「completed」或「in_progress」。');
+    error.code = 'INVALID_MANUAL_ORDER_STATUS';
+    throw error;
+}
+
+function normalizeRateOverrideInput({ enableOverride, mode, value }) {
+    const enabled = String(enableOverride || '').trim() === '1';
+    if (!enabled) return null;
+    const raw = String(value || '').trim();
+    if (!raw) {
+        const error = new Error('啟用分潤覆寫時，請輸入覆寫比例。');
+        error.code = 'MISSING_OVERRIDE_RATE';
+        throw error;
+    }
+    const percentage = Number(raw);
+    if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+        const error = new Error('分潤覆寫比例必須介於 0 到 100。');
+        error.code = 'INVALID_OVERRIDE_RATE';
+        throw error;
+    }
+
+    const normalizedMode = String(mode || 'talent_share').trim();
+    const rate = normalizedMode === 'studio_cut'
+        ? (1 - percentage / 100)
+        : (percentage / 100);
+    const normalizedRate = normalizeTalentShareRate(rate);
+    if (normalizedRate === null) {
+        const error = new Error('分潤覆寫比例無效。');
+        error.code = 'INVALID_OVERRIDE_RATE';
+        throw error;
+    }
+    return normalizedRate;
 }
 
 function isReassignmentRequest(body, order) {
@@ -115,6 +205,9 @@ router.get('/', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
                     currentUser: currentUser || req.user,
                     orders: orders || [],
                     talents: talents || [],
+                    canCreateManualOrder: hasResolvedPermission(res.locals.userPerms, 'action_order_manage'),
+                    canAdjustOrderPrice: hasResolvedPermission(res.locals.userPerms, 'action_order_price'),
+                    defaultTalentShareRates: DEFAULT_TALENT_SHARE_RATES,
                     activePage: 'orders',
                     success: req.query.saved === '1' || req.query.success === '1',
                     successMsg: req.query.successMsg || null,
@@ -123,6 +216,199 @@ router.get('/', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
             });
         });
     });
+});
+
+router.get('/create/member-options', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
+    try {
+        const keyword = String(req.query.q || '').trim();
+        if (keyword.length < 2) return res.json({ success: true, members: [] });
+
+        const allStudios = isPlatformSuperuser(res);
+        const actorStudioId = Number(req.user && req.user.studio_id);
+        if (!allStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
+            return res.status(403).json({ success: false, error: '找不到已授權的工作室範圍' });
+        }
+
+        const whereStudio = allStudios ? '' : 'AND u.studio_id = ?';
+        const params = allStudios
+            ? [`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`]
+            : [`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`, actorStudioId];
+        const rows = await dbAllAsync(`
+            SELECT
+                u.id,
+                u.username,
+                u.global_name,
+                u.custom_nickname,
+                u.studio_id,
+                COALESCE(w.balance, 0) AS balance,
+                COALESCE(u.vip_level, 0) AS vip_level
+            FROM users u
+            LEFT JOIN user_wallets w ON w.user_id = u.id
+            WHERE u.role = 'member'
+              AND (
+                    u.id LIKE ?
+                 OR COALESCE(u.custom_nickname, '') LIKE ?
+                 OR COALESCE(u.global_name, '') LIKE ?
+                 OR COALESCE(u.username, '') LIKE ?
+              )
+              ${whereStudio}
+            ORDER BY CASE WHEN u.id = ? THEN 0 ELSE 1 END, u.created_at DESC
+            LIMIT 12
+        `, [...params, keyword]);
+
+        const members = rows.map(row => ({
+            id: String(row.id),
+            studioId: Number(row.studio_id),
+            nickname: row.custom_nickname || row.global_name || row.username || row.id,
+            balance: Number(row.balance || 0),
+            vipLevel: Number(row.vip_level || 0)
+        }));
+        return res.json({ success: true, members });
+    } catch (error) {
+        console.error('❌ 查詢手動建單會員失敗:', error);
+        return res.status(500).json({ success: false, error: '會員搜尋失敗，請稍後再試。' });
+    }
+});
+
+router.get('/create/taker-options', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
+    try {
+        const keyword = String(req.query.q || '').trim();
+        if (keyword.length < 2) return res.json({ success: true, takers: [] });
+
+        const allStudios = isPlatformSuperuser(res);
+        const actorStudioId = Number(req.user && req.user.studio_id);
+        if (!allStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
+            return res.status(403).json({ success: false, error: '找不到已授權的工作室範圍' });
+        }
+
+        const whereStudio = allStudios ? '' : 'AND u.studio_id = ?';
+        const params = allStudios
+            ? [`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`]
+            : [`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`, actorStudioId];
+
+        const rows = await dbAllAsync(`
+            SELECT
+                u.id,
+                u.username,
+                u.global_name,
+                u.custom_nickname,
+                u.studio_id,
+                COALESCE(t.status, 'idle') AS talent_status,
+                t.commission_rate
+            FROM talents t
+            JOIN users u ON u.id = t.user_id
+            WHERE (
+                    u.id LIKE ?
+                 OR COALESCE(u.custom_nickname, '') LIKE ?
+                 OR COALESCE(u.global_name, '') LIKE ?
+                 OR COALESCE(u.username, '') LIKE ?
+              )
+              ${whereStudio}
+            ORDER BY CASE COALESCE(t.status, 'idle')
+                        WHEN 'idle' THEN 0
+                        WHEN 'busy' THEN 1
+                        ELSE 2
+                     END,
+                     u.created_at DESC
+            LIMIT 12
+        `, params);
+
+        const takers = rows.map(row => ({
+            id: String(row.id),
+            studioId: Number(row.studio_id),
+            nickname: row.custom_nickname || row.global_name || row.username || row.id,
+            status: String(row.talent_status || 'idle'),
+            personalRate: normalizeTalentShareRate(row.commission_rate)
+        }));
+
+        return res.json({ success: true, takers });
+    } catch (error) {
+        console.error('❌ 查詢手動建單接單者失敗:', error);
+        return res.status(500).json({ success: false, error: '接單者搜尋失敗，請稍後再試。' });
+    }
+});
+
+router.post('/create', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
+    const responseWithError = (status, message, code = 'MANUAL_ORDER_CREATE_FAILED') => {
+        if (wantsJson(req)) return res.status(status).json({ success: false, code, error: message });
+        return res.redirect(303, '/management/orders?error=' + encodeURIComponent(message));
+    };
+
+    try {
+        const category = String(req.body.category || '').trim();
+        const game = String(req.body.game || '').trim();
+        const contentTier = String(req.body.content_tier || '').trim();
+        const unit = String(req.body.unit || '小時').trim() || '小時';
+        const note = String(req.body.note || '').trim();
+        const talentMessage = String(req.body.talent_message || '').trim();
+        const requestKey = String(req.body.request_key || '').trim();
+        const duration = parseDurationValue(req.body.duration);
+        const finalAmount = parseMoneyValue(req.body.final_amount, '訂單金額');
+        const status = normalizeManualOrderStatus(req.body.manual_status);
+        const commissionRateOverride = normalizeRateOverrideInput({
+            enableOverride: req.body.enable_ratio_override,
+            mode: req.body.ratio_mode,
+            value: req.body.ratio_value
+        });
+
+        if (!category || !game) {
+            return responseWithError(400, '訂單類別與項目為必填欄位。', 'INVALID_MANUAL_ORDER_INPUT');
+        }
+
+        const result = await createManualOrder({
+            actorId: req.user.id,
+            actorStudioId: Number(req.user && req.user.studio_id),
+            allowAllStudios: isPlatformSuperuser(res),
+            allowCommissionOverride: canAdjustOrderPrice(res),
+            requestKey,
+            bossId: String(req.body.boss_id || '').trim(),
+            talentId: String(req.body.talent_id || '').trim(),
+            category,
+            game,
+            contentTier,
+            duration,
+            unit,
+            finalAmount,
+            note: note.slice(0, 500),
+            talentMessage: talentMessage.slice(0, 500),
+            status,
+            commissionRateOverride,
+            csName: req.user.custom_nickname || req.user.global_name || req.user.username || null
+        });
+
+        try {
+            syncOrdersJsonFromDb();
+            if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
+        } catch (_error) {}
+
+        const successMsg = result.idempotentReplay
+            ? `已略過重複提交，沿用既有訂單 ${result.orderNo || '#'+result.orderId}`
+            : `手動訂單 ${result.orderNo || '#'+result.orderId} 建立成功`;
+        const redirect = '/management/orders?successMsg=' + encodeURIComponent(successMsg);
+        if (wantsJson(req)) {
+            return res.json({
+                success: true,
+                code: result.idempotentReplay ? 'IDEMPOTENT_REPLAY' : 'CREATED',
+                orderId: result.orderId,
+                orderNo: result.orderNo,
+                redirect,
+                successMsg
+            });
+        }
+        return res.redirect(303, redirect);
+    } catch (error) {
+        if (error.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') {
+            return denyPermission(req, res, ['action_order_price'], { kind: 'action', feature: '覆寫訂單分潤比例' });
+        }
+        const statusCode = Number(error.statusCode || 0) || 500;
+        const message = String(error.message || '手動建立訂單失敗，請稍後再試。');
+        const code = String(error.code || 'MANUAL_ORDER_CREATE_FAILED');
+        if (statusCode === 403 && code === 'PERMISSION_DENIED') {
+            return denyPermission(req, res, ['action_order_manage'], { kind: 'action', feature: '手動建立訂單' });
+        }
+        console.error('❌ 手動建立訂單失敗:', error);
+        return responseWithError(statusCode, message, code);
+    }
 });
 
 // =========================================================================
@@ -250,7 +536,10 @@ router.post('/cancel/:id', ensureAuth, checkPerm('action_order_refund'), (req, r
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權取消其他工作室訂單');
 
         refundOrder(order.id, req.user.id, '後台作廢', { allowCompleted: canApproveCompletedRefund(res) }).then(result => {
-            try { syncOrdersJsonFromDb(); } catch (e) {}
+            try {
+                syncOrdersJsonFromDb();
+                if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
+            } catch (e) {}
             res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent(`訂單 ${order.order_no} 已成功退款 $${result.refundAmount} NTD 並標記取消！`));
         }).catch((rErr) => {
             console.error('❌ 退款處理出錯:', rErr.message);
@@ -268,7 +557,10 @@ router.post('/complete/:id', ensureAuth, checkPerm('action_order_manage'), async
         if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權結算其他工作室訂單');
         await completeOrder(req.params.id, req.user.id);
-        try { syncOrdersJsonFromDb(); } catch (e) {}
+        try {
+            syncOrdersJsonFromDb();
+            if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
+        } catch (e) {}
         return res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent('訂單已成功標記為完成並完成原價分潤計算！'));
     } catch (error) {
         console.error('❌ 標記完成失敗:', error);

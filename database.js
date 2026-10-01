@@ -703,6 +703,29 @@ function initializeDatabase({ explicitMigration = false } = {}) {
         });
     });
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS order_creation_idempotency (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_key TEXT NOT NULL UNIQUE,
+            request_digest TEXT NOT NULL,
+            order_id INTEGER NOT NULL,
+            operator_id TEXT,
+            studio_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+    `, () => {
+        db.run('CREATE INDEX IF NOT EXISTS idx_order_creation_idempotency_order ON order_creation_idempotency(order_id)');
+    });
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS user_order_spent_sync (
+            user_id TEXT PRIMARY KEY,
+            order_spent REAL NOT NULL DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     function backfillLegacyOrderSnapshots(callback = () => {}) {
         const shareRate = `COALESCE(
             (SELECT cs.rate FROM commission_settings cs WHERE cs.category = CASE o.category WHEN '有獎' THEN '有獎單' WHEN '冠名' THEN '冠名單' WHEN '獎金' THEN '獎金單' WHEN '其他' THEN '其他單' WHEN '活動單' THEN '其他單' ELSE o.category END),
