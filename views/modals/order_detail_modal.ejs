@@ -354,6 +354,7 @@
 
     document.getElementById('modalOrderEditForm').addEventListener('submit', async event => {
         const form = event.currentTarget;
+        const errorBox = document.getElementById('orderRefundError');
         if (form.dataset.refundPending === 'true') {
             event.preventDefault();
             return;
@@ -361,7 +362,6 @@
         if (event.submitter?.id === 'btnSaveOrderModal') {
             const price = document.getElementById('editOrderPrice');
             const rawPrice = String(price?.value || '').trim();
-            const errorBox = document.getElementById('orderRefundError');
             if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(rawPrice) || !Number.isFinite(Number(rawPrice)) || Number(rawPrice) < 0) {
                 event.preventDefault();
                 errorBox.textContent = '訂單總金額必須是非負且最多兩位小數的有效數字。';
@@ -372,7 +372,6 @@
             event.preventDefault();
             if (form.dataset.savePending === 'true') return;
             form.dataset.savePending = 'true';
-            const errorBox = document.getElementById('orderRefundError');
             errorBox.hidden = true;
             try {
                 const response = await fetch(form.action, {
@@ -414,7 +413,6 @@
         }
         event.preventDefault();
         form.dataset.refundPending = 'true';
-        const errorBox = document.getElementById('orderRefundError');
         errorBox.hidden = true;
         try {
             const response = await fetch(form.action, {

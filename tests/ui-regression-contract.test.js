@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const vm = require('node:vm');
 const path = require('node:path');
 const { test } = require('node:test');
 
@@ -60,4 +61,19 @@ test('order edit modal keeps delete separate from refund and cancel', () => {
     assert.match(orders, /id="btnBatchDeleteCancel"[^>]*>返回/);
     assert.match(orders, /id="btnBatchDeleteConfirm"[^>]*>確認刪除/);
     assert.doesNotMatch(orders, /previewModalEl\.addEventListener\('keydown'/);
+});
+
+test('rendered order modal script has no duplicate lexical declarations and exposes switchEditMode', () => {
+    const modal = read('views/modals/order_detail_modal.ejs');
+    const scripts = [...modal.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+    assert.equal(scripts.length, 1);
+    const context = vm.createContext({
+        console,
+        document: { getElementById: () => ({ addEventListener() {} }) },
+        window: {},
+        bootstrap: {}
+    });
+    assert.doesNotThrow(() => vm.runInContext(scripts[0], context));
+    assert.equal(typeof context.switchEditMode, 'function');
+    assert.equal((scripts[0].match(/const errorBox\s*=/g) || []).length, 1);
 });
