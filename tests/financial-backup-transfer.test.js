@@ -110,7 +110,7 @@ test('download runner freezes writers before transfer and keeps final confirmati
     assert.match(runner, /fuser "\$DB"/);
     assert.match(runner, /scripts\/prepareFinancialBackupTransfer\.js/);
     assert.match(runner, /scripts\/verifyFinancialBackupReceipt\.js --mode vps/);
-    assert.match(runner, /Type TRANSFER_READY/);
+    assert.match(runner, /type TRANSFER_READY/);
     assert.match(runner, /Type YES/);
     assert.match(runner, /CLEAR_ALL_FINANCIAL_HISTORY/);
     assert.doesNotMatch(runner, /confirm-remote-retention YES/);
