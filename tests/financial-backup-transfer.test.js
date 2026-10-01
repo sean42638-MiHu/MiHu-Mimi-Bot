@@ -105,7 +105,7 @@ test('VPS receipt acceptance is one-shot and rejects replay', async () => {
 test('download runner freezes writers before transfer and keeps final confirmations interactive', () => {
     const runner = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'runProductionFinancialClear.sh'), 'utf8');
     assert.match(runner, /OFFSITE_MODE/);
-    assert.match(runner, /OFFSITE_MODE.*!= download/);
+    assert.match(runner, /OFFSITE_MODE[\s\S]*!= download/);
     assert.match(runner, /sudo systemctl stop "\$WEB" "\$BOT"/);
     assert.match(runner, /fuser "\$DB"/);
     assert.match(runner, /scripts\/prepareFinancialBackupTransfer\.js/);
