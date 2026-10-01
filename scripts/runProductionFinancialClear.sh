@@ -104,6 +104,11 @@ if [ -x scripts/testFinancialTransferPermissions.sh ]; then
   bash scripts/testFinancialTransferPermissions.sh
 fi
 
+for staging_user in deploy mihu; do
+  sudo -u "$staging_user" test -x /var/tmp ||
+    fail "TRANSFER_STAGING_PARENT stage=preflight path=/var/tmp user=$staging_user action=traverse exit=$?"
+done
+
 echo "Reviewed release: $CLEAR_RELEASE_COMMIT"
 echo "Reviewed preview fingerprint: $CLEAR_PREVIEW_FINGERPRINT"
 live_preview="$(run_mihu /usr/bin/node scripts/clearProductionFinancialHistory.js preview)"
@@ -146,18 +151,15 @@ else
   safe_backup_stem="$(printf '%s' "$backup_stem" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
   transfer_nonce="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
   transfer_id="financial-${safe_backup_stem}-$(date -u +%Y%m%d%H%M%S)-${transfer_nonce}"
-  transfer_tmp="/tmp/$transfer_id"
-  transfer_root="/home/deploy/$transfer_id"
-  sudo rm -rf -- "$transfer_tmp" "$transfer_root"
-  sudo -u mihu mkdir -m 700 -- "$transfer_tmp"
+  transfer_root="/var/tmp/$transfer_id"
+  sudo -u deploy mkdir -m 2770 -- "$transfer_root" ||
+    fail "TRANSFER_STAGING_CREATE stage=preparation path=$transfer_root user=deploy exit=$?"
+  sudo chown deploy:mihu "$transfer_root"
+  sudo chmod 2770 "$transfer_root"
   run_mihu /usr/bin/node scripts/prepareFinancialBackupTransfer.js \
     --backup-dir "$BACKUPS" --backup-file "$backup_name" --manifest-file "$manifest_name" \
-    --data-dir "$DATA" --output-dir "$transfer_tmp" --backup-id "$transfer_id" \
+    --data-dir "$DATA" --output-dir "$transfer_root" --backup-id "$transfer_id" \
     --release "$CLEAR_RELEASE_COMMIT" --fingerprint "$CLEAR_PREVIEW_FINGERPRINT" >/dev/null
-  sudo chown -R deploy:mihu "$transfer_tmp"
-  sudo find "$transfer_tmp" -type d -exec chmod 2770 {} +
-  sudo find "$transfer_tmp" -type f -exec chmod 640 {} +
-  sudo mv -- "$transfer_tmp" "$transfer_root"
   sudo chown -R deploy:mihu "$transfer_root"
   sudo find "$transfer_root" -type d -exec chmod 2770 {} +
   sudo find "$transfer_root" -type f -exec chmod 640 {} +
