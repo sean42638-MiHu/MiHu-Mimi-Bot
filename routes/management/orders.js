@@ -491,13 +491,15 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
             if (!canManageOrderStudio(req, res, order.studio_id)) {
                 return res.status(403).send('無權修改其他工作室訂單');
             }
-            await refundOrder(order.id, req.user.id, '後台', { allowCompleted: canApproveCompletedRefund(res) });
+            const result = await refundOrder(order.id, req.user.id, '後台', { allowCompleted: canApproveCompletedRefund(res) });
             try {
                 syncOrdersJsonFromDb();
                 if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
             } catch (e) {}
 
-            return res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent('訂單已退款並標記取消！'));
+            return res.redirect(303, '/management/orders?successMsg=' + encodeURIComponent(
+                result.refundAmount > 0 ? '訂單已退款並標記取消！' : '訂單已取消，本次無錢包退款。'
+            ));
         }
         if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權修改其他工作室訂單');

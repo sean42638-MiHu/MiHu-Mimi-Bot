@@ -36,3 +36,14 @@ test('Admin components remain presentation-scoped', () => {
     const css = read('public/css/admin-components.css');
     assert.doesNotMatch(css, /(?:^|\})\s*(?:html|body|main|section|header|\.card|\.table|\.btn|\.form-control)\s*\{/m);
 });
+
+test('order refund confirmation submits through the CSRF-aware form event', () => {
+    const modal = read('views/modals/order_detail_modal.ejs');
+    assert.match(modal, /name="_csrf" value="<%= csrfToken %>"/);
+    assert.match(modal, /deleteInput\.name = 'is_delete'/);
+    assert.match(modal, /form\.requestSubmit\(event\.currentTarget\)/);
+    assert.doesNotMatch(modal, /form\.submit\(\)/);
+    assert.match(modal, /credentials: 'same-origin'/);
+    assert.match(modal, /response\.status === 403/);
+    assert.match(modal, /document\.getElementById\('isDeleteInputModal'\)\?\.remove\(\)/);
+});
