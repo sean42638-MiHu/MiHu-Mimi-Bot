@@ -230,24 +230,33 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const ROLE_BADGE_CLASS_MAP = Object.freeze({
-            admin: 'role-badge role-badge-admin',
-            owner: 'role-badge role-badge-owner',
-            cfo: 'role-badge role-badge-cfo',
-            aftersales: 'role-badge role-badge-aftersales',
-            after_sales: 'role-badge role-badge-aftersales',
-            manager: 'role-badge role-badge-manager',
-            cs_director: 'role-badge role-badge-manager',
-            cs: 'role-badge role-badge-cs',
-            reviewer: 'role-badge role-badge-reviewer',
-            talent: 'role-badge role-badge-talent',
-            staff: 'role-badge role-badge-talent',
-            member: 'role-badge role-badge-member'
-        });
+        const roleBadgeConfig = Object.freeze(<%- JSON.stringify({
+            classMap: typeof roleBadgeClassMap !== 'undefined' ? roleBadgeClassMap : {},
+            inlineStyleMap: typeof roleBadgeInlineStyleMap !== 'undefined' ? roleBadgeInlineStyleMap : {},
+            defaultInlineStyle: typeof roleBadgeDefaultInlineStyle !== 'undefined' ? roleBadgeDefaultInlineStyle : ''
+        }).replace(/</g, "\\u003c") %>);
+        const ROLE_BADGE_CLASS_MAP = Object.freeze(roleBadgeConfig.classMap || {});
+        const ROLE_BADGE_INLINE_STYLE_MAP = Object.freeze(roleBadgeConfig.inlineStyleMap || {});
+        const ROLE_BADGE_DEFAULT_INLINE_STYLE = String(roleBadgeConfig.defaultInlineStyle || '');
+        const DEFAULT_ROLE_BADGE_CLASS = 'role-badge role-badge-default';
 
         function resolveRoleBadgeClass(roleKey) {
             const key = String(roleKey || '').trim().toLowerCase();
-            return ROLE_BADGE_CLASS_MAP[key] || 'role-badge role-badge-default';
+            return ROLE_BADGE_CLASS_MAP[key] || DEFAULT_ROLE_BADGE_CLASS;
+        }
+
+        function resolveRoleBadgeInlineStyle(roleKey) {
+            const key = String(roleKey || '').trim().toLowerCase();
+            return ROLE_BADGE_INLINE_STYLE_MAP[key] || ROLE_BADGE_DEFAULT_INLINE_STYLE;
+        }
+
+        function applyRoleBadge(element, roleKey, roleName) {
+            if (!element) return;
+            element.className = resolveRoleBadgeClass(roleKey);
+            element.setAttribute('style', resolveRoleBadgeInlineStyle(roleKey));
+            const safeName = String(roleName || '會員');
+            element.textContent = safeName;
+            element.title = safeName;
         }
 
         const memberDetailModalEl = document.getElementById('memberDetailModal');
@@ -277,8 +286,7 @@
             document.getElementById('detailAvatar').src = data.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
             document.getElementById('detailDisplayName').textContent = data.displayName || '--';
             const detailRoleBadge = document.getElementById('detailRoleBadge');
-            detailRoleBadge.textContent = data.roleName || '會員';
-            detailRoleBadge.className = resolveRoleBadgeClass(data.roleKey);
+            applyRoleBadge(detailRoleBadge, data.roleKey, data.roleName || '會員');
             document.getElementById('detailUsername').textContent = `@${data.username || ''}`;
             document.getElementById('detailId').textContent = `ID: ${data.id || ''}`;
             document.getElementById('detailVip').textContent = `VIP ${data.vip !== undefined ? data.vip : 0}`;

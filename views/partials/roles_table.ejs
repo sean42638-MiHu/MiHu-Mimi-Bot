@@ -25,6 +25,7 @@
                         %>
                             <% roleList.forEach(r => { %>
                                 <% const roleInfo = (typeof getRoleInfo === 'function') ? getRoleInfo(r.role_key) : { badgeClass: 'role-badge role-badge-default' }; %>
+                                <% const roleBadgeStyle = (typeof getRoleBadgeInlineStyle === 'function') ? getRoleBadgeInlineStyle(r.role_key) : ''; %>
                                 <tr class="role-row"
                                     data-id="<%= r.id %>"
                                     data-unknown-permissions="<%= JSON.stringify(r.unknownPermissions || {}) %>"
@@ -41,7 +42,7 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="role-pill-badge <%= roleInfo.badgeClass %>"><%= r.name %></span>
+                                        <span class="role-pill-badge <%= roleInfo.badgeClass %>" style="<%= roleBadgeStyle %>" title="<%= r.name %>"><%= r.name %></span>
                                     </td>
                                     <td><span class="font-monospace text-warning fw-bold small">Lv.<%= r.tier_level %></span></td>
                                     <td>

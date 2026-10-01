@@ -179,6 +179,9 @@
                         name: s.role_name || fallbackRole.name,
                         badgeClass: fallbackRole.badgeClass
                     };
+                    const roleBadgeStyle = (typeof getRoleBadgeInlineStyle === 'function')
+                        ? getRoleBadgeInlineStyle(s.role)
+                        : '';
 
                     const statusMap = {
                         'idle': { name: '空閒中', class: 'status-idle', icon: 'fa-circle-check' },
@@ -231,7 +234,7 @@
 
                         <!-- 👤 所屬職位標籤 (全後台同步) -->
                         <td class="text-center">
-                            <span class="<%= roleObj.badgeClass %>"><%= roleObj.name %></span>
+                            <span class="<%= roleObj.badgeClass %>" style="<%= roleBadgeStyle %>" title="<%= roleObj.name %>"><%= roleObj.name %></span>
                         </td>
 
                         <td class="text-center">

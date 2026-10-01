@@ -11,7 +11,13 @@ const { SqliteSessionStore, resolveSessionDatabasePath } = require('./utils/sqli
 const path = require('path');
 const db = require('./database');
 const { getRolesDataFromDb } = require('./utils/dataSync');
-const { getRoleInfo } = require('./utils/roleHelper');
+const {
+    getRoleInfo,
+    getRoleBadgeInlineStyle,
+    ROLE_BADGE_CLASS_MAP,
+    ROLE_BADGE_INLINE_STYLE_MAP,
+    DEFAULT_ROLE_BADGE_INLINE_STYLE
+} = require('./utils/roleHelper');
 const orderStatus = require('./utils/orderStatus');
 const passport = require('./config/passport');
 const { sameOriginGuard } = require('./middleware/csrf');
@@ -70,6 +76,10 @@ app.use(sameOriginGuard);
 
 app.use((req, res, next) => {
     res.locals.getRoleInfo = getRoleInfo;
+    res.locals.getRoleBadgeInlineStyle = getRoleBadgeInlineStyle;
+    res.locals.roleBadgeClassMap = ROLE_BADGE_CLASS_MAP;
+    res.locals.roleBadgeInlineStyleMap = ROLE_BADGE_INLINE_STYLE_MAP;
+    res.locals.roleBadgeDefaultInlineStyle = DEFAULT_ROLE_BADGE_INLINE_STYLE;
     res.locals.orderStatus = orderStatus;
     res.locals.orderStatusFilters = orderStatus.getOrderStatusFilterOptions();
     res.locals.requestMethod = String(req.method || '').toUpperCase();

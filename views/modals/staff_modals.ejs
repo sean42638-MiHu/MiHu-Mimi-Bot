@@ -1,4 +1,5 @@
 <!-- 彈窗 1：員工詳細檔案彈窗 -->
+<% const staffModalRoleBadgeStyle = (typeof getRoleBadgeInlineStyle === 'function') ? getRoleBadgeInlineStyle('staff') : ''; %>
 <div class="modal fade" id="staffDetailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
         <div class="modal-content modal-content-glass">
@@ -15,7 +16,7 @@
                     <div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="fw-bold fs-5 text-white" id="detailDisplayName"></span>
-                            <span id="detailRoleBadge" class="role-badge role-badge-default" style="font-size: 0.72rem;">職位</span>
+                            <span id="detailRoleBadge" class="role-badge role-badge-default" style="<%= staffModalRoleBadgeStyle %>" title="職位">職位</span>
                             <span id="detailStatusBadge" class="status-pill status-idle" style="font-size: 0.7rem;">狀態</span>
                         </div>
                         <div class="small text-secondary font-monospace" id="detailUsername"></div>
