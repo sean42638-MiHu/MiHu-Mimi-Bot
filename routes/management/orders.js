@@ -510,7 +510,7 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
         if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權修改其他工作室訂單');
         if (isReassignmentRequest(req.body, order) && !canReassignOrder(res)) {
-            return denyPermission(req, res, ['action_order_edit_reassign'], { kind: 'action', feature: '編輯與改派訂單' });
+            return denyPermission(req, res, ['action_order_edit_reassign'], { kind: 'action', feature: '編輯訂單' });
         }
         const editInput = { ...req.body };
         if (hasOwn(req.body, 'price')) {
@@ -530,7 +530,7 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
     } catch (err) {
         if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
         if (err.code === 'ORDER_REASSIGNMENT_FORBIDDEN') {
-            return denyPermission(req, res, ['action_order_edit_reassign'], { kind: 'action', feature: '編輯與改派訂單' });
+            return denyPermission(req, res, ['action_order_edit_reassign'], { kind: 'action', feature: '編輯訂單' });
         }
         console.error('❌ 更新訂單失敗:', err);
         res.redirect(303, '/management/orders?error=' + encodeURIComponent('更新失敗'));
