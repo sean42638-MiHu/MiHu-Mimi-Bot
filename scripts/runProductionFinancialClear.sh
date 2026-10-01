@@ -139,7 +139,10 @@ if [ "$OFFSITE_MODE" = mounted ]; then
   [ ! -e "$mirror_local" ] && [ ! -e "$mirror_offsite" ] || fail 'Mirror archive destination already exists'
   sudo -u mihu mkdir -m 700 -- "$mirror_local" "$mirror_offsite"
 else
-  transfer_id="financial-${backup_name%.sqlite}-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
+  backup_stem="${backup_name%.sqlite}"
+  safe_backup_stem="$(printf '%s' "$backup_stem" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+  transfer_nonce="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+  transfer_id="financial-${safe_backup_stem}-$(date -u +%Y%m%d%H%M%S)-${transfer_nonce}"
   transfer_tmp="/tmp/$transfer_id"
   transfer_root="/home/deploy/$transfer_id"
   sudo rm -rf -- "$transfer_tmp" "$transfer_root"
