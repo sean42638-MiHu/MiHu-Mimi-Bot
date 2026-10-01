@@ -47,6 +47,14 @@ sudo -u mihu env NODE_ENV=production APP_ENV=production \
 
 審閱完整預覽 JSON（含 DB 與鏡像的 `fingerprint`）後，需另經維護時段與清理核准，再以 `CLEAR_RELEASE_COMMIT=<已核准完整 merge SHA>`、`CLEAR_PREVIEW_FINGERPRINT=<64 位審閱指紋>`、`CLEAR_OPERATOR_ID=<現有 admin 使用者 ID>`、`CLEAR_OFFSITE_MOUNT=<已驗證異地主機掛載目錄>` 四個環境變數執行 `bash scripts/runProductionFinancialClear.sh`。**不要**從本文件的舊快照推導或預填指紋、操作者、異地路徑或交互確認值。
 
+### Windows 下載式異地備份
+
+當正式 VPS 沒有異地 mount 時，不得把 Windows 路徑填入 `CLEAR_OFFSITE_MOUNT`。使用 transfer manifest／receipt 流程：VPS 以 `scripts/prepareFinancialBackupTransfer.js` 建立本次唯一 backup ID、DB／manifest／四種鏡像的完整 hash 清單（不存在的鏡像也記錄）；Windows 以 `scripts/verifyFinancialBackupReceipt.js --mode local` 驗證所有下載檔案的 SHA-256、SQLite integrity、manifest JSON 與存在的鏡像 JSON，並要求操作者確認已保存遠端副本；再將 receipt 上傳回 VPS，由 `--mode vps` 以 release、審閱 fingerprint、backup ID、逐檔 hash 比對並以一次性 marker 防止重放。
+
+Receipt 是**本機驗證證據**，不能宣稱 VPS 能獨立證明 Windows 磁碟仍保存檔案；receipt 內保留這個限制及操作者的保存確認。只有 VPS receipt 驗證成功後，才可進入原本的最終破壞性確認；任何缺檔、hash 不符、receipt 重放或指紋漂移都必須中止，不自動清理或還原。
+
+Transfer 暫存目錄若以 `mktemp -d` 建立並交給 `mihu` 讀取，清理時由 root 執行 `sudo rm -rf -- "$TMP"`，或在 `trap` 中使用相同 root 權限；不要放寬正式 DB／`PRODUCTION_DATA_DIR` 權限。
+
 1. 審閱本文件及 `scripts/clearProductionFinancialHistory.js`、`scripts/runProductionFinancialClear.sh` 的 GitHub PR，僅將已核准的完整 merge SHA 當作 `CLEAR_RELEASE_COMMIT`。保留目前未追蹤與其他未提交的 UI 修改，不得混入清理 PR。
 2. 在既有 VPS Remote SSH 終端，唯讀預覽 `node scripts/clearProductionFinancialHistory.js preview`，以 Web 服務的 `mihu` 身分及已核對的正式環境／儲存路徑執行。預覽產生 DB 加四種鏡像的 SHA-256 指紋、各表筆數及財務合計；把經審閱指紋設定為 `CLEAR_PREVIEW_FINGERPRINT`。如 DB 或鏡像有變，必須重新審閱，不能自行使用新指紋直接清理。
 3. 提供已核准的 `CLEAR_OPERATOR_ID` 與可寫入的**異地主機掛載點** `CLEAR_OFFSITE_MOUNT`。`scripts/runProductionFinancialClear.sh` 在確認原版 Web/Bot 都 active、tracked 工作樹乾淨、身份與資料路徑正確後才詢問第一次 `YES`。停掉兩個服務並確認 DB 無 handle、沒有 WAL/SHM/journal 殘留，再以唯讀預覽比對審閱指紋。

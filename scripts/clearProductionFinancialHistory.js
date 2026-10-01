@@ -8,6 +8,7 @@ const sqlite3 = require('sqlite3');
 const { inspectProductionDatabaseConfig } = require('../utils/productionDatabaseConfig');
 const { verifyBackupManifest, sha256File } = require('../utils/backupContract');
 const { resolveVipLevel } = require('../utils/vipResolver');
+const { verifyReceipt } = require('../utils/financialTransferContract');
 
 const CLEAR_TABLES = Object.freeze([
     'payout_ledger', 'payouts', 'order_creation_idempotency', 'orders',
@@ -229,14 +230,14 @@ async function preview(databasePath, dataDirectory = null) {
     }
 }
 
-async function clearInTransaction(db, expectedFingerprint, actorId, backupManifestPath, offsitePath, mirrorDirectory = null, mirrorArchives = null) {
+async function clearInTransaction(db, expectedFingerprint, actorId, backupManifestPath, offsitePath, mirrorDirectory = null, mirrorArchives = null, transferRoot = null) {
     await run(db, 'PRAGMA foreign_keys = ON');
     await run(db, 'BEGIN IMMEDIATE');
     try {
         const before = await snapshot(db);
         const mirrors = mirrorDirectory ? mirrorState(mirrorDirectory) : null;
         if (reviewedFingerprint(before.fingerprint, mirrors) !== expectedFingerprint) throw new Error('Preview fingerprint changed; abort without clearing');
-        if (mirrors) {
+        if (mirrors && mirrorArchives) {
             verifyMirrorArchives(mirrors, mirrorDirectory, mirrorArchives.local, mirrorArchives.offsite, db.databasePath);
         }
         const actor = await all(db, 'SELECT id, role FROM users WHERE id = ? LIMIT 1', [actorId]);
@@ -257,7 +258,7 @@ async function clearInTransaction(db, expectedFingerprint, actorId, backupManife
             actorId,
             JSON.stringify({ fingerprint: expectedFingerprint, counts: before.report.counts }),
             JSON.stringify({ deleted, walletBalancesZero: true, vipLevel: before.report.targetVip }),
-            JSON.stringify({ backupManifestPath, offsitePath, mirrors, mirrorArchives, source: 'reviewed-financial-clear' })
+            JSON.stringify({ backupManifestPath, offsitePath, mirrors, mirrorArchives, transferRoot, source: 'reviewed-financial-clear' })
         ]);
         for (const table of CLEAR_TABLES) {
             if ((await all(db, `SELECT COUNT(*) AS count FROM ${quote(table)}`))[0].count !== 0) throw new Error(`Not empty: ${table}`);
@@ -303,22 +304,43 @@ async function execute(env) {
     for (const suffix of ['-wal', '-shm', '-journal']) {
         if (fs.existsSync(`${databasePath}${suffix}`)) throw new Error(`SQLite sidecar exists: ${suffix}`);
     }
-    const manifestPath = String(env.CLEAR_BACKUP_MANIFEST || '');
-    const offsitePath = String(env.CLEAR_OFFSITE_COPY || '');
-    if (!path.isAbsolute(manifestPath) || !path.isAbsolute(offsitePath)) throw new Error('Absolute backup manifest and offsite copy required');
+    const transferRoot = String(env.CLEAR_TRANSFER_ROOT || '').trim();
+    const receiptPath = String(env.CLEAR_TRANSFER_RECEIPT || '').trim();
+    const downloadMode = Boolean(transferRoot || receiptPath);
+    const manifestPath = String(env.CLEAR_BACKUP_MANIFEST || (downloadMode ? path.join(transferRoot, 'database.manifest.json') : '')).trim();
+    const offsitePath = String(env.CLEAR_OFFSITE_COPY || (downloadMode ? receiptPath : '')).trim();
+    if (!path.isAbsolute(manifestPath) || (!downloadMode && !path.isAbsolute(offsitePath))) throw new Error('Absolute backup manifest and offsite copy required');
+    if (downloadMode && (!path.isAbsolute(transferRoot) || !path.isAbsolute(receiptPath))) throw new Error('Absolute transfer root and receipt required');
+    if (downloadMode && (path.resolve(transferRoot) === path.resolve(env.PRODUCTION_DATA_DIR || '')
+        || path.resolve(transferRoot) === path.resolve(path.dirname(databasePath)))) throw new Error('Transfer root cannot be production storage');
+    let transferReceipt = null;
+    if (downloadMode) {
+        const transferManifest = JSON.parse(fs.readFileSync(path.join(transferRoot, 'transfer-manifest.json'), 'utf8'));
+        transferReceipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+        verifyReceipt({ manifest: transferManifest, receipt: transferReceipt, root: transferRoot,
+            expectedRelease: env.CLEAR_RELEASE_COMMIT, expectedFingerprint: env.CLEAR_PREVIEW_FINGERPRINT });
+    }
     const backup = await verifyBackupManifest(manifestPath, databasePath, { requireCurrentSourceMatch: true });
     if (backup.schemaState !== 'READY') throw new Error('Backup schema not ready');
-    if (path.resolve(offsitePath) === path.resolve(backup.backupPath)
-        || fs.statSync(offsitePath).dev === fs.statSync(databasePath).dev) throw new Error('Offsite copy must be on separate storage');
-    const offsiteHash = await sha256File(offsitePath);
-    if (offsiteHash !== backup.backupSha256) throw new Error('Offsite backup checksum mismatch');
+    if (!downloadMode) {
+        if (path.resolve(offsitePath) === path.resolve(backup.backupPath)
+            || fs.statSync(offsitePath).dev === fs.statSync(databasePath).dev) throw new Error('Offsite copy must be on separate storage');
+        const offsiteHash = await sha256File(offsitePath);
+        if (offsiteHash !== backup.backupSha256) throw new Error('Offsite backup checksum mismatch');
+    }
     const expected = String(env.CLEAR_PREVIEW_FINGERPRINT || '');
     if (!/^[a-f0-9]{64}$/i.test(expected)) throw new Error('Reviewed preview fingerprint required');
+    if (downloadMode) {
+        const marker = path.join(transferRoot, '.receipt-consumed');
+        if (fs.existsSync(marker)) throw new Error('Transfer receipt was already consumed');
+        const transferManifest = JSON.parse(fs.readFileSync(path.join(transferRoot, 'transfer-manifest.json'), 'utf8'));
+        fs.writeFileSync(marker, `${JSON.stringify({ consumedAt: new Date().toISOString(), backupId: transferManifest.backupId })}\n`, { mode: 0o600 });
+    }
     const db = await openDatabase(databasePath, sqlite3.OPEN_READWRITE);
     db.databasePath = databasePath;
     try {
         return await clearInTransaction(db, expected, String(env.CLEAR_OPERATOR_ID || ''), manifestPath, offsitePath,
-            env.PRODUCTION_DATA_DIR, { local: String(env.CLEAR_MIRROR_BACKUP_DIR || ''), offsite: String(env.CLEAR_OFFSITE_MIRROR_DIR || '') });
+            env.PRODUCTION_DATA_DIR, downloadMode ? null : { local: String(env.CLEAR_MIRROR_BACKUP_DIR || ''), offsite: String(env.CLEAR_OFFSITE_MIRROR_DIR || '') }, transferRoot || null);
     } finally {
         await close(db);
     }
@@ -341,13 +363,19 @@ async function syncMirrors(env) {
             || metadata.backupManifestPath !== env.CLEAR_BACKUP_MANIFEST
             || metadata.offsitePath !== env.CLEAR_OFFSITE_COPY) throw new Error('Clear audit does not match reviewed backup and fingerprint');
         const backup = await verifyBackupManifest(metadata.backupManifestPath, databasePath);
-        if (backup.schemaState !== 'READY' || await sha256File(metadata.offsitePath) !== backup.backupSha256) {
+        const transferMode = Boolean(metadata.transferRoot);
+        if (transferMode) {
+            const transferRoot = metadata.transferRoot;
+            const transferManifest = JSON.parse(fs.readFileSync(path.join(transferRoot, 'transfer-manifest.json'), 'utf8'));
+            const receipt = JSON.parse(fs.readFileSync(metadata.offsitePath, 'utf8'));
+            verifyReceipt({ manifest: transferManifest, receipt, root: transferRoot });
+        } else if (backup.schemaState !== 'READY' || await sha256File(metadata.offsitePath) !== backup.backupSha256) {
             throw new Error('Backup or offsite copy verification failed');
         }
-        if (fs.statSync(metadata.offsitePath).dev === fs.statSync(databasePath).dev) {
+        if (!transferMode && fs.statSync(metadata.offsitePath).dev === fs.statSync(databasePath).dev) {
             throw new Error('Offsite backup is not on separate storage');
         }
-        verifyMirrorArchives(metadata.mirrors, env.PRODUCTION_DATA_DIR, metadata.mirrorArchives.local,
+        if (metadata.mirrorArchives) verifyMirrorArchives(metadata.mirrors, env.PRODUCTION_DATA_DIR, metadata.mirrorArchives.local,
             metadata.mirrorArchives.offsite, databasePath);
         if (JSON.stringify(mirrorState(env.PRODUCTION_DATA_DIR)) !== JSON.stringify(metadata.mirrors)) {
             throw new Error('Production mirrors changed since the reviewed clearing transaction');
