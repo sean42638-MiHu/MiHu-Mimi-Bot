@@ -8,6 +8,7 @@ const { test } = require('node:test');
 const sqlite3 = require('sqlite3');
 const { createManifest, verifyReceipt } = require('../utils/financialTransferContract');
 const { main: verifyReceiptCommand } = require('../scripts/verifyFinancialBackupReceipt');
+const { main: prepareTransfer } = require('../scripts/prepareFinancialBackupTransfer');
 
 function writeDatabase(filename) {
     const db = new sqlite3.Database(filename);
@@ -116,4 +117,47 @@ test('download runner freezes writers before transfer and keeps final confirmati
     assert.doesNotMatch(runner, /confirm-remote-retention YES/);
     assert.match(runner, /No clear was started; attempting to restore the original services/);
     assert.match(runner, /Keep both writers stopped until DB state and backup are verified/);
+    assert.match(runner, /tr '\[:upper:\]' '\[:lower:\]'/);
+    assert.match(runner, /od -An -N8 -tx1 \/dev\/urandom/);
+});
+
+test('production-style backup filename produces a valid shared transfer ID', async () => {
+    const source = await fixture();
+    const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-backup-'));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihu-transfer-output-'));
+    try {
+        const backupFile = 'mihu-database-20261001T152448Z.sqlite';
+        fs.copyFileSync(path.join(source, 'database.sqlite'), path.join(backupDir, backupFile));
+        fs.writeFileSync(path.join(backupDir, `${backupFile}.manifest.json`), JSON.stringify({
+            contractVersion: 1,
+            backupFile,
+            backupSha256: 'source-hash',
+            sourceIdentitySha256: 'source-identity',
+            schemaState: 'READY',
+            tableCount: 1,
+            integrity: 'ok'
+        }));
+        await prepareTransfer([
+            '--backup-dir', backupDir,
+            '--backup-file', backupFile,
+            '--manifest-file', `${backupFile}.manifest.json`,
+            '--data-dir', path.join(source, 'mirrors'),
+            '--output-dir', outputDir,
+            '--release', 'a'.repeat(40),
+            '--fingerprint', 'b'.repeat(64)
+        ]);
+        const transferManifest = JSON.parse(fs.readFileSync(path.join(outputDir, 'transfer-manifest.json'), 'utf8'));
+        assert.match(transferManifest.backupId, /^[a-z0-9-]{16,80}$/);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(outputDir, 'database.manifest.json'), 'utf8')).backupFile, 'database.sqlite');
+        assert.throws(() => createManifest({
+            root: outputDir,
+            backupId: 'financial-invalid-ID',
+            releaseCommit: 'a'.repeat(40),
+            previewFingerprint: 'b'.repeat(64)
+        }), /backup ID is invalid/);
+    } finally {
+        fs.rmSync(source, { recursive: true, force: true });
+        fs.rmSync(backupDir, { recursive: true, force: true });
+        fs.rmSync(outputDir, { recursive: true, force: true });
+    }
 });
