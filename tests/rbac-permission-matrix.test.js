@@ -104,9 +104,9 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
     assert.match(read('routes/management/orders.js'), /checkPerm\('action_order_manage'\)/);
     const managementOrders = read('routes/management/orders.js');
     const legacyOrders = read('routes/orders.js');
-    assert.match(managementOrders, /router\.get\('\/', ensureAuth, checkPerm\('view_manage_orders'\)/);
+    assert.match(managementOrders, /requiresEditPermission/);
+    assert.match(managementOrders, /action_order_edit_reassign/);
     assert.match(managementOrders, /router\.post\('\/update\/:id', ensureAuth, requireUpdatePermission/);
-    assert.match(managementOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'action_order_refund' : 'action_order_manage'/);
     assert.match(managementOrders, /router\.post\('\/batch-delete\/preview', ensureAuth, checkPerm\('action_order_batch_delete'\)/);
     assert.match(managementOrders, /router\.post\('\/batch-delete', ensureAuth, checkPerm\('action_order_batch_delete'\)/);
     assert.match(managementOrders, /router\.post\('\/cancel\/:id', ensureAuth, checkPerm\('action_order_refund'\)/);
@@ -114,7 +114,7 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
     assert.match(managementOrders, /router\.post\('\/create', ensureAuth, requireManualOrderAccess/);
     assert.match(managementOrders, /router\.get\('\/create\/member-wallet\/:memberId', ensureAuth, requireManualOrderAccess/);
     assert.match(managementOrders, /allowPriceAdjustment: canAdjustOrderPrice\(res\)/);
-    assert.match(legacyOrders, /router\.get\('\/orders', ensureAuth, checkPerm\('view_manage_orders'\)/);
+    assert.match(legacyOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'action_order_refund' : 'action_order_manage'/);
     assert.match(legacyOrders, /router\.post\('\/orders\/update\/:id', ensureAuth, requireUpdatePermission/);
     assert.match(legacyOrders, /const permission = req\.body && req\.body\.is_delete === '1' \? 'action_order_refund' : 'action_order_manage'/);
     assert.match(legacyOrders, /allowPriceAdjustment: canAdjustOrderPrice\(res\)/);

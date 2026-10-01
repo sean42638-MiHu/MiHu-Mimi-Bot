@@ -377,6 +377,8 @@
         setText('detailOriginalPrice', `$${Number(data.originalPrice || data.totalAmount).toLocaleString()}`);
         setText('detailDiscount', data.discount ? `-$${Number(data.discount).toLocaleString()}` : '$0');
         setText('detailTotalAmountText', `$${Number(data.totalAmount).toLocaleString()} NTD`);
+        setVal('editOrderPrice', Number(data.totalAmount || 0).toFixed(2));
+        updateOrderPricePreview();
 
         setVal('editCategory', data.category || '陪玩單');
         setVal('editGame', data.itemName);
@@ -398,6 +400,26 @@
             instance.show();
         }
     }
+
+    function updateOrderPricePreview() {
+        const input = document.getElementById('editOrderPrice');
+        const preview = document.getElementById('orderPriceAdjustmentPreview');
+        if (!input || !preview) return;
+        const current = Number(document.getElementById('detailTotalAmountText')?.textContent.replace(/[^0-9.-]/g, '') || 0);
+        const next = Number(input.value);
+        if (!Number.isFinite(next) || next < 0) {
+            preview.textContent = '請輸入有效的非負金額（最多兩位小數）。';
+            return;
+        }
+        const delta = Number((next - current).toFixed(2));
+        preview.textContent = delta === 0
+            ? '差額：$0；不會新增扣款或退款流水。'
+            : delta > 0
+                ? `差額：+$${delta.toFixed(2)}；預計補扣 $${delta.toFixed(2)}，分潤將由後端依既有快照重算。`
+                : `差額：-$${Math.abs(delta).toFixed(2)}；預計退款 $${Math.abs(delta).toFixed(2)}，實充／贈送金分桶由後端依可追蹤流水計算。`;
+    }
+
+    document.getElementById('editOrderPrice')?.addEventListener('input', updateOrderPricePreview);
 
     function setOrderStatusBadgeWithCs(containerId, statusMeta, csName) {
         const el = document.getElementById(containerId);

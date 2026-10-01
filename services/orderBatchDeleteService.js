@@ -182,15 +182,22 @@ async function getRefundLedgerSummary(order) {
         ORDER BY id ASC
     `, [bossId, orderReference, ...PAYMENT_LEDGER_TYPES]);
 
-    const refundRows = await dbAll(`
-        SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
-        FROM wallet_transactions
-        WHERE user_id = ?
-          AND reference_type = 'order'
-          AND reference_id = ?
-          AND type = 'refund'
-        ORDER BY id ASC
-    `, [bossId, orderReference]);
+        const refundRows = await dbAll(`
+                SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
+                FROM wallet_transactions
+                WHERE user_id = ?
+                    AND reference_type = 'order'
+                    AND reference_id = ?
+                    AND type = 'refund'
+                UNION ALL
+                SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
+                FROM wallet_transactions
+                WHERE user_id = ?
+                    AND type = 'order_adjustment_refund'
+                    AND reference_type = 'order_adjustment'
+                    AND description = ?
+                ORDER BY id ASC
+        `, [bossId, orderReference, bossId, adjustmentDescription]);
 
     const unknownOrderLinkedRows = await dbAll(`
         SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
@@ -198,7 +205,7 @@ async function getRefundLedgerSummary(order) {
         WHERE user_id = ?
           AND reference_type = 'order'
           AND reference_id = ?
-          AND type NOT IN (${paymentTypePlaceholders}, 'refund')
+          AND type NOT IN (${paymentTypePlaceholders}, 'refund', 'order_adjustment_refund', 'order_adjustment_deduct')
         ORDER BY id ASC
     `, [bossId, orderReference, ...PAYMENT_LEDGER_TYPES]);
 
@@ -206,11 +213,11 @@ async function getRefundLedgerSummary(order) {
         SELECT id, user_id, type, amount, COALESCE(bonus_amount, 0) AS bonus_amount, reference_type, reference_id, description
         FROM wallet_transactions
         WHERE user_id = ?
-          AND type = 'order_adjustment'
-          AND reference_type = 'order_adjustment'
-          AND description = ?
+            AND type IN ('order_adjustment', 'order_adjustment_deduct')
+            AND (reference_type = 'order_adjustment' OR reference_type = 'order')
+            AND (description = ? OR reference_id = ?)
         ORDER BY id ASC
-    `, [bossId, adjustmentDescription]);
+        `, [bossId, adjustmentDescription, orderReference]);
 
     return { paymentRows, refundRows, adjustmentRows, unknownOrderLinkedRows, inconsistent: null };
 }

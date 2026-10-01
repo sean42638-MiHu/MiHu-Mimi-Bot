@@ -27,7 +27,12 @@ function canManageOrderStudio(req, res, studioId) {
 }
 
 function requireUpdatePermission(req, res, next) {
-    const permission = req.body && req.body.is_delete === '1' ? 'action_order_refund' : 'action_order_manage';
+    const body = req.body || {};
+    const editFields = ['price', 'original_price', 'unit_price', 'duration', 'talent_id', 'staff_id', 'talentId', 'staffId'];
+    const requiresEditPermission = editFields.some(field => hasOwn(body, field));
+    const permission = body.is_delete === '1'
+        ? 'action_order_refund'
+        : requiresEditPermission ? 'action_order_edit_reassign' : 'action_order_manage';
     return checkPerm(permission)(req, res, next);
 }
 
@@ -40,7 +45,7 @@ function canAdjustOrderPrice(res) {
 }
 
 function canReassignOrder(res) {
-    return hasResolvedPermission(res.locals.userPerms, 'action_order_reassign');
+    return hasResolvedPermission(res.locals.userPerms, 'action_order_edit_reassign');
 }
 
 function requireManualOrderAccess(req, res, next) {
@@ -220,6 +225,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
                     orders: orders || [],
                     talents: talents || [],
                     canCreateManualOrder: hasResolvedPermission(res.locals.userPerms, 'action_order_create'),
+                    canEditOrder: hasResolvedPermission(res.locals.userPerms, 'action_order_edit_reassign'),
                     canAdjustOrderPrice: hasResolvedPermission(res.locals.userPerms, 'action_order_price'),
                     defaultTalentShareRates: DEFAULT_TALENT_SHARE_RATES,
                     activePage: 'orders',
@@ -504,9 +510,13 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
         if (!order) return res.redirect(303, '/management/orders?error=' + encodeURIComponent('找不到目標訂單'));
         if (!canManageOrderStudio(req, res, order.studio_id)) return res.status(403).send('無權修改其他工作室訂單');
         if (isReassignmentRequest(req.body, order) && !canReassignOrder(res)) {
-            return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
+            return denyPermission(req, res, ['action_order_edit_reassign'], { kind: 'action', feature: '編輯與改派訂單' });
         }
-        await updateOrder(req.params.id, { ...req.body, operatorId: req.user.id, source: 'management-order-route' }, {
+        const editInput = { ...req.body };
+        if (hasOwn(req.body, 'price')) {
+            editInput.total_amount = parseMoneyValue(req.body.price, '訂單總金額');
+        }
+        await updateOrder(req.params.id, { ...editInput, operatorId: req.user.id, source: 'management-order-route' }, {
             allowPriceAdjustment: canAdjustOrderPrice(res),
             allowReassignment: canReassignOrder(res)
         });
@@ -520,7 +530,7 @@ router.post('/update/:id', ensureAuth, requireUpdatePermission, async (req, res)
     } catch (err) {
         if (err.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') return res.status(403).send(err.message);
         if (err.code === 'ORDER_REASSIGNMENT_FORBIDDEN') {
-            return denyPermission(req, res, ['action_order_reassign'], { kind: 'action', feature: '改派訂單' });
+            return denyPermission(req, res, ['action_order_edit_reassign'], { kind: 'action', feature: '編輯與改派訂單' });
         }
         console.error('❌ 更新訂單失敗:', err);
         res.redirect(303, '/management/orders?error=' + encodeURIComponent('更新失敗'));

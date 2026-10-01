@@ -97,7 +97,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         assert.equal(assigned.walletDelta, -50);
         assert.equal(assigned.order.total_amount, 250);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 750);
-        const adjustmentLedger = await get("SELECT * FROM wallet_transactions WHERE type = 'order_adjustment'");
+        const adjustmentLedger = await get("SELECT * FROM wallet_transactions WHERE type = 'order_adjustment_deduct'");
         assert.equal(adjustmentLedger.amount, -50);
         assert.equal(adjustmentLedger.reference_type, 'order_adjustment');
         assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 4);
@@ -108,7 +108,7 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         }, { allowPriceAdjustment: true });
         assert.equal(updated.total_amount, 275);
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 725);
-        assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'order_adjustment'")).count, 2);
+        assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'order_adjustment_deduct'")).count, 2);
 
         const reassignmentAttemptInput = {
             original_price: 275,
@@ -180,14 +180,15 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
         assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, beforeSamePriceReassignment.wallet.balance);
         assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions')).count, beforeSamePriceReassignment.ledger.count);
 
-        const beforeDeniedCredits = await snapshot();
-        await assert.rejects(updateOrder('TEST-ORDER-1', {
+        const beforePriceDecrease = await snapshot();
+        const decreased = await updateOrder('TEST-ORDER-1', {
             original_price: 200, unit_price: 200, duration: 1, discount: 0, operatorId: 'cs'
-        }, { allowPriceAdjustment: true }), /會增加會員錢包/);
-        await assert.rejects(assignOrder('TEST-ORDER-1', {
-            talentId: 'talent', originalPrice: 200, discount: 0, operatorId: 'manager'
-        }, { allowPriceAdjustment: true }), /會增加會員錢包/);
-        assert.deepEqual(await snapshot(), beforeDeniedCredits);
+        }, { allowPriceAdjustment: true });
+        assert.equal(decreased.total_amount, 200);
+        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 800);
+        assert.equal((await get("SELECT amount, bonus_amount, reference_type FROM wallet_transactions WHERE type = 'order_adjustment_refund' ORDER BY id DESC LIMIT 1")).reference_type, 'order_adjustment');
+        assert.equal((await get("SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'order_adjustment_refund'")).count, 1);
+        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, beforePriceDecrease.wallet.balance + 75);
 
         const unlinkedHistorical = await createOrder({
             ...input, orderNo: 'TEST-UNLINKED-HISTORY', status: 'pending', finalAmount: 50,
@@ -207,9 +208,9 @@ test('OrderService create atomically links order, wallet, ledger and audit', asy
             BEGIN SELECT RAISE(ABORT, 'injected order audit failure'); END`);
         await assert.rejects(createOrder({ ...input, orderNo: 'TEST-ORDER-FAIL', walletDelta: -100 }));
         assert.equal((await get('SELECT COUNT(*) AS count FROM orders')).count, 3);
-        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 725);
-        assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions')).count, 3);
-        assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 11);
+        assert.equal((await get('SELECT balance FROM user_wallets WHERE user_id = ?', ['boss'])).balance, 800);
+        assert.equal((await get('SELECT COUNT(*) AS count FROM wallet_transactions')).count, 4);
+        assert.equal((await get('SELECT COUNT(*) AS count FROM audit_logs')).count, 13);
         await run('DROP TRIGGER fail_order_create_audit');
 
         const stableState = await snapshot();

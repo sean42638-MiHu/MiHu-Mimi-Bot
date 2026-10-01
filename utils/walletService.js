@@ -232,6 +232,7 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
     }
 
     const orderReference = String(order.id);
+    const adjustmentDescription = `Order price adjustment ${String(order.order_no)}`;
     const orderPayments = await dbAll(`
         SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
         FROM wallet_transactions
@@ -240,23 +241,25 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
         ORDER BY id ASC
     `, [String(order.boss_id), orderReference]);
     const existingRefunds = await dbAll(`
-        SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
-        FROM wallet_transactions
-        WHERE user_id = ? AND reference_type = 'order' AND reference_id = ? AND type = 'refund'
-        ORDER BY id ASC
-    `, [String(order.boss_id), orderReference]);
-    if (existingRefunds.length > 0) {
-        throw new Error(`訂單 ${order.order_no} 已有退款流水，不可重複退款`);
-    }
-
-    const adjustmentDescription = `Order price adjustment ${String(order.order_no)}`;
+                SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
+                FROM wallet_transactions
+                WHERE user_id = ? AND reference_type = 'order' AND reference_id = ?
+                    AND type = 'refund'
+                UNION ALL
+                SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
+                FROM wallet_transactions
+                WHERE user_id = ? AND type = 'order_adjustment_refund'
+                    AND reference_type = 'order_adjustment' AND description = ?
+        ORDER BY amount ASC
+    `, [String(order.boss_id), orderReference, String(order.boss_id), adjustmentDescription]);
     const orderAdjustments = await dbAll(`
         SELECT amount, COALESCE(bonus_amount, 0) AS bonus_amount
         FROM wallet_transactions
-        WHERE user_id = ? AND type = 'order_adjustment'
-          AND reference_type = 'order_adjustment' AND description = ?
+                WHERE user_id = ? AND type IN ('order_adjustment', 'order_adjustment_deduct')
+                    AND amount < 0 AND (reference_type = 'order_adjustment' OR reference_type = 'order')
+                    AND (description = ? OR reference_id = ?)
         ORDER BY id ASC
-    `, [String(order.boss_id), adjustmentDescription]);
+        `, [String(order.boss_id), adjustmentDescription, orderReference]);
     const validComposition = row => {
         const amount = Number(row.amount);
         const bonusAmount = Number(row.bonus_amount || 0);
