@@ -50,6 +50,11 @@ async function setupFixture(databasePath) {
         bank_branch_snapshot TEXT, account_name_snapshot TEXT, bank_account_snapshot TEXT,
         created_at TEXT, updated_at TEXT
     )`);
+    await run(db, `CREATE TABLE salary_adjustments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, studio_id INTEGER NOT NULL,
+        available_delta REAL NOT NULL DEFAULT 0, earned_delta REAL NOT NULL DEFAULT 0,
+        history_delta REAL NOT NULL DEFAULT 0
+    )`);
     await run(db, `CREATE UNIQUE INDEX idx_payouts_active_period
         ON payouts(user_id,studio_id,withdrawal_period)
         WHERE withdrawal_period IS NOT NULL AND status IN ('pending','paid')`);
@@ -120,6 +125,11 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 100, date: new Date('2026-09-08T12:00:00.000Z') }), /申請期間/);
 
         const walletBefore = await all(db, 'SELECT user_id,balance FROM user_wallets ORDER BY user_id');
+        await run(db, `INSERT INTO salary_adjustments (user_id,studio_id,available_delta,earned_delta,history_delta)
+            VALUES ('user-c',2,60,40,30)`);
+        const salaryIntegratedSummary = await service.getPayoutSummary({ userId: 'user-c', studioId: 2, date: testDate });
+        assert.equal(salaryIntegratedSummary.totalEarned, 5070);
+        assert.equal(salaryIntegratedSummary.availableAmount, 5100);
         const requested = await service.requestWithdrawal({ userId: 'user-a', amount: 3000, date: testDate });
         assert.equal(requested.status, 'pending');
         assert.equal(requested.availableAmount, 7000);

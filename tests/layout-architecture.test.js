@@ -68,13 +68,13 @@ test('wildcard renders every existing sidebar destination', async () => {
     const html = await renderSidebar(['*']);
     for (const href of [
         '/dashboard', '/profile', '/wallet', '/income', '/my-orders', '/management/analytics',
-        '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll',
+        '/management/members', '/management/members/transactions', '/management/staff', '/management/payroll', '/management/salary-settings',
         '/management/orders', '/system/settings', '/system/bot', '/system/commission', '/system/vip', '/system/roles',
         '/system/logs', '/system/status'
     ]) {
         assert.match(html, new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), href);
     }
-    for (const label of ['首頁', '個人', '管理', '系統', '系統設定', '系統管理', '系統資訊', '會員名單', '會員資金明細', '員工列表', '薪轉管理']) {
+    for (const label of ['首頁', '個人', '管理', '系統', '系統設定', '系統管理', '系統資訊', '會員名單', '會員資金明細', '員工列表', '薪轉管理', '薪資設定']) {
         assert.match(html, new RegExp(label), label);
     }
 });
@@ -90,17 +90,26 @@ test('individual view permissions render only their destination and necessary pa
     assert.match(payroll, /員工管理/);
     assert.match(payroll, /href="\/management\/payroll"[^>]*active-staff/);
     assert.doesNotMatch(payroll, /href="\/management\/staff"/);
+    assert.doesNotMatch(payroll, /href="\/management\/salary-settings"/);
     assert.doesNotMatch(payroll, /會員管理/);
+
+    const salarySettings = await renderSidebar(['view_management', 'view_payroll'], 'salary_settings');
+    assert.match(salarySettings, /系統管理/);
+    assert.match(salarySettings, /href="\/management\/salary-settings"[^>]*active-staff/);
+    assert.doesNotMatch(salarySettings, /href="\/management\/payroll"/);
+    assert.doesNotMatch(salarySettings, /href="\/management\/staff"/);
+    assert.doesNotMatch(salarySettings, /員工管理/);
 });
 
 test('nested admin destinations have one current link and an active expanded parent', async () => {
-    const permissions = ['view_management', 'action_view_analytics', 'view_manage_members', 'view_member_ledger', 'view_manage_staff', 'view_staff_payroll'];
+    const permissions = ['view_management', 'action_view_analytics', 'view_manage_members', 'view_member_ledger', 'view_manage_staff', 'view_staff_payroll', 'view_payroll'];
     const cases = [
         ['analytics', '/management/analytics', 'collapseOperation'],
         ['members', '/management/members', 'collapseMembers'],
         ['member_transactions', '/management/members/transactions', 'collapseMembers'],
         ['staff', '/management/staff', 'collapseStaff'],
-        ['payroll', '/management/payroll', 'collapseStaff']
+        ['payroll', '/management/payroll', 'collapseStaff'],
+        ['salary_settings', '/management/salary-settings', 'collapseSystemManage']
     ];
 
     for (const [activePage, href, collapseId] of cases) {

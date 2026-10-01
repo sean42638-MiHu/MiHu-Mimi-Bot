@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { DEFAULT_VIP_COLOR, normalizeVipColor, isValidVipColor } = require('./utils/vipColor');
 const { ensurePayoutSchema } = require('./utils/payoutSchema');
+const { ensureSalarySchema } = require('./utils/salarySchema');
 const { withTransactionGate } = require('./utils/transactionGate');
 const { getDatabasePath, getRuntimeDataDirectory } = require('./utils/runtimePaths');
 const { PLATFORM_SUPERUSER_ID } = require('./utils/permissionResolver');
@@ -341,9 +342,10 @@ function initializeDatabase({ explicitMigration = false } = {}) {
     if (initialized) return db;
     initialized = true;
     const payoutStartup = createDeferred();
+    const salaryStartup = createDeferred();
     const commissionStartup = createDeferred();
     const walletCompositionStartup = createDeferred();
-    startupReady = Promise.all([payoutStartup.promise, commissionStartup.promise, walletCompositionStartup.promise])
+    startupReady = Promise.all([payoutStartup.promise, salaryStartup.promise, commissionStartup.promise, walletCompositionStartup.promise])
         .then(() => assertDatabaseReady(db))
         .then(() => undefined);
     startupReady.catch(() => {});
@@ -1001,6 +1003,14 @@ function initializeDatabase({ explicitMigration = false } = {}) {
             return;
         }
         migrateSensitivePayrollData().then(payoutStartup.resolve, payoutStartup.reject);
+    });
+
+    ensureSalarySchema(db, migrationError => {
+        if (migrationError) {
+            salaryStartup.reject(migrationError);
+            return;
+        }
+        salaryStartup.resolve();
     });
 
     // 9. Discord 機器人指令設定表 (修正 ON CONFLICT，防止 UNIQUE constraint failed: bot_commands.id)

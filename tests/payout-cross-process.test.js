@@ -50,6 +50,11 @@ async function setupDatabase(databasePath) {
         bank_branch_snapshot TEXT, account_name_snapshot TEXT, bank_account_snapshot TEXT,
         created_at TEXT, updated_at TEXT
     )`);
+    await run(db, `CREATE TABLE salary_adjustments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, studio_id INTEGER NOT NULL,
+        available_delta REAL NOT NULL DEFAULT 0, earned_delta REAL NOT NULL DEFAULT 0,
+        history_delta REAL NOT NULL DEFAULT 0
+    )`);
     await run(db, `CREATE UNIQUE INDEX idx_payouts_active_period
         ON payouts(user_id,studio_id,withdrawal_period)
         WHERE withdrawal_period IS NOT NULL AND status IN ('pending','paid')`);

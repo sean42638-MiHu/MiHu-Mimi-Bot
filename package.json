@@ -26,12 +26,14 @@
     "test": "node --test"
   },
   "dependencies": {
+    "csv-parse": "^7.0.3",
     "discord.js": "^14.27.0",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
+    "multer": "^1.4.5-lts.2",
     "nodemailer": "^10.0.10",
     "passport": "^0.7.0",
     "passport-discord": "^0.1.4",

@@ -93,6 +93,13 @@ async function getPayoutSummary({ userId, studioId, date = new Date() }) {
     const dateParts = getLocalDateParts(date, settings.timeZone);
     const withdrawalPeriod = `${dateParts.year}-${dateParts.month}`;
     const earned = await dbGet(earnedSalarySql(), [userId, userId, studioId]);
+    const salaryAdjustments = await dbGet(`
+        SELECT COALESCE(SUM(earned_delta), 0) AS earned_delta,
+            COALESCE(SUM(history_delta), 0) AS history_delta,
+            COALESCE(SUM(available_delta), 0) AS available_delta
+        FROM salary_adjustments
+        WHERE user_id = ? AND studio_id = ?
+    `, [userId, studioId]);
     const totals = await dbGet(`
         SELECT
             COALESCE(SUM(CASE WHEN p.status IN ('paid','completed') THEN p.amount ELSE 0 END), 0) AS paid_amount,
@@ -102,9 +109,13 @@ async function getPayoutSummary({ userId, studioId, date = new Date() }) {
         WHERE p.user_id = ?
           AND (p.studio_id = ? OR (p.studio_id IS NULL AND u.studio_id = ?))
     `, [userId, studioId, studioId]);
-    const totalEarned = Number(earned && earned.total_earned || 0);
-    const paidAmount = Number(totals && totals.paid_amount || 0);
-    const pendingAmount = Number(totals && totals.pending_amount || 0);
+    const orderEarned = Number(earned && earned.total_earned || 0);
+    const earnedAdjustment = Number(salaryAdjustments && salaryAdjustments.earned_delta || 0);
+    const historyAdjustment = Number(salaryAdjustments && salaryAdjustments.history_delta || 0);
+    const availableAdjustment = Number(salaryAdjustments && salaryAdjustments.available_delta || 0);
+    const totalEarned = Number((orderEarned + earnedAdjustment + historyAdjustment).toFixed(2));
+    const paidAmount = Number(Number(totals && totals.paid_amount || 0).toFixed(2));
+    const pendingAmount = Number(Number(totals && totals.pending_amount || 0).toFixed(2));
     return {
         userId,
         studioId,
@@ -112,7 +123,10 @@ async function getPayoutSummary({ userId, studioId, date = new Date() }) {
         totalEarned,
         paidAmount,
         pendingAmount,
-        availableAmount: Math.max(0, totalEarned - paidAmount - pendingAmount),
+        availableAmount: Math.max(0, Number((orderEarned + earnedAdjustment + availableAdjustment - paidAmount - pendingAmount).toFixed(2))),
+        availableAdjustment,
+        earnedAdjustment,
+        historyAdjustment,
         settings,
         dayOfMonth: Number(dateParts.day),
         windowOpen: Number(dateParts.day) >= settings.startDay && Number(dateParts.day) <= settings.endDay
