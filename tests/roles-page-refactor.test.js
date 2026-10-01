@@ -39,7 +39,7 @@ test('roles are returned by tier_level DESC and id ASC from a disposable databas
     }
 });
 
-test('permission editor renders every canonical switch once across three groups', async () => {
+test('permission editor renders every canonical switch once across two tabs', async () => {
     const { PERMISSION_METADATA } = require('../config/permissions');
     const page = await ejs.renderFile(path.join(root, 'views/modals/role_permission_modal.ejs'), {
         hasPerm: key => key === 'action_role_manage', permissionMetadata: PERMISSION_METADATA,
@@ -48,24 +48,29 @@ test('permission editor renders every canonical switch once across three groups'
     for (const key of Object.keys(PERMISSION_METADATA)) {
         assert.equal(page.split('value="' + key + '"').length - 1, 1, key);
     }
-    assert.match(page, /1\. 側邊欄與頁面能見度/);
-    assert.match(page, /2\. 敏感個資與進階操作權限/);
-    assert.match(page, /3\. 高權限與敏感情節/);
+    assert.match(page, /role="tablist"/);
+    assert.match(page, /🌐 項目能見度 \(頁面\/選單\)/);
+    assert.match(page, /⚡ 功能操作權限 \(按鈕\/API\)/);
+    assert.match(page, /view_cat_system_settings/);
+    assert.match(page, /view_cat_system_manage/);
+    assert.match(page, /view_cat_system_info/);
     assert.doesNotMatch(page, /舊版選單|舊版操作|value="\*"/);
     const actor = resolvePermissions(['sys_roles', 'manage_orders']);
     const saved = validatePermissionGrant(actor, ['manage_orders', 'orders.view'], { preserveLegacy: true });
-    assert.deepEqual(saved, ['action_order_management', 'view_manage_orders']);
+    assert.deepEqual(saved, ['action_order_management', 'view_manage_orders', 'view_management']);
     assert.equal(resolvePermissions(saved).includes('action_order_manage'), true);
     assert.throws(() => validatePermissionGrant(actor, ['member_adjust_balance'], { preserveLegacy: true }), RoleDelegationError);
 });
 
 test('role editor reloads checkbox state from stored raw permissions rather than alias implications', () => {
     const script = fs.readFileSync(path.join(root, 'public/js/roles-page.js'), 'utf8');
-    assert.match(script, /currentPermsArray\.forEach\(perm => \{[\s\S]*?cb\.dataset\.explicitChecked = 'true'/);
+    assert.match(script, /currentPermsArray\.forEach\([a-zA-Z_$][\w$]* => \{[\s\S]*?dataset\.explicitChecked = 'true'/);
     assert.match(script, /const rawPerms = row\.getAttribute\('data-perms'\)/);
     assert.match(script, /checkbox\.dataset\.explicitChecked === 'true'/);
     assert.match(script, /legacyPermissionImplications\[source\]/);
-    assert.match(script, /checkbox\.disabled = checkbox\.dataset\.inactive === \'true\' \|\| !canDelegate \|\| Boolean\(source && !explicit\.has\(checkbox\.value\)\)/);
+    assert.match(script, /dataset\.permissionParentKey/);
+    assert.match(script, /applyHierarchyToggleRules/);
+    assert.match(script, /checkbox\.disabled = checkbox\.dataset\.inactive === \'true\'[\s\S]*?\|\| blockedByParent;/);
     assert.match(script, /由「\$\{sourceLabel\}」推導啟用/);
     const rolesPage = fs.readFileSync(path.join(root, 'views/roles.ejs'), 'utf8');
     assert.match(rolesPage, /legacyPermissionImplications: typeof legacyPermissionImplications !== 'undefined'/);

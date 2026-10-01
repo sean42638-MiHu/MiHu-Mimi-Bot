@@ -187,7 +187,7 @@ test('repository Production roles definition records owner approval and satisfie
         'Approved roles definition requires a non-empty changeRecord'
     ]);
     const repoAdmin = readRepoRoles().roles.find(item => item.role_key === 'admin');
-    assert.deepEqual(readRepoRoles().roles.map(item => item.role_key), ['admin', 'aftersales', 'manager', 'cs', 'talent', 'member']);
+    assert.deepEqual(readRepoRoles().roles.map(item => item.role_key), ['admin', 'aftersales', 'manager', 'cs', 'reviewer', 'talent', 'member']);
     // cfo is intentionally absent; assigning a role key with no DB row must fail closed even for the superuser.
     assert.equal(canAssignRole({ permissions: resolvePermissions([], true) }, null), false);
     for (const key of ['view_payout', 'action_payout_sensitive', 'action_payout_export', 'action_payout_mark_paid', 'action_payout_reject']) {
@@ -248,6 +248,8 @@ test('RBAC bootstrap and preflight separate initialization from go-live staffing
             sqlite3Module.Database = OriginalDatabase;
         }
         assert.deepEqual(writableOpens, [], 'refusal must happen before any writable DB open');
+        assert.deepEqual(await sqlAll(fixture.databasePath, 'SELECT COUNT(*) AS n FROM roles'), [{ n: 1 }]);
+        await sqlRun(fixture.databasePath, 'DELETE FROM roles');
         assert.deepEqual(await sqlAll(fixture.databasePath, 'SELECT COUNT(*) AS n FROM roles'), [{ n: 0 }]);
 
         await sqlRun(fixture.databasePath, 'CREATE TABLE IF NOT EXISTS rbac_fixture_touch (id INTEGER)');

@@ -415,14 +415,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             ['name', 'Allowed Delegation'], ['category', '一般職位'], ['tier_level', '60'], ['description', 'fixture'],
             ['permissions', 'view_manage_members'], ['permissions', 'view_manage_staff']
         ]).toString());
-        assert.equal(allowedRoleCreate.status, 303);
+        assert.equal(allowedRoleCreate.status, 303, allowedRoleCreate.body);
         const createdDelegatedRole = await new Promise((resolve, reject) => db.get("SELECT role_key, permissions FROM roles WHERE name='Allowed Delegation'", (error, row) => error ? reject(error) : resolve(row)));
-        assert.deepEqual(JSON.parse(createdDelegatedRole.permissions), ['view_manage_members', 'view_manage_staff']);
+        assert.deepEqual(JSON.parse(createdDelegatedRole.permissions), ['view_manage_members', 'view_manage_staff', 'view_management']);
         const createdRoleAudit = await new Promise((resolve, reject) => db.get("SELECT action, before_data, after_data, metadata FROM audit_logs WHERE action='ROLE_CREATED' AND target_id=?", [createdDelegatedRole.role_key], (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(createdRoleAudit.action, 'ROLE_CREATED');
         assert.equal(createdRoleAudit.before_data, null);
         assert.equal(createdRoleAudit.after_data, null);
-        assert.deepEqual(JSON.parse(createdRoleAudit.metadata).permissionDiff.added, ['view_manage_members', 'view_manage_staff']);
+        assert.deepEqual(JSON.parse(createdRoleAudit.metadata).permissionDiff.added, ['view_manage_members', 'view_manage_staff', 'view_management']);
 
         const starActor = await createSession('star-actor');
         const superuserRolePage = await createRequest(port, 'GET', '/system/roles', {
@@ -431,7 +431,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(superuserRolePage.status, 200, superuserRolePage.body);
         assert.match(superuserRolePage.body, /id="permission_wildcard"/);
         assert.match(superuserRolePage.body, /id="new_permission_wildcard"/);
-        assert.match(superuserRolePage.body, /value="action_order_price" id="role_permission_action_order_price"/);
+        assert.match(superuserRolePage.body, /value="action_order_price"[\s\S]*id="role_permission_action_order_price"/);
 
         const saveRolePermissions = async (roleKey, permissions) => {
             const fields = new URLSearchParams([['role', roleKey]]);
@@ -472,9 +472,9 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const csPermissionsAfterReload = rolePermissionsFromPage('cs');
         const managerPermissionsAfterReload = rolePermissionsFromPage('manager');
         const adminPermissionsAfterReload = rolePermissionsFromPage('admin');
-        assert.deepEqual(csPermissionsAfterReload, permissionsBeforeSave.cs);
+        assert.deepEqual(csPermissionsAfterReload, [...permissionsBeforeSave.cs, 'view_management']);
         assert.deepEqual(managerPermissionsAfterReload, permissionsBeforeSave.manager);
-        assert.deepEqual(adminPermissionsAfterReload, permissionsBeforeSave.admin);
+        assert.deepEqual(adminPermissionsAfterReload, [...permissionsBeforeSave.admin, 'view_management']);
         assert.ok(managerPermissionsAfterReload.includes('action_order_management'));
         assert.ok(adminPermissionsAfterReload.includes('action_order_price'));
         for (const [roleKey, permissions] of [['cs', csPermissionsAfterReload], ['manager', managerPermissionsAfterReload]]) {
@@ -1215,7 +1215,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(memberStoredPlatformStaff.status, 200, memberStoredPlatformStaff.body);
         assert.match(memberStoredPlatformStaff.body, /platform-user/);
-        assert.match(memberStoredPlatformStaff.body, /staff-role-member[^>]*>Member<\/span>/);
+        assert.match(memberStoredPlatformStaff.body, /role-badge-member[^>]*>Member<\/span>/);
         assert.doesNotMatch(memberStoredPlatformStaff.body, /最高權限/);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT role FROM users WHERE id='604610298581876746'", (error, row) => error ? reject(error) : resolve(row.role))), 'member');
         await new Promise((resolve, reject) => db.run("UPDATE users SET role='admin' WHERE id='604610298581876746'", error => error ? reject(error) : resolve()));

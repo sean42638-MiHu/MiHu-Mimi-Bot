@@ -21,6 +21,7 @@ const {
     authorizeRoleCreation, authorizeRoleMutation, canGrantPermission, canModifyRole, isRoleDelegationError,
     loadActorContext, loadRoleById, loadRoleByKey, permissionDiff, validatePermissionGrant
 } = require('../services/roleDelegationService');
+const { ROLE_DEFINITIONS } = require('../utils/roleHelper');
 const { getSystemHealth } = require('../services/systemHealthService');
 const { listAuditLogs } = require('../services/auditLogService');
 
@@ -558,7 +559,8 @@ router.get('/system/roles', ensureAuth, checkPerm('view_roles'), async (req, res
         permissionMetadata: PERMISSION_METADATA, delegatablePermissions,
         legacyPermissionKeys: [...KNOWN_LEGACY_PERMISSIONS],
         legacyPermissionImplications: PERMISSION_IMPLICATIONS,
-        canGrantWildcard: hasResolvedPermission(actor.permissions, '*')
+        canGrantWildcard: hasResolvedPermission(actor.permissions, '*'),
+        roleBadgeClassMap: Object.fromEntries(Object.entries(ROLE_DEFINITIONS).map(([key, value]) => [key, String(value.badgeClass || 'role-badge role-badge-default')]))
     });
 });
 
@@ -656,7 +658,7 @@ router.post('/system/roles/add', ensureAuth, checkPerm('action_role_manage'), as
     const requestedPermissions = req.body.permissions ?? req.body['perms[]'] ?? req.body.perms ?? [];
     const normalizedRequest = Array.isArray(requestedPermissions) ? requestedPermissions : [requestedPermissions];
 
-    const keyMap = { '售後管理': 'aftersales', '財務長': 'cfo', '客服主管': 'manager', '店長': 'admin', '總召': 'leader', '客服': 'cs', '陪陪': 'talent', '會員': 'member' };
+    const keyMap = { '售後管理': 'aftersales', '財務長': 'cfo', '客服主管': 'manager', '店長': 'admin', '總召': 'leader', '客服': 'cs', '審核': 'reviewer', '陪陪': 'talent', '會員': 'member' };
     let role_key = keyMap[name.trim()] || ('role_' + Math.random().toString(36).substring(2, 8));
     const badgeMap = { '最高權限': 'danger', '主管職位': 'warning', '客服職位': 'info', '一般職位': 'primary', '會員': 'secondary' };
 

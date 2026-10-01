@@ -118,6 +118,24 @@
   },
   {
     "id": 6,
+    "role_key": "reviewer",
+    "name": "審核",
+    "category": "一般職位",
+    "tier_level": 40,
+    "color_badge": "success",
+    "description": "負責審核入職",
+    "permissions": [
+      "home",
+      "personal",
+      "profile",
+      "my_wallet",
+      "my_orders",
+      "manage",
+      "view_manage_members"
+    ]
+  },
+  {
+    "id": 7,
     "role_key": "talent",
     "name": "陪陪",
     "category": "一般職位",
@@ -134,7 +152,7 @@
     ]
   },
   {
-    "id": 7,
+    "id": 8,
     "role_key": "member",
     "name": "會員",
     "category": "會員",
