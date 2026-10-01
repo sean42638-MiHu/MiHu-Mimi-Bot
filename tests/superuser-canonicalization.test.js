@@ -97,6 +97,10 @@ test('production deployment and sensitive payout permissions remain independent'
     assert.equal(hasResolvedPermission(memberViewer, 'view_staff_payroll'), false);
     assert.equal(hasResolvedPermission(payrollViewer, 'action_staff_sensitive'), false);
     assert.equal(hasResolvedPermission(payrollViewer, 'view_payout'), false);
+    assert.equal(resolvePermissions(['action_salary_adjust']).includes('view_payroll'), false);
+    assert.equal(resolvePermissions(['action_salary_import']).includes('view_payroll'), false);
+    assert.equal(resolvePermissions(['action_salary_rule_manage']).includes('view_payroll'), false);
+    assert.equal(resolvePermissions(['action_salary_distribute']).includes('view_payroll'), false);
     assert.equal(resolvePermissions(['action_staff_payroll_details']).includes('action_staff_sensitive'), true);
     assert.equal(resolvePermissions(['action_payout_sensitive']).includes('action_staff_sensitive'), false);
     assert.equal(ALL_GRANULAR_PERMISSIONS.includes('action_bot_deploy_production'), true);

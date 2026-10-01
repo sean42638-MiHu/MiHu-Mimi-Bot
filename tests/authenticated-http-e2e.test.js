@@ -229,6 +229,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
     try {
         const app = require('../app');
         db = require('../database');
+        const { ensureSalarySchema } = require('../utils/salarySchema');
+        await new Promise((resolve, reject) => ensureSalarySchema(db, error => error ? reject(error) : resolve()));
         assert.notEqual(path.resolve(process.env.TEST_DATABASE_PATH), path.resolve(path.join(__dirname, '..', 'database.sqlite')));
         assert.equal(process.env.DISCORD_ENABLED, 'false');
         assert.equal(process.env.SMTP_ENABLED, 'false');

@@ -15,6 +15,7 @@ const permissionNames = Object.freeze({
     'view_manage_staff': '員工列表',
     'view_staff_payroll': '薪資管理',
     'view_manage_orders': '訂單管理',
+    'view_payroll': '薪資設定',
     'view_bot_settings': '機器人設定',
     'view_commission_settings': '抽傭設定',
     'view_vip_settings': 'VIP 設定',
@@ -27,7 +28,11 @@ const permissionNames = Object.freeze({
     'view_roles': '身分管理',
     'view_system_settings': '系統設定',
     'action_view_audit_logs': '操作紀錄',
-    'view_system_health': '系統狀態'
+    'view_system_health': '系統狀態',
+    'action_salary_adjust': '手動薪資調整',
+    'action_salary_import': '薪資匯入預覽',
+    'action_salary_rule_manage': '固定月薪規則管理',
+    'action_salary_distribute': '固定月薪派發'
 });
 
 function permissionName(permission) {

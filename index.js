@@ -4,10 +4,12 @@ if (require.main === module) {
 
 const app = require('./app');
 const db = require('./database');
+const { startSalaryScheduler } = require('./services/salaryScheduler');
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.WEB_LISTEN_HOST || '0.0.0.0';
 let server;
 let shutdownStarted = false;
+let salarySchedulerHandle = null;
 
 if (require.main === module) {
     Promise.all([db.assertDatabaseReady(), app.locals.sessionStoreReady]).then(() => {
@@ -16,6 +18,8 @@ if (require.main === module) {
                 console.log('Database Scope: DEVELOPMENT');
                 console.log('Database Path: data/development.sqlite');
             }
+            salarySchedulerHandle = startSalaryScheduler(process.env);
+            if (salarySchedulerHandle.started) console.log('Salary scheduler started');
             console.log(`MiHu Web server listening on port ${PORT}`);
         });
     }).catch(error => {
@@ -26,6 +30,10 @@ if (require.main === module) {
 }
 
 function closeResources(callback) {
+    if (salarySchedulerHandle && typeof salarySchedulerHandle.stop === 'function') {
+        salarySchedulerHandle.stop();
+        salarySchedulerHandle = null;
+    }
     const store = app.locals.sessionStore;
     const closed = store ? store.close() : Promise.resolve();
     closed.then(() => db.close(callback), error => db.close(() => callback(error)));

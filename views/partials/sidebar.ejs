@@ -22,7 +22,8 @@
     const canSystemStatusEntry = canAccess('view_system_status') || canAccess('view_system_health');
 
     const hasSystemSettingsChildren = canSystemSettingsEntry;
-    const hasSystemManageChildren = canSystemBotEntry || canSystemCommissionEntry || canSystemVipEntry || canSystemRoleEntry;
+    const canSystemSalaryEntry = canAccess('view_payroll');
+    const hasSystemManageChildren = canSystemBotEntry || canSystemCommissionEntry || canSystemVipEntry || canSystemRoleEntry || canSystemSalaryEntry;
     const hasSystemInfoChildren = canSystemLogsEntry || canSystemStatusEntry;
 
     const canViewSystemSettingsCategory = canAccess('view_cat_system_settings') || hasSystemSettingsChildren;
@@ -32,12 +33,12 @@
     const hasSystemChildren = (canViewSystemSettingsCategory && hasSystemSettingsChildren)
         || (canViewSystemManageCategory && hasSystemManageChildren)
         || (canViewSystemInfoCategory && hasSystemInfoChildren);
-    const hasSystemSection = canAccess('view_system') && hasSystemChildren;
+    const hasSystemSection = (canAccess('view_system') || canSystemSalaryEntry) && hasSystemChildren;
     const isAnalyticsPage = currentPage === 'analytics';
     const isMemberPage = currentPage === 'members' || currentPage === 'member_transactions';
     const isStaffPage = currentPage === 'staff' || currentPage === 'payroll';
     const isSystemSettingsPage = currentPage === 'system_settings';
-    const isSystemManagePage = isBotPage || currentPage === 'commission' || currentPage === 'vip' || currentPage === 'roles';
+    const isSystemManagePage = isBotPage || currentPage === 'commission' || currentPage === 'vip' || currentPage === 'roles' || currentPage === 'salary_settings';
     const isSystemInfoPage = currentPage === 'audit_logs' || currentPage === 'system_health';
 %>
 
@@ -152,6 +153,7 @@
     .menu-icon-system-bot { color: #38bdf8; }
     .menu-icon-system-commission { color: #a855f7; }
     .menu-icon-system-vip { color: #f59e0b; }
+    .menu-icon-system-salary { color: #facc15; }
     .menu-icon-system-roles { color: #10b981; }
     .menu-icon-system-info-parent { color: #22d3ee; }
     .menu-icon-system-logs { color: #22d3ee; }
@@ -439,6 +441,13 @@
                                 <a href="/system/roles" class="submenu-item system-manage-item <%= currentPage === 'roles' ? 'active-staff' : '' %>" <%- currentPage === 'roles' ? 'aria-current="page"' : '' %>>
                                     <i class="fa-solid fa-shield-halved menu-icon-system-roles"></i>
                                     <span>身分管理</span>
+                                </a>
+                            <% } %>
+
+                            <% if (canSystemSalaryEntry) { %>
+                                <a href="/management/salary-settings" class="submenu-item system-manage-item <%= currentPage === 'salary_settings' ? 'active-staff' : '' %>" <%- currentPage === 'salary_settings' ? 'aria-current="page"' : '' %>>
+                                    <i class="fa-solid fa-wallet menu-icon-system-salary"></i>
+                                    <span>薪資設定</span>
                                 </a>
                             <% } %>
                         </div>
