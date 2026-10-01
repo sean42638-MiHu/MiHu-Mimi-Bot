@@ -16,7 +16,7 @@
 | 消費同步 | `user_order_spent_sync` 1 筆，合計 0 |
 | VIP | 9 人現值皆為 0；7 筆 VIP 門檻最低消費 3000／儲值 2500；audit 中有 25 筆人工 VIP／角色操作，必須保留 |
 | 審計及完整性 | `audit_logs` 132 筆；`quick_check=ok`；`foreign_key_check` 有上述 2 筆孤兒冪等鍵 |
-| 持久化 JSON 鏡像 | `users.json` 存在（5866 bytes）、`orders.json` 存在（2691 bytes）、`topups.json`／`payouts.json` 不存在；部署帳號無權讀 `orders.json`，**未取得正式鏡像列數或內容**。後續以 `mihu` 身分的唯讀預覽產生列數與 hash，納入審閱指紋 |
+| 持久化 JSON 鏡像 | 已由正式 VPS 的 `mihu` 身分唯讀盤點：`users.json` 存在、9 筆、SHA-256 `a1daea720089f5c5558eddff00052748c0274baa5528e9e50bb1fab8f85ba3d1`；`orders.json` 存在、3 筆、SHA-256 `c1e89e7b94cc87dadda99cf16247919f2dc2d6df2b3031599c9420f5f6be5472`；`topups.json`／`payouts.json` 不存在。 |
 
 唯讀查證孤兒鍵來源：冪等 rowid 1 指向訂單 3（建於 09:43:12，09:43:19 有 `order_batch_delete_refund` 與批次 audit）；rowid 2 指向訂單 4（建於 09:43:45，09:44:31 有同類刪除 audit）。目前批次服務直接 `DELETE FROM orders`，未顯式刪除對應冪等列；既有 SQLite 連線未保證啟用 `PRAGMA foreign_keys=ON`，所以宣告的 `ON DELETE CASCADE` 未生效。本次全量清理會先刪冪等表再刪訂單，消除現存兩筆違規，但**未修復未來批次刪單的根因**；應另開小型 PR，在同一刪除交易中顯式刪該訂單的冪等鍵，並加入 `foreign_key_check` 回歸。不可把它隱藏在清理 PR 的大規模動作裡。
 
@@ -30,6 +30,7 @@
 - 將 `users` 與 `user_wallets` 的 `balance`、`bonus_balance`、`manual_spent`、`manual_deposited` 同交易歸零。可提領收益由已完成訂單減提領衍生；清除後不得有已完成訂單或提領紀錄。
 - 保留帳號／角色／權限、工作室、服務、系統／抽傭／VIP 門檻與相關遷移紀錄、email 驗證、人才設定及所有原始 `audit_logs`。交易追加一筆 `financial_history_clear`，記錄操作者、清理表筆數、審閱指紋和本地 manifest／異地副本位置。
 - 四種 JSON 鏡像不是正式財務來源，但空的 `topups` 表可能在重啟時從殘留 `topups.json` 重新匯入。預覽需連同鏡像的存在狀態、筆數及 SHA-256 納入指紋；停寫後將存在的鏡像複製到本地／異地備份，清理後、啟服務前從新 DB 原子重建 `users.json`、`orders.json`、`topups.json`、`payouts.json`。後三者應為空陣列。此檔案替換不屬於 SQLite 交易；中途失敗必須保持兩服務停止，由備份人工復原，絕不假裝跨檔案原子性。
+- 正式 VPS `mihu` 唯讀鏡像證據（2026-10-01）：`users.json` `exists=true`、`rows=9`、SHA-256 `a1daea720089f5c5558eddff00052748c0274baa5528e9e50bb1fab8f85ba3d1`；`orders.json` `exists=true`、`rows=3`、SHA-256 `c1e89e7b94cc87dadda99cf16247919f2dc2d6df2b3031599c9420f5f6be5472`；`topups.json` 與 `payouts.json` `exists=false`。這些是盤點證據，不是執行時可預填的 `CLEAR_PREVIEW_FINGERPRINT`；正式執行仍須在合併 release 上重新產生並審閱完整 DB＋鏡像指紋。
 - 現值 VIP 都是 0，清理後依現行門檻試算亦為 0，因此保留該值，不覆寫人工設定。若後續預覽出現非零 VIP／未知表／觸發器／其他 FK 違規，腳本拒絕執行，須先審閱人工 VIP 來源與新 schema。
 
 ## 審閱及正式執行流程（本輪不執行）
