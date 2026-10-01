@@ -361,6 +361,8 @@
 
         const form = document.getElementById('modalOrderEditForm');
         if (form) form.action = `/management/orders/update/${data.id}`;
+        document.getElementById('isDeleteInputModal')?.remove();
+        document.getElementById('orderRefundError').hidden = true;
 
         setText('detailOrderNo', data.orderNo);
         setText('detailCreatedAt', data.createdAt);

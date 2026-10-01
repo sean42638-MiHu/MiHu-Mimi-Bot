@@ -191,7 +191,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         VALUES (606,'ORDER-REFUND-OPEN','member-a','陪玩單','game','standard',1,'h',45,0,45,'accepted',CURRENT_TIMESTAMP,1),
                (607,'ORDER-REFUND-DONE','member-a','陪玩單','game','standard',1,'h',35,0,35,'completed',CURRENT_TIMESTAMP,1),
                (608,'CSRF-BATCH-608','member-a','陪玩單','game','standard',1,'h',25,0,25,'accepted',CURRENT_TIMESTAMP,1),
-               (609,'LEGACY-NO-PAYMENT-609','member-a','陪玩單','game','standard',1,'h',20,0,20,'completed',CURRENT_TIMESTAMP,1)`);
+               (609,'LEGACY-NO-PAYMENT-609','member-a','陪玩單','game','standard',1,'h',20,0,20,'completed',CURRENT_TIMESTAMP,1),
+               (610,'ZERO-NO-PAYMENT-610','member-a','陪玩單','game','standard',1,'h',0,0,0,'accepted',CURRENT_TIMESTAMP,1)`);
     await run(`INSERT INTO wallet_transactions
         (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id, created_at)
         VALUES ('member-a', 'recharge', 500, 1000, 1500, 'wallet', 'LEDGER-A', 'Studio A fixture', 'manager-a', '2026-01-01 10:00:00'),
@@ -1619,7 +1620,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             (error, row) => error ? reject(error) : resolve(row)
         )).then(row => row && row.amount === -500 && row.bonus_amount === -500 && row.balance_before === 0 && row.balance_after === 0), true);
         const bonusRefundActor = await createSession('aftersales-orders');
-        const bonusOnlyRefund = await orderPost(bonusRefundActor, `/management/orders/cancel/${bonusOnlyOrder.payload.orderId}`, {});
+        const bonusOnlyRefund = await orderPost(bonusRefundActor, `/management/orders/update/${bonusOnlyOrder.payload.orderId}`, { is_delete: '1' });
         assert.equal(bonusOnlyRefund.status, 303, bonusOnlyRefund.headers.location || bonusOnlyRefund.body);
         assert.deepEqual(await new Promise((resolve, reject) => db.get(
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
@@ -1681,7 +1682,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             [`Order price adjustment %`],
             (error, row) => error ? reject(error) : resolve(row)
         )), { amount: -100, bonus_amount: 0 });
-        const mixedRefund = await orderPost(bonusRefundActor, `/management/orders/cancel/${mixedOrder.payload.orderId}`, {});
+        const mixedRefund = await orderPost(bonusRefundActor, `/management/orders/update/${mixedOrder.payload.orderId}`, { is_delete: '1' });
         assert.equal(mixedRefund.status, 303, mixedRefund.headers.location || mixedRefund.body);
         assert.deepEqual(await new Promise((resolve, reject) => db.get(
             "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
@@ -2298,6 +2299,31 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(legacyEndpoint.status, 404);
 
         const aftersalesSession = await createSession('aftersales-orders');
+        const modalPage = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: aftersalesSession.cookie
+        });
+        assert.equal(modalPage.status, 200, modalPage.body);
+        assert.match(modalPage.body, /id="modalOrderEditForm"[^>]*method="POST"/);
+        assert.match(modalPage.body, new RegExp(`name="_csrf" value="${aftersalesSession.csrfToken}"`));
+        assert.match(modalPage.body, /form\.requestSubmit\(event\.currentTarget\)/);
+        const beforeRejectedRefund = await orderSecuritySnapshot(606);
+        const missingRefundToken = await createRequest(port, 'POST', '/management/orders/update/606', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`,
+            Cookie: aftersalesSession.cookie, Accept: 'text/html', 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'is_delete=1');
+        assert.equal(missingRefundToken.status, 403);
+        assert.match(missingRefundToken.headers['content-type'], /text\/html/);
+        assert.match(missingRefundToken.body, /操作未完成|安全驗證已失效/);
+        assert.doesNotMatch(missingRefundToken.body, /"success":false/);
+        assert.deepEqual(await orderSecuritySnapshot(606), beforeRejectedRefund);
+        const invalidRefundToken = await createRequest(port, 'POST', '/management/orders/update/606', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`,
+            Cookie: aftersalesSession.cookie, Accept: 'application/json', 'X-CSRF-Token': 'invalid',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'is_delete=1');
+        assert.equal(invalidRefundToken.status, 403);
+        assert.deepEqual(JSON.parse(invalidRefundToken.body), { success: false, error: 'Invalid CSRF token' });
+        assert.deepEqual(await orderSecuritySnapshot(606), beforeRejectedRefund);
         await new Promise((resolve, reject) => db.run(
             "UPDATE user_wallets SET bonus_balance=30 WHERE user_id='member-a'",
             error => error ? reject(error) : resolve()
@@ -2307,7 +2333,9 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             error => error ? reject(error) : resolve()
         ));
         const beforeOpenRefund = await orderSecuritySnapshot(606);
-        const aftersalesOpenRefund = await orderPost(aftersalesSession, '/management/orders/cancel/606', {});
+        const aftersalesOpenRefund = await orderPost(aftersalesSession, '/management/orders/update/606', {
+            is_delete: '1', _csrf: aftersalesSession.csrfToken
+        });
         assert.equal(aftersalesOpenRefund.status, 303);
         const afterOpenRefund = await orderSecuritySnapshot(606);
         assert.equal(afterOpenRefund.status, 'cancelled');
@@ -2318,14 +2346,18 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         )), 30);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_id='606'", (error, row) => error ? reject(error) : resolve(row.amount))), 45);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT bonus_amount FROM wallet_transactions WHERE type='refund' AND reference_id='606'", (error, row) => error ? reject(error) : resolve(row.bonus_amount))), 0);
+        const repeatRefund = await orderPost(aftersalesSession, '/management/orders/update/606', { is_delete: '1' });
+        assert.equal(repeatRefund.status, 303);
+        assert.match(repeatRefund.headers.location, /error=/);
+        assert.deepEqual(await orderSecuritySnapshot(606), afterOpenRefund);
 
         const beforeCompletedAfterSales = await orderSecuritySnapshot(607);
-        const deniedCompletedRefund = await orderPost(aftersalesSession, '/management/orders/cancel/607', {});
+        const deniedCompletedRefund = await orderPost(aftersalesSession, '/management/orders/update/607', { is_delete: '1' });
         assert.equal(deniedCompletedRefund.status, 303);
         assert.match(deniedCompletedRefund.headers.location, /error=/);
         assert.deepEqual(await orderSecuritySnapshot(607), beforeCompletedAfterSales);
 
-        const adminCompletedRefund = await orderPost(ordinaryAdmin, '/management/orders/cancel/607', {});
+        const adminCompletedRefund = await orderPost(ordinaryAdmin, '/management/orders/update/607', { is_delete: '1' });
         assert.equal(adminCompletedRefund.status, 303);
         const afterAdminRefund = await orderSecuritySnapshot(607);
         assert.equal(afterAdminRefund.status, 'cancelled');
@@ -2333,12 +2365,21 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_id='607'", (error, row) => error ? reject(error) : resolve(row.amount))), 35);
 
         const beforeUnverifiedLegacyRefund = await orderSecuritySnapshot(609);
-        const unverifiedLegacyRefund = await orderPost(ordinaryAdmin, '/management/orders/cancel/609', {});
+        const unverifiedLegacyRefund = await orderPost(ordinaryAdmin, '/management/orders/update/609', { is_delete: '1' });
         assert.equal(unverifiedLegacyRefund.status, 303);
         const afterUnverifiedLegacyRefund = await orderSecuritySnapshot(609);
         assert.equal(afterUnverifiedLegacyRefund.status, 'cancelled');
         assert.equal(afterUnverifiedLegacyRefund.wallet_balance, beforeUnverifiedLegacyRefund.wallet_balance);
         assert.equal(afterUnverifiedLegacyRefund.ledger_count, beforeUnverifiedLegacyRefund.ledger_count);
+
+        const beforeZeroRefund = await orderSecuritySnapshot(610);
+        const zeroRefund = await orderPost(aftersalesSession, '/management/orders/update/610', { is_delete: '1' });
+        assert.equal(zeroRefund.status, 303);
+        assert.match(decodeURIComponent(zeroRefund.headers.location), /本次無錢包退款/);
+        const afterZeroRefund = await orderSecuritySnapshot(610);
+        assert.equal(afterZeroRefund.status, 'cancelled');
+        assert.equal(afterZeroRefund.wallet_balance, beforeZeroRefund.wallet_balance);
+        assert.equal(afterZeroRefund.ledger_count, beforeZeroRefund.ledger_count);
 
         const beforeAdminPriceChange = await orderSecuritySnapshot(101);
         const adminPriceChange = await orderPost(ordinaryAdmin, '/management/orders/update/101', {
