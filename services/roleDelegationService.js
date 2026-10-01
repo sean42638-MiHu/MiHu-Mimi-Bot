@@ -22,28 +22,41 @@ function effectiveRolePermissions(role) {
     return permissions ? resolvePermissions(permissions) : [];
 }
 
-function canGrantPermission(actorPermissions, permission) {
-    return Boolean(isKnownPermission(permission) && permission !== '*')
-        && hasResolvedPermission(actorPermissions, permission);
-}
-
-const SYSTEM_PERMISSION_GROUPS = Object.freeze([
+const PERMISSION_HIERARCHY_GROUPS = Object.freeze([
+    Object.freeze({ parent: 'view_dashboard', children: Object.freeze(['view_dashboard_banner', 'view_dashboard_wallet', 'view_dashboard_info']) }),
+    Object.freeze({ parent: 'view_personal', children: Object.freeze(['view_profile', 'view_wallet', 'view_income', 'view_personal_orders', 'view_profile_discord']) }),
+    Object.freeze({ parent: 'view_management', children: Object.freeze(['action_view_analytics', 'view_manage_members', 'view_member_ledger', 'view_manage_staff', 'view_staff_payroll', 'view_payout', 'view_manage_orders']) }),
+    Object.freeze({ parent: 'view_system', children: Object.freeze(['view_cat_system_settings', 'view_cat_system_manage', 'view_cat_system_info']) }),
     Object.freeze({ parent: 'view_cat_system_settings', children: Object.freeze(['view_system_settings']) }),
     Object.freeze({ parent: 'view_cat_system_manage', children: Object.freeze(['view_discord_status', 'view_commission', 'view_vip', 'view_roles']) }),
     Object.freeze({ parent: 'view_cat_system_info', children: Object.freeze(['action_view_audit_logs', 'view_system_health']) })
 ]);
 
-function normalizeSystemPermissionHierarchy(requestedPermissions) {
+const PERMISSION_HIERARCHY_CHILDREN_BY_PARENT = new Map(
+    PERMISSION_HIERARCHY_GROUPS.map(group => [group.parent, group.children])
+);
+
+function canGrantPermission(actorPermissions, permission) {
+    if (!isKnownPermission(permission) || permission === '*') return false;
+    if (hasResolvedPermission(actorPermissions, permission)) return true;
+
+    const children = PERMISSION_HIERARCHY_CHILDREN_BY_PARENT.get(permission);
+    return Array.isArray(children) && children.some(child => hasResolvedPermission(actorPermissions, child));
+}
+
+function normalizePermissionHierarchy(requestedPermissions) {
     const normalized = new Set(requestedPermissions);
-    let hasSystemScopedPermission = false;
-
-    SYSTEM_PERMISSION_GROUPS.forEach(group => {
-        const childEnabled = group.children.some(permission => normalized.has(permission));
-        if (childEnabled) normalized.add(group.parent);
-        if (childEnabled || normalized.has(group.parent)) hasSystemScopedPermission = true;
-    });
-
-    if (hasSystemScopedPermission) normalized.add('view_system');
+    let changed = true;
+    while (changed) {
+        changed = false;
+        PERMISSION_HIERARCHY_GROUPS.forEach(group => {
+            const childEnabled = group.children.some(permission => normalized.has(permission));
+            if (childEnabled && !normalized.has(group.parent)) {
+                normalized.add(group.parent);
+                changed = true;
+            }
+        });
+    }
     return [...normalized];
 }
 
@@ -57,7 +70,7 @@ function validatePermissionGrant(actorPermissions, requestedPermissions, _option
     if (requested.some(permission => !isKnownPermission(permission))) {
         throw new RoleDelegationError('權限清單包含未知項目');
     }
-    const normalizedRequested = normalizeSystemPermissionHierarchy(requested);
+    const normalizedRequested = normalizePermissionHierarchy(requested);
     if (normalizedRequested.includes('*') && !isSuperuser) {
         throw new RoleDelegationError('只有最高權限使用者可以授予萬用權限');
     }

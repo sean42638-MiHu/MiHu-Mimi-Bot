@@ -855,8 +855,69 @@ function initializeDatabase({ explicitMigration = false } = {}) {
         )
     `, () => {
         const rolesJsonPath = path.join(dataDirectory, 'roles.json');
+        const reviewerFallback = Object.freeze({
+            role_key: 'reviewer',
+            name: '審核',
+            category: '一般職位',
+            tier_level: 40,
+            color_badge: 'success',
+            description: '負責審核入職',
+            permissions: ['home', 'personal', 'profile', 'my_wallet', 'my_orders', 'manage', 'view_manage_members']
+        });
+
+        function ensureReviewerRole() {
+            let reviewer = reviewerFallback;
+            if (fs.existsSync(rolesJsonPath)) {
+                try {
+                    const parsed = JSON.parse(fs.readFileSync(rolesJsonPath, 'utf8'));
+                    if (Array.isArray(parsed)) {
+                        const fromJson = parsed.find(role => role && role.role_key === 'reviewer');
+                        if (fromJson) {
+                            reviewer = {
+                                role_key: 'reviewer',
+                                name: String(fromJson.name || reviewerFallback.name),
+                                category: String(fromJson.category || reviewerFallback.category),
+                                tier_level: Number(fromJson.tier_level || reviewerFallback.tier_level),
+                                color_badge: String(fromJson.color_badge || reviewerFallback.color_badge),
+                                description: String(fromJson.description || reviewerFallback.description),
+                                permissions: Array.isArray(fromJson.permissions) ? fromJson.permissions : reviewerFallback.permissions
+                            };
+                        }
+                    }
+                } catch (error) {
+                    console.error('⚠️ 讀取 reviewer 預設資料失敗，改用內建安全預設:', error.message);
+                }
+            }
+
+            db.run(`
+                INSERT INTO roles (role_key, name, category, tier_level, color_badge, description, permissions)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(role_key) DO NOTHING
+            `, [
+                reviewer.role_key,
+                reviewer.name,
+                reviewer.category,
+                reviewer.tier_level,
+                reviewer.color_badge,
+                reviewer.description,
+                JSON.stringify(reviewer.permissions)
+            ], error => {
+                if (error) {
+                    console.error('❌ reviewer 角色補齊失敗:', error.message);
+                }
+            });
+        }
+
         db.get('SELECT COUNT(*) AS count FROM roles', (countErr, countRow) => {
-        if (countErr || Number(countRow && countRow.count) > 0 || !fs.existsSync(rolesJsonPath)) return;
+            if (countErr) {
+                console.error('❌ 讀取 roles 計數失敗:', countErr.message);
+                ensureReviewerRole();
+                return;
+            }
+            if (Number(countRow && countRow.count) > 0 || !fs.existsSync(rolesJsonPath)) {
+                ensureReviewerRole();
+                return;
+            }
             try {
                 const jsonRoles = JSON.parse(fs.readFileSync(rolesJsonPath, 'utf8'));
                 const stmt = db.prepare(`
@@ -885,9 +946,11 @@ function initializeDatabase({ explicitMigration = false } = {}) {
                 });
                 stmt.finalize(() => {
                     console.log('✅ 成功從 data/roles.json 同步身分組資料至資料庫！');
+                    ensureReviewerRole();
                 });
             } catch (e) {
                 console.error('❌ 同步 roles.json 至資料庫失敗:', e);
+                ensureReviewerRole();
             }
         });
     });

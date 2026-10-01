@@ -129,7 +129,7 @@ test('initialization window blocks every other Web route over HTTP on an isolate
 
         const roles = JSON.parse(fs.readFileSync(path.join(root, 'deploy/rbac/production-roles.json'), 'utf8')).roles;
         for (const role of roles) {
-            await exec('INSERT INTO roles (role_key, name, category, tier_level, color_badge, description, permissions) VALUES (?,?,?,?,?,?,?)',
+            await exec('INSERT OR IGNORE INTO roles (role_key, name, category, tier_level, color_badge, description, permissions) VALUES (?,?,?,?,?,?,?)',
                 [role.role_key, role.name, role.category, role.tier_level, role.color_badge, role.description, JSON.stringify(role.permissions)]);
         }
         await exec("INSERT INTO users (id, username, role, studio_id) VALUES (?, 'BreakGlass', 'member', 1), (?, 'Operator', 'member', 1)", [BREAK_GLASS_ID, OPERATOR_ID]);

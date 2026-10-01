@@ -44,10 +44,10 @@ test('boolean maps fail closed for non-true values, malformed JSON and unknown w
 test('save canonical explicit grants while retaining unknown values without granting or accepting injection', () => {
     const original = '{"members.view":true,"future.flag":false,"custom": {"note":"保留"},"opaque":true}';
     const granted = validatePermissionGrant(resolvePermissions(['*']), ['members.view']);
-    assert.deepEqual(granted, ['view_manage_members']);
+    assert.deepEqual(granted, ['view_manage_members', 'view_management']);
     const saved = serializePermissionGrant(granted, original);
-    assert.deepEqual(JSON.parse(saved), {'future.flag':false,custom:{note:'保留'},opaque:true,view_manage_members:true});
-    assert.deepEqual(resolvePermissions(saved), ['view_manage_members']);
+    assert.deepEqual(JSON.parse(saved), {'future.flag':false,custom:{note:'保留'},opaque:true,view_manage_members:true,view_management:true});
+    assert.deepEqual(resolvePermissions(saved), ['view_manage_members', 'view_management']);
     assert.throws(() => validatePermissionGrant(['*'], ['future.injected']));
     assert.equal(canModifyRole({permissions:resolvePermissions(['*']),roleKey:'admin'}, {role_key:'custom',permissions:original}),true);
     assert.equal(canModifyRole({permissions:resolvePermissions(['roles.manage','members.view']),roleKey:'manager'}, {role_key:'custom',permissions:original}),false);
@@ -59,7 +59,7 @@ test('save canonical explicit grants while retaining unknown values without gran
     assert.deepEqual(reopened, ['action_system_config']);
     assert.ok(resolvePermissions(reopened).includes('view_system_settings'));
     assert.deepEqual(resolvePermissions([]), []);
-    assert.deepEqual(validatePermissionGrant(['*'], ['*', 'members.view']), ['*', 'view_manage_members']);
+    assert.deepEqual(validatePermissionGrant(['*'], ['*', 'members.view']), ['*', 'view_manage_members', 'view_management']);
 });
 
 

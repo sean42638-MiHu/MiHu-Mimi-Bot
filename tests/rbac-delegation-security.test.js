@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { resolvePermissions } = require('../utils/permissionResolver');
+const { hasResolvedPermission, resolvePermissions } = require('../utils/permissionResolver');
 const {
     canAssignRole,
     canDeleteRole,
@@ -20,7 +20,7 @@ test('delegation allows only metadata permissions already effective for the acto
     const actorPermissions = resolvePermissions(['action_role_manage', 'view_manage_members', 'view_manage_staff']);
     assert.equal(canGrantPermission(actorPermissions, 'view_manage_members'), true);
     assert.equal(canGrantPermission(actorPermissions, 'action_system_config'), false);
-    assert.deepEqual(validatePermissionGrant(actorPermissions, ['view_manage_members', 'view_manage_staff']), ['view_manage_members', 'view_manage_staff']);
+    assert.deepEqual(validatePermissionGrant(actorPermissions, ['view_manage_members', 'view_manage_staff']), ['view_manage_members', 'view_manage_staff', 'view_management']);
     assert.throws(() => validatePermissionGrant(actorPermissions, ['action_bot_deploy_production']), /未擁有/);
     assert.throws(() => validatePermissionGrant(actorPermissions, ['unknown.permission']), /未知/);
 });
@@ -88,6 +88,34 @@ test('assignment authorization reloads actor authority from the database', async
     await assert.rejects(authorizeRoleAssignment('actor', 'settings_admin', 'action_staff_manage', db), /不可指派/);
     actorStoredPermissions = '["action_staff_manage","action_system_config"]';
     await authorizeRoleAssignment('actor', 'settings_admin', 'action_staff_manage', db);
+});
+
+test('child visibility grant auto-adds only required parent and rejects sibling/action/wildcard escalation', () => {
+    const actor = resolvePermissions(['action_role_manage', 'view_manage_members']);
+
+    const granted = validatePermissionGrant(actor, ['view_manage_members']);
+    assert.deepEqual(granted, ['view_manage_members', 'view_management']);
+
+    assert.throws(() => validatePermissionGrant(actor, ['view_manage_staff']), /未擁有/);
+    assert.throws(() => validatePermissionGrant(actor, ['action_member_manage']), /未擁有/);
+    assert.throws(() => validatePermissionGrant(actor, ['*']), /只有最高權限使用者/);
+    assert.throws(() => validatePermissionGrant(actor, ['view_manage_members', 'view_manage_staff']), /未擁有/);
+
+    const resolvedParentOnly = resolvePermissions(['view_management']);
+    assert.equal(hasResolvedPermission(resolvedParentOnly, 'view_manage_members'), false);
+    assert.equal(hasResolvedPermission(resolvedParentOnly, 'view_manage_staff'), false);
+});
+
+test('hierarchy normalization never bypasses role assignment boundaries', () => {
+    const actor = {
+        roleKey: 'limited_manager',
+        permissions: resolvePermissions(['action_role_manage', 'view_manage_members'])
+    };
+
+    assert.equal(canAssignRole(actor, role('member_viewer', ['view_manage_members'])), true);
+    assert.equal(canAssignRole(actor, role('staff_viewer', ['view_manage_staff'])), false);
+    assert.equal(canAssignRole(actor, role('staff_operator', ['action_staff_manage'])), false);
+    assert.equal(canAssignRole(actor, role('superuser_like', ['*'])), false);
 });
 
 test('role names do not create superuser authority; only the platform principal or stored wildcard does', async () => {

@@ -9,8 +9,8 @@
         scrollbar-color: rgba(168, 85, 247, 0.4) transparent;
     }
     .members-table-scroll::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
+        width: 4px;
+        height: 4px;
     }
     .members-table-scroll::-webkit-scrollbar-thumb {
         background: rgba(168, 85, 247, 0.4);
@@ -108,7 +108,7 @@
                     // 🚀 呼叫全域 getRoleInfo 工具，確保身分名稱與樣式全後台 100% 同步 (admin => 店長)
                     const roleObj = (typeof getRoleInfo === 'function')
                         ? getRoleInfo(m.role)
-                        : { name: '會員', badgeClass: 'bg-secondary' };
+                        : { name: '會員', badgeClass: 'role-badge role-badge-member' };
 
                     const vipNum = Number(m.vip_level || 0);
 
@@ -154,7 +154,7 @@
 
                         <!-- 👤 全後台身分 100% 同步標籤 -->
                         <td class="text-center">
-                            <span class="badge <%= roleObj.badgeClass %>" style="font-size:0.76rem; font-weight:700; padding:4px 10px; border-radius:8px;">
+                            <span class="<%= roleObj.badgeClass %>">
                                 <%= roleObj.name %>
                             </span>
                         </td>

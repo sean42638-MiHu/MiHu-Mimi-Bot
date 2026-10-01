@@ -42,8 +42,9 @@ const roleFixtures = [
     { id: 2, role_key: 'cfo', name: '財務長', category: '主管職位', tier_level: 90, color_badge: 'danger', description: '財務管理', permissions: ['view_staff_payroll'], canManageRole: true },
     { id: 3, role_key: 'aftersales', name: '售後管理', category: '主管職位', tier_level: 80, color_badge: 'warning', description: '售後服務', permissions: ['view_manage_orders'], canManageRole: true },
     { id: 4, role_key: 'cs', name: '客服', category: '客服職位', tier_level: 50, color_badge: 'info', description: '客服服務', permissions: ['view_manage_orders'], canManageRole: true },
-    { id: 5, role_key: 'talent', name: '陪陪', category: '一般職位', tier_level: 30, color_badge: 'primary', description: '陪玩服務', permissions: ['view_profile'], canManageRole: true },
-    { id: 6, role_key: 'member', name: '會員', category: '會員', tier_level: 10, color_badge: 'secondary', description: '一般會員', permissions: ['view_profile'], canManageRole: true }
+    { id: 5, role_key: 'reviewer', name: '審核', category: '一般職位', tier_level: 40, color_badge: 'success', description: '入職審核', permissions: ['view_manage_members'], canManageRole: true },
+    { id: 6, role_key: 'talent', name: '陪陪', category: '一般職位', tier_level: 30, color_badge: 'primary', description: '陪玩服務', permissions: ['view_profile'], canManageRole: true },
+    { id: 7, role_key: 'member', name: '會員', category: '會員', tier_level: 10, color_badge: 'secondary', description: '一般會員', permissions: ['view_profile'], canManageRole: true }
 ];
 
 app.get('/management/members', (req, res) => {

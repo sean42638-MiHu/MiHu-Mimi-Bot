@@ -4,7 +4,7 @@
     // 全域身分與權重連動
     const userRoleInfo = (typeof getRoleInfo === 'function') 
         ? getRoleInfo(activeUser.role || 'member') 
-        : { name: '店長', badgeClass: 'bg-danger' };
+        : { name: '店長', badgeClass: 'role-badge role-badge-admin' };
 
     const emailStr = activeUser.email || '尚未綁定 Email';
     const isEmailVerified = !!activeUser.email;
@@ -106,7 +106,7 @@
                     <span>工作室身分</span>
                 </div>
                 <div>
-                    <span class="badge <%= userRoleInfo.badgeClass %>" style="font-size: 0.8rem; font-weight: 800; padding: 5px 14px; border-radius: 20px;">
+                    <span class="<%= userRoleInfo.badgeClass %>" style="font-size: 0.8rem; font-weight: 800; padding: 5px 14px;">
                         <%= userRoleInfo.name %>
                     </span>
                 </div>

@@ -263,6 +263,85 @@
 .admin-badge-warning { color: #fde68a; background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); }
 .admin-badge-danger { color: #fda4af; background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.3); }
 .admin-badge-purple { color: #e9d5ff; background: rgba(168,85,247,.14); border-color: rgba(168,85,247,.3); }
+.role-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px 10px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	font-size: .76rem;
+	font-weight: 700;
+	line-height: 1.2;
+	box-shadow: 0 0 8px transparent;
+}
+.role-badge-admin,
+.role-badge-owner {
+	border-color: #ff4655;
+	color: #ff4655;
+	background: rgba(255,70,85,0.15);
+	box-shadow: 0 0 10px rgba(255,70,85,0.25);
+}
+.role-badge-cfo {
+	border-color: #a855f7;
+	color: #c084fc;
+	background: rgba(168,85,247,0.15);
+	box-shadow: 0 0 10px rgba(168,85,247,0.25);
+}
+.role-badge-aftersales,
+.role-badge-after_sales {
+	border-color: #eab308;
+	color: #fde047;
+	background: rgba(234,179,8,0.15);
+	box-shadow: 0 0 10px rgba(234,179,8,0.22);
+}
+.role-badge-manager,
+.role-badge-cs_director {
+	border-color: #38bdf8;
+	color: #38bdf8;
+	background: rgba(56,189,248,0.15);
+	box-shadow: 0 0 10px rgba(56,189,248,0.22);
+}
+.role-badge-cs {
+	border-color: #06b6d4;
+	color: #22d3ee;
+	background: rgba(6,182,212,0.15);
+	box-shadow: 0 0 10px rgba(6,182,212,0.22);
+}
+.role-badge-reviewer {
+	border-color: #10b981;
+	color: #34d399;
+	background: rgba(16,185,129,0.15);
+	box-shadow: 0 0 10px rgba(16,185,129,0.24);
+}
+.role-badge-talent,
+.role-badge-staff {
+	border-color: #ec4899;
+	color: #f472b6;
+	background: rgba(236,72,153,0.15);
+	box-shadow: 0 0 10px rgba(236,72,153,0.22);
+}
+.role-badge-member {
+	border-color: #6b7280;
+	color: #9ca3af;
+	background: rgba(107,114,128,0.15);
+	box-shadow: 0 0 10px rgba(107,114,128,0.2);
+}
+.role-badge-default {
+	border-color: rgba(148,163,184,.45);
+	color: #cbd5e1;
+	background: rgba(148,163,184,.14);
+	box-shadow: 0 0 10px rgba(148,163,184,.14);
+}
+.role-text-admin { color: #ff4655; }
+.role-text-cfo { color: #c084fc; }
+.role-text-aftersales { color: #fde047; }
+.role-text-manager { color: #38bdf8; }
+.role-text-cs { color: #22d3ee; }
+.role-text-reviewer { color: #34d399; }
+.role-text-talent { color: #f472b6; }
+.role-text-member { color: #9ca3af; }
+.role-text-default { color: #cbd5e1; }
 .admin-empty-state { padding: 36px 20px; color: #94a3b8; text-align: center; }
 .admin-empty-state__icon { margin-bottom: 10px; color: #a78bfa; font-size: 1.45rem; }
 .admin-empty-state__title { margin: 0; color: #e2e8f0; font-size: .92rem; font-weight: 700; }
