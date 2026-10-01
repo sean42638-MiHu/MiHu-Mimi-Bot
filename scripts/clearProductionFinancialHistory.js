@@ -6,7 +6,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const sqlite3 = require('sqlite3');
 const { inspectProductionDatabaseConfig } = require('../utils/productionDatabaseConfig');
-const { verifyBackupManifest } = require('../utils/backupContract');
+const { verifyBackupManifest, sha256File } = require('../utils/backupContract');
 const { resolveVipLevel } = require('../utils/vipResolver');
 
 const CLEAR_TABLES = Object.freeze([
@@ -211,7 +211,8 @@ async function snapshot(db) {
         targetVip,
         schemaDigest
     };
-    return { fingerprint: hash(JSON.stringify({ schemaDigest, counts, dataDigests })), report, protectedDigests };
+    return { fingerprint: hash(JSON.stringify({ schemaDigest, counts, dataDigests })), report, protectedDigests,
+        auditDigest: dataDigests.audit_logs };
 }
 
 async function preview(databasePath, dataDirectory = null) {
@@ -240,6 +241,7 @@ async function clearInTransaction(db, expectedFingerprint, actorId, backupManife
         }
         const actor = await all(db, 'SELECT id, role FROM users WHERE id = ? LIMIT 1', [actorId]);
         if (actor.length !== 1 || actor[0].role !== 'admin') throw new Error('Audited admin operator required');
+        const auditLastId = (await all(db, 'SELECT COALESCE(MAX(id),0) AS id FROM audit_logs'))[0].id;
 
         const deleted = {};
         for (const table of CLEAR_TABLES) deleted[table] = await run(db, `DELETE FROM ${quote(table)}`);
@@ -276,6 +278,11 @@ async function clearInTransaction(db, expectedFingerprint, actorId, backupManife
         if ((await all(db, 'SELECT COUNT(*) AS count FROM audit_logs'))[0].count !== before.report.counts.audit_logs + 1) {
             throw new Error('Audit history was not preserved');
         }
+        const previousAuditRows = await all(db, 'SELECT * FROM audit_logs WHERE id <= ? ORDER BY rowid', [auditLastId]);
+        if (hash(JSON.stringify(previousAuditRows)) !== before.auditDigest) throw new Error('Existing audit contents changed');
+        if ((await all(db, 'SELECT COUNT(*) AS count FROM users WHERE COALESCE(vip_level,0) <> ?', [before.report.targetVip]))[0].count) {
+            throw new Error('VIP policy differs from reviewed zero-data level');
+        }
         if ((await all(db, 'PRAGMA foreign_key_check')).length) throw new Error('Foreign keys not clean after clearing');
         if ((await all(db, 'PRAGMA integrity_check'))[0].integrity_check !== 'ok') throw new Error('Database integrity failed');
         await run(db, 'COMMIT');
@@ -303,7 +310,7 @@ async function execute(env) {
     if (backup.schemaState !== 'READY') throw new Error('Backup schema not ready');
     if (path.resolve(offsitePath) === path.resolve(backup.backupPath)
         || fs.statSync(offsitePath).dev === fs.statSync(databasePath).dev) throw new Error('Offsite copy must be on separate storage');
-    const offsiteHash = await require('../utils/backupContract').sha256File(offsitePath);
+    const offsiteHash = await sha256File(offsitePath);
     if (offsiteHash !== backup.backupSha256) throw new Error('Offsite backup checksum mismatch');
     const expected = String(env.CLEAR_PREVIEW_FINGERPRINT || '');
     if (!/^[a-f0-9]{64}$/i.test(expected)) throw new Error('Reviewed preview fingerprint required');
@@ -334,7 +341,7 @@ async function syncMirrors(env) {
             || metadata.backupManifestPath !== env.CLEAR_BACKUP_MANIFEST
             || metadata.offsitePath !== env.CLEAR_OFFSITE_COPY) throw new Error('Clear audit does not match reviewed backup and fingerprint');
         const backup = await verifyBackupManifest(metadata.backupManifestPath, databasePath);
-        if (backup.schemaState !== 'READY' || hash(fs.readFileSync(metadata.offsitePath)) !== backup.backupSha256) {
+        if (backup.schemaState !== 'READY' || await sha256File(metadata.offsitePath) !== backup.backupSha256) {
             throw new Error('Backup or offsite copy verification failed');
         }
         if (fs.statSync(metadata.offsitePath).dev === fs.statSync(databasePath).dev) {

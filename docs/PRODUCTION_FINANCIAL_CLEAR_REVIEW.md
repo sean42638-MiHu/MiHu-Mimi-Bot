@@ -18,6 +18,10 @@
 | 審計及完整性 | `audit_logs` 132 筆；`quick_check=ok`；`foreign_key_check` 有上述 2 筆孤兒冪等鍵 |
 | 持久化 JSON 鏡像 | `users.json` 存在（5866 bytes）、`orders.json` 存在（2691 bytes）、`topups.json`／`payouts.json` 不存在；部署帳號無權讀 `orders.json`，**未取得正式鏡像列數或內容**。後續以 `mihu` 身分的唯讀預覽產生列數與 hash，納入審閱指紋 |
 
+唯讀查證孤兒鍵來源：冪等 rowid 1 指向訂單 3（建於 09:43:12，09:43:19 有 `order_batch_delete_refund` 與批次 audit）；rowid 2 指向訂單 4（建於 09:43:45，09:44:31 有同類刪除 audit）。目前批次服務直接 `DELETE FROM orders`，未顯式刪除對應冪等列；既有 SQLite 連線未保證啟用 `PRAGMA foreign_keys=ON`，所以宣告的 `ON DELETE CASCADE` 未生效。本次全量清理會先刪冪等表再刪訂單，消除現存兩筆違規，但**未修復未來批次刪單的根因**；應另開小型 PR，在同一刪除交易中顯式刪該訂單的冪等鍵，並加入 `foreign_key_check` 回歸。不可把它隱藏在清理 PR 的大規模動作裡。
+
+既有 `Web startup refuses an unprepared temporary DB` 曾兩次以 5 秒、`SIGTERM/ETIMEDOUT` 且 stdout/stderr 空白失敗；隔離分段探測中 `require(app)`、DB 及 readiness 皆能正常拒絕空 DB，直接 `index.js` 約 0.54 秒退出且輸出正確錯誤；相同測試單獨重跑與完整 `production-safety-foundation` 13/13 均通過。未修改 timeout、未略過測試，將其列為需持續觀察的間歇性 Windows 子程序／環境問題，而非已證實的清理邏輯錯誤。
+
 其他保留項目及筆數：`announcements` 1、`bot_commands` 0、`commission_settings` 6、`commission_settings_migrations` 2、`email_verifications` 2、`role_permissions` 0、`roles` 7、`sensitive_data_migrations` 1、`studio_commissions` 6、`studio_services` 3、`studios` 1、`system_settings` 4、`talents` 4、`vip_tiers` 7。正式 schema 無自訂觸發器或 view；`order_creation_idempotency.order_id` 是指向 `orders.id` 的 `ON DELETE CASCADE`，`payout_ledger.payout_id` 指向 `payouts.id` 且無 cascade，因此清理順序先 payout ledger 與冪等，再各自的父表。
 
 ## 清理範圍與保留政策

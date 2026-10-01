@@ -28,6 +28,24 @@ run_mihu() {
     DATABASE_BACKUP_DIR="$BACKUPS" "$@"
 }
 
+preview_digest() {
+  printf '%s' "$1" | /usr/bin/node -e 'let value="";process.stdin.on("data",chunk=>value+=chunk).on("end",()=>process.stdout.write(JSON.parse(value).fingerprint))'
+}
+
+show_scope() {
+  printf '%s' "$1" | /usr/bin/node -e '
+    let value="";
+    process.stdin.on("data",chunk=>value+=chunk).on("end",()=>{
+      const report=JSON.parse(value);
+      const targets=["orders","order_creation_idempotency","wallet_transactions","topups","payouts","payout_ledger","user_order_spent_sync"];
+      console.log(JSON.stringify({status:report.status,fingerprint:report.fingerprint,
+        deleteCounts:Object.fromEntries(targets.map(table=>[table,report.counts[table]])),
+        walletBalancesToZero:report.walletBalances[0],userMirrorsToZero:report.userMirrors[0],
+        orderTotals:report.orderTotals[0],walletTransactions:report.walletTransactions,
+        mirrors:report.mirrors,foreignKeyProblems:report.foreignKeyProblems}));
+    });'
+}
+
 http_ready() {
   local login health attempt
   for ((attempt=1; attempt<=15; attempt++)); do
@@ -45,7 +63,9 @@ on_failure() {
   local code="$1"
   trap - ERR INT TERM
   echo "FAILED; manifest=${manifest_path:-not-created}; execution_started=$execution_started" >&2
-  if [ "$writers_stopped" -eq 1 ] && [ "$execution_started" -eq 0 ]; then
+  if [ "$writers_stopped" -eq 0 ]; then
+    echo 'Preflight failed before writer freeze; service state was not changed.' >&2
+  elif [ "$execution_started" -eq 0 ]; then
     echo 'No clear was started; attempting to restore the original services.' >&2
     sudo systemctl start "$WEB" "$BOT" && http_ready ||
       echo 'Service recovery needs manual inspection.' >&2
@@ -73,17 +93,21 @@ for command in node curl sha256sum fuser; do command -v "$command" >/dev/null ||
 
 echo "Reviewed release: $CLEAR_RELEASE_COMMIT"
 echo "Reviewed preview fingerprint: $CLEAR_PREVIEW_FINGERPRINT"
+live_preview="$(run_mihu /usr/bin/node scripts/clearProductionFinancialHistory.js preview)"
+echo 'Current read-only production scope before downtime:'
+show_scope "$live_preview"
+[ "$(preview_digest "$live_preview")" = "$CLEAR_PREVIEW_FINGERPRINT" ] || fail 'Live inventory changed; require new review before downtime'
 read -r -p 'Confirm production identity, reviewed scope and scheduled writer freeze. Type YES: ' before_stop
 [ "$before_stop" = YES ] || fail 'Production approval missing'
 
-sudo systemctl stop "$WEB" "$BOT"
 writers_stopped=1
+sudo systemctl stop "$WEB" "$BOT"
 ! systemctl is-active --quiet "$WEB" && ! systemctl is-active --quiet "$BOT" || fail 'A writer is still active'
 if sudo fuser "$DB" >/dev/null 2>&1; then fail 'Database has open handles'; fi
 for suffix in -wal -shm -journal; do [ ! -e "$DB$suffix" ] || fail "SQLite sidecar remains: $suffix"; done
 
 observed="$(run_mihu /usr/bin/node scripts/clearProductionFinancialHistory.js preview)"
-observed_digest="$(printf '%s' "$observed" | /usr/bin/node -e 'let value="";process.stdin.on("data",chunk=>value+=chunk).on("end",()=>process.stdout.write(JSON.parse(value).fingerprint))')"
+observed_digest="$(preview_digest "$observed")"
 [ "$observed_digest" = "$CLEAR_PREVIEW_FINGERPRINT" ] || fail 'Read-only inventory changed; require new review'
 
 backup_result="$(run_mihu env BACKUP_CONFIRM=YES PRODUCTION_WRITES_DISABLED=YES \
@@ -116,6 +140,8 @@ done
 echo "Verified local backup manifest: $manifest_path"
 echo "Verified offsite copy: $offsite_path"
 echo "Verified mirror archives: $mirror_local and $mirror_offsite"
+echo 'Final deletion and zeroing scope; compare with the reviewed preview:'
+show_scope "$observed"
 read -r -p 'Independently confirm the off-host copy, manifest and reviewed totals. Type YES: ' offsite_confirm
 [ "$offsite_confirm" = YES ] || fail 'Offsite verification not confirmed'
 read -r -p 'Authorize irreversible financial-history clear from the reviewed snapshot. Type CLEAR_ALL_FINANCIAL_HISTORY: ' clear_confirm

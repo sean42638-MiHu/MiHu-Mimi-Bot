@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { test } = require('node:test');
 const sqlite3 = require('sqlite3');
 const { preview, clearInTransaction, writeMirrorsFromDatabase } = require('../scripts/clearProductionFinancialHistory');
@@ -179,4 +179,24 @@ test('mirror drift blocks deletion and regenerated mirrors reflect cleared funds
             assert.deepEqual(JSON.parse(fs.readFileSync(path.join(mirrors, name), 'utf8')), []);
         }
     });
+});
+
+test('runner failure handling never stops services before downtime and keeps them stopped after execution starts', t => {
+    const bash = process.platform === 'win32' ? 'E:/Git/bin/bash.exe' : 'bash';
+    if (process.platform === 'win32' && !fs.existsSync(bash)) return t.skip('Git Bash unavailable');
+    const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'runProductionFinancialClear.sh'), 'utf8');
+    const start = source.indexOf('on_failure() {');
+    const end = source.indexOf('\n}\ntrap', start);
+    assert.ok(start >= 0 && end > start);
+    const handler = source.slice(start, end + 2);
+    for (const [stopped, executed, expected] of [
+        [0, 0, []], [1, 0, ['start']], [1, 1, ['stop']]
+    ]) {
+        const result = spawnSync(bash, ['-c', `writers_stopped=${stopped}\nexecution_started=${executed}\nmanifest_path=''\nsudo() { echo "SERVICE:$2"; }\nhttp_ready() { return 0; }\n${handler}\non_failure 1`], {
+            encoding: 'utf8'
+        });
+        assert.equal(result.status, 1, result.stderr);
+        const calls = [...result.stdout.matchAll(/SERVICE:(start|stop)/g)].map(match => match[1]);
+        assert.deepEqual(calls, expected);
+    }
 });
