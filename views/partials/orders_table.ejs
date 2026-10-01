@@ -138,8 +138,8 @@
                         const discount = Number(o.discount || 0);
                         const originalPrice = totalAmount + discount;
 
-                        const canEdit = typeof hasPerm === 'function' && hasPerm('action_order_manage');
-                        const canReassign = typeof hasPerm === 'function' && hasPerm('action_order_reassign');
+                        const canEdit = typeof hasPerm === 'function' && hasPerm('action_order_edit_reassign');
+                        const canReassign = canEdit;
                         const canAdjustPrice = typeof hasPerm === 'function' && hasPerm('action_order_price');
                         const canRefund = typeof hasPerm === 'function' && hasPerm('action_order_refund');
                         const canRefundCompleted = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
