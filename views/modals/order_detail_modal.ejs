@@ -199,6 +199,9 @@
                         <% if (typeof hasPerm === 'function' && hasPerm('action_order_refund')) { %><button type="submit" id="btnDeleteOrderModal" formnovalidate onclick="return submitModalDeleteOrder(event)" class="btn btn-sm btn-outline-danger rounded-pill px-3" style="display: none;">
                             <i class="fa-solid fa-rotate-left me-1"></i>全額退款並取消
                         </button><% } %>
+                        <% if (typeof hasPerm === 'function' && hasPerm('action_order_batch_delete')) { %><button type="button" id="btnRemoveOrderModal" onclick="openOrderDeletePreview()" class="btn btn-sm btn-outline-danger rounded-pill px-3" style="display: none;">
+                            <i class="fa-solid fa-trash-can me-1"></i>刪除訂單
+                        </button><% } %>
                     </div>
 
                     <div class="d-flex gap-2">
@@ -227,6 +230,7 @@
         const btnCancelEdit = document.getElementById('btnCancelEdit');
         const btnSaveOrderModal = document.getElementById('btnSaveOrderModal');
         const btnDeleteOrderModal = document.getElementById('btnDeleteOrderModal');
+        const btnRemoveOrderModal = document.getElementById('btnRemoveOrderModal');
 
         if (isEdit) {
             inputs.forEach(input => input.disabled = false);
@@ -247,6 +251,7 @@
             if (btnCancelEdit) btnCancelEdit.style.display = 'inline-block';
             if (btnSaveOrderModal) btnSaveOrderModal.style.display = 'inline-block';
             if (btnDeleteOrderModal && window.currentOrderCanRefund) btnDeleteOrderModal.style.display = 'inline-block';
+            if (btnRemoveOrderModal) btnRemoveOrderModal.style.display = 'inline-block';
         } else {
             inputs.forEach(input => input.disabled = true);
             if (headerTitle) headerTitle.textContent = '訂單詳細內容';
@@ -260,6 +265,7 @@
             if (btnCancelEdit) btnCancelEdit.style.display = 'none';
             if (btnSaveOrderModal) btnSaveOrderModal.style.display = 'none';
             if (btnDeleteOrderModal) btnDeleteOrderModal.style.display = 'none';
+            if (btnRemoveOrderModal) btnRemoveOrderModal.style.display = 'none';
         }
     }
 

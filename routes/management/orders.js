@@ -563,7 +563,7 @@ router.post('/batch-delete', ensureAuth, checkPerm('action_order_batch_delete'),
             if (typeof syncUsersJsonFromDb === 'function') syncUsersJsonFromDb();
         } catch (e) {}
 
-        const successMsg = `✅ 成功批量刪除並退款 ${result.summary.deletedCount} 筆訂單！`;
+        const successMsg = `已刪除 ${result.summary.deletedCount} 筆訂單，本次退款 $${result.summary.refundableTotal} NTD。`;
         const redirectUrl = '/management/orders?successMsg=' + encodeURIComponent(successMsg);
         if (wantsJson(req)) return res.json({ success: true, redirect: redirectUrl, successMsg });
         return res.redirect(303, redirectUrl);
