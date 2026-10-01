@@ -2,6 +2,7 @@ const db = require('../database');
 const { writeAuditLog } = require('./auditService');
 const { withTransactionGate } = require('./transactionGate');
 const { normalizeStatus, assertRefundTransitionAllowed } = require('./orderStatus');
+const { syncMemberSpentAndVipInTransaction } = require('./orderSettlementService');
 
 function createWalletError(message, code) {
     const error = new Error(message);
@@ -226,6 +227,15 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
         [order.id, ...blockedStatuses]
     );
     if (stateUpdate.changes !== 1) throw new Error(`訂單 ${order.order_no} 狀態已變更，退款已取消`);
+
+    await syncMemberSpentAndVipInTransaction({
+        userId: order.boss_id,
+        studioId: Number(order.studio_id),
+        operatorId,
+        source: 'order-refund',
+        expectedOrderSpentDelta: status === 'completed' ? -refundAmount : 0
+    });
+
     return { order, refundAmount, balanceBefore: before, balanceAfter: after };
 }
 

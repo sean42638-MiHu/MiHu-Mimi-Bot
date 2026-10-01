@@ -4,6 +4,7 @@ const { dbAll, dbGet, dbRun } = require('../utils/dbHelper');
 const { withTransactionGate } = require('../utils/transactionGate');
 const { applyWalletDeltaInTransaction } = require('../utils/walletService');
 const { writeAuditLog } = require('../utils/auditService');
+const { syncMembersSpentAndVipInTransaction } = require('../utils/orderSettlementService');
 const {
     resolvePermissions,
     parsePermissionData,
@@ -448,6 +449,7 @@ async function executeBatchDeleteAndRefund(orderIds, actorContext, { source = 'å
 
             let refundedCount = 0;
             let deletedCount = 0;
+            const affectedMembers = new Map();
 
             for (const item of items) {
                 if (item.refundableAmount > 0) {
@@ -509,7 +511,28 @@ async function executeBatchDeleteAndRefund(orderIds, actorContext, { source = 'å
                         code: 'ORDER_BATCH_DELETE_CONFLICT'
                     });
                 }
+                const affectedKey = `${String(item.studioId)}:${String(item.bossId)}`;
+                const orderStatus = String(item.snapshot && item.snapshot.status || item.status || '').toLowerCase();
+                const orderAmount = Number(item.snapshot && item.snapshot.total_amount || 0);
+                const orderSpentDelta = orderStatus === 'completed' && Number.isFinite(orderAmount)
+                    ? -orderAmount
+                    : 0;
+                affectedMembers.set(affectedKey, {
+                    userId: String(item.bossId),
+                    studioId: Number(item.studioId),
+                    orderSpentDelta: (affectedMembers.get(affectedKey)?.orderSpentDelta || 0) + orderSpentDelta
+                });
                 deletedCount += 1;
+            }
+
+            for (const affected of affectedMembers.values()) {
+                await syncMembersSpentAndVipInTransaction({
+                    userIds: [affected.userId],
+                    studioId: affected.studioId,
+                    operatorId: currentActorContext.actorId,
+                    source: 'order-batch-delete',
+                    expectedOrderSpentDelta: affected.orderSpentDelta
+                });
             }
 
             await writeAuditLog({

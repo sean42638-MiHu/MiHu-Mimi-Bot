@@ -1,0 +1,697 @@
+<%
+    const canCreateOrder = typeof canCreateManualOrder === 'boolean'
+        ? canCreateManualOrder
+        : (typeof hasPerm === 'function' && hasPerm('action_order_manage'));
+    const canAdjustManualRate = typeof canAdjustOrderPrice === 'boolean'
+        ? canAdjustOrderPrice
+        : (typeof hasPerm === 'function' && hasPerm('action_order_price'));
+    const manualShareDefaults = defaultTalentShareRates || {
+        '陪玩單': 0.80,
+        '禮物單': 0.85,
+        '有獎單': 0.90,
+        '冠名單': 0.85,
+        '其他單': 0.80,
+        '獎金單': 1.00
+    };
+%>
+
+<% if (canCreateOrder) { %>
+<style>
+    #manualCreateOrderModal .manual-create-content {
+        background: linear-gradient(165deg, rgba(14, 11, 28, 0.98), rgba(29, 16, 48, 0.95));
+        border: 1px solid rgba(232, 121, 249, 0.35);
+        box-shadow: 0 28px 56px rgba(7, 5, 18, 0.78);
+        color: #f8fafc;
+    }
+
+    #manualCreateOrderModal .manual-create-body {
+        max-height: 74vh;
+        overflow-y: auto;
+        padding-right: 12px;
+    }
+
+    #manualCreateOrderModal .manual-form-label {
+        color: #cbd5f5;
+        font-size: 0.82rem;
+        margin-bottom: 6px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+
+    #manualCreateOrderModal .manual-form-control,
+    #manualCreateOrderModal .manual-form-select {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: #f8fafc;
+        border-radius: 12px;
+        min-height: 40px;
+    }
+
+    #manualCreateOrderModal .manual-form-control:focus,
+    #manualCreateOrderModal .manual-form-select:focus {
+        border-color: rgba(244, 114, 182, 0.8);
+        box-shadow: 0 0 0 0.2rem rgba(244, 114, 182, 0.22);
+    }
+
+    #manualCreateOrderModal .manual-form-select option {
+        background: #0f172a;
+        color: #f8fafc;
+    }
+
+    #manualCreateOrderModal .manual-search-wrap {
+        position: relative;
+    }
+
+    #manualCreateOrderModal .manual-search-results {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 6px);
+        z-index: 20;
+        background: rgba(9, 12, 29, 0.96);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 12px;
+        overflow: hidden;
+        display: none;
+        backdrop-filter: blur(6px);
+    }
+
+    #manualCreateOrderModal .manual-search-item {
+        width: 100%;
+        border: 0;
+        padding: 10px 12px;
+        text-align: left;
+        color: #e2e8f0;
+        background: transparent;
+        font-size: 0.84rem;
+    }
+
+    #manualCreateOrderModal .manual-search-item:hover,
+    #manualCreateOrderModal .manual-search-item:focus-visible {
+        background: rgba(236, 72, 153, 0.2);
+        outline: none;
+    }
+
+    #manualCreateOrderModal .manual-selected-chip {
+        margin-top: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(96, 165, 250, 0.45);
+        background: rgba(59, 130, 246, 0.18);
+        color: #bfdbfe;
+        font-size: 0.77rem;
+    }
+
+    #manualCreateOrderModal .manual-preview-card {
+        border-radius: 14px;
+        border: 1px solid rgba(244, 114, 182, 0.35);
+        background: linear-gradient(145deg, rgba(30, 20, 44, 0.88), rgba(17, 27, 52, 0.82));
+        padding: 14px;
+    }
+
+    #manualCreateOrderModal .manual-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    #manualCreateOrderModal .manual-preview-label {
+        font-size: 0.72rem;
+        color: #a5b4fc;
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    #manualCreateOrderModal .manual-preview-value {
+        font-size: 1rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-weight: 800;
+        color: #f8fafc;
+    }
+
+    #manualCreateOrderModal .manual-override-disabled {
+        opacity: 0.55;
+    }
+
+    @media (max-width: 768px) {
+        #manualCreateOrderModal .modal-dialog {
+            margin: 0;
+            max-width: 100%;
+            height: 100%;
+        }
+
+        #manualCreateOrderModal .modal-content {
+            min-height: 100vh;
+            border-radius: 0;
+        }
+
+        #manualCreateOrderModal .manual-create-body {
+            max-height: none;
+            padding-bottom: 16px;
+        }
+
+        #manualCreateOrderModal .manual-preview-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #manualCreateOrderModal *,
+        #manualCreateOrderModal *::before,
+        #manualCreateOrderModal *::after {
+            transition: none !important;
+            animation: none !important;
+        }
+    }
+</style>
+
+<div class="modal fade" id="manualCreateOrderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width: 880px;">
+        <div class="modal-content manual-create-content">
+            <form id="manualCreateOrderForm" method="POST" action="/management/orders/create">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="request_key" id="manualOrderRequestKey">
+                <input type="hidden" name="boss_id" id="manualOrderBossId">
+                <input type="hidden" name="talent_id" id="manualOrderTalentId">
+
+                <div class="modal-header border-0 pb-2">
+                    <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-file-circle-plus" style="color:#f472b6;"></i>
+                        手動建立訂單
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body manual-create-body">
+                    <div class="alert alert-danger py-2 px-3 small" id="manualCreateOrderError" style="display:none;"></div>
+                    <div class="alert alert-warning py-2 px-3 small mb-3">
+                        此操作建立訂單並依狀態結算，不會扣除會員錢包，也不代表已驗證收款。
+                    </div>
+
+                    <div class="row g-3 mb-2">
+                        <div class="col-md-6">
+                            <label class="manual-form-label">會員 (Discord ID / 暱稱)</label>
+                            <div class="manual-search-wrap">
+                                <input type="search" class="form-control manual-form-control" id="manualMemberSearch" autocomplete="off" placeholder="輸入至少 2 個字，例如 member-a">
+                                <div class="manual-search-results" id="manualMemberResults"></div>
+                            </div>
+                            <div id="manualMemberSelected" style="display:none;"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="manual-form-label">接單人 (接單資格)</label>
+                            <div class="manual-search-wrap">
+                                <input type="search" class="form-control manual-form-control" id="manualTalentSearch" autocomplete="off" placeholder="搜尋陪陪 / 接單員工">
+                                <div class="manual-search-results" id="manualTalentResults"></div>
+                            </div>
+                            <div id="manualTalentSelected" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="manual-form-label">訂單類別</label>
+                            <select class="form-select manual-form-select" id="manualOrderCategory" name="category" required>
+                                <option value="陪玩單">陪玩單</option>
+                                <option value="禮物單">禮物單</option>
+                                <option value="有獎單">有獎單</option>
+                                <option value="冠名單">冠名單</option>
+                                <option value="其他單">其他單</option>
+                                <option value="獎金單">獎金單</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="manual-form-label">服務項目</label>
+                            <input type="text" class="form-control manual-form-control" id="manualOrderGame" name="game" maxlength="120" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="manual-form-label">內容規格</label>
+                            <input type="text" class="form-control manual-form-control" id="manualOrderTier" name="content_tier" maxlength="120" placeholder="可留空">
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-3 col-6">
+                            <label class="manual-form-label">時長 / 數量</label>
+                            <input type="number" class="form-control manual-form-control" id="manualOrderDuration" name="duration" min="0.01" max="10000" step="0.01" value="1" required>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <label class="manual-form-label">單位</label>
+                            <select class="form-select manual-form-select" id="manualOrderUnit" name="unit">
+                                <option value="小時">小時</option>
+                                <option value="局">局</option>
+                                <option value="次">次</option>
+                                <option value="首">首</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <label class="manual-form-label">訂單金額 (NTD)</label>
+                            <input type="number" class="form-control manual-form-control" id="manualOrderAmount" name="final_amount" min="0" max="1000000000" step="0.01" value="0" required>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <label class="manual-form-label">建立狀態</label>
+                            <select class="form-select manual-form-select" id="manualOrderStatus" name="manual_status">
+                                <option value="completed" selected>completed (已完成)</option>
+                                <option value="in_progress">in_progress (進行中)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="rounded-4 p-3 mt-3" style="border:1px solid rgba(125,211,252,0.35); background:rgba(15,23,42,0.45);">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <label class="manual-form-label mb-0">覆寫分潤比例</label>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" role="switch" id="manualEnableRatioOverride" name="enable_ratio_override" value="1" <%= canAdjustManualRate ? '' : 'disabled' %>>
+                                <label class="form-check-label small text-secondary" for="manualEnableRatioOverride">啟用覆寫</label>
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-1 <%= canAdjustManualRate ? '' : 'manual-override-disabled' %>" id="manualRatioOverrideGroup">
+                            <div class="col-md-6">
+                                <select class="form-select manual-form-select" name="ratio_mode" id="manualRatioMode" <%= canAdjustManualRate ? 'disabled' : 'disabled' %>>
+                                    <option value="talent_share">輸入陪陪分潤 %</option>
+                                    <option value="studio_cut">輸入工作室抽成 %</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <input type="number" class="form-control manual-form-control" name="ratio_value" id="manualRatioValue" min="0" max="100" step="0.01" placeholder="例如 82.5" <%= canAdjustManualRate ? 'disabled' : 'disabled' %>>
+                            </div>
+                        </div>
+                        <% if (!canAdjustManualRate) { %>
+                            <small class="text-warning d-block mt-2">此帳號沒有 orders.price_adjust 權限，僅能使用既有分潤規則。</small>
+                        <% } else { %>
+                            <small class="text-secondary d-block mt-2">覆寫會影響訂單分潤快照，未啟用時採用接單者個人成數或類別預設。</small>
+                        <% } %>
+                    </div>
+
+                    <div class="manual-preview-card mt-3" aria-live="polite">
+                        <div class="small text-info fw-semibold mb-2">即時收益預覽 (僅作提示，實際以後端交易計算為準)</div>
+                        <div class="manual-preview-grid">
+                            <div>
+                                <span class="manual-preview-label">套用陪陪分潤</span>
+                                <span class="manual-preview-value" id="manualPreviewTalentRate">80.00%</span>
+                            </div>
+                            <div>
+                                <span class="manual-preview-label">陪陪預估收益</span>
+                                <span class="manual-preview-value" id="manualPreviewTalentNet">$0</span>
+                            </div>
+                            <div>
+                                <span class="manual-preview-label">工作室預估抽成</span>
+                                <span class="manual-preview-value" id="manualPreviewStudioCut">$0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                            <label class="manual-form-label">陪陪留言 (選填)</label>
+                            <textarea class="form-control manual-form-control" id="manualTalentMessage" name="talent_message" rows="2" maxlength="500" placeholder="完成單可同步寫入留言"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="manual-form-label">客服備註 (選填)</label>
+                            <textarea class="form-control manual-form-control" id="manualOrderNote" name="note" rows="2" maxlength="500" placeholder="內部備註，最多 500 字"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer border-0 pt-2">
+                    <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary" id="manualCreateOrderSubmitBtn" style="background:linear-gradient(135deg,#ec4899,#db2777); border:1px solid rgba(249,168,212,0.45);">建立訂單</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function initializeManualCreateOrderModal() {
+        if (window.__mihuManualCreateOrderInitialized) return;
+        window.__mihuManualCreateOrderInitialized = true;
+
+        const modalEl = document.getElementById('manualCreateOrderModal');
+        const form = document.getElementById('manualCreateOrderForm');
+        if (!modalEl || !form) return;
+
+        const defaults = <%- JSON.stringify(manualShareDefaults) %>;
+        const canAdjustRate = <%= canAdjustManualRate ? 'true' : 'false' %>;
+
+        const memberInput = document.getElementById('manualMemberSearch');
+        const memberResults = document.getElementById('manualMemberResults');
+        const memberHidden = document.getElementById('manualOrderBossId');
+        const memberSelected = document.getElementById('manualMemberSelected');
+
+        const talentInput = document.getElementById('manualTalentSearch');
+        const talentResults = document.getElementById('manualTalentResults');
+        const talentHidden = document.getElementById('manualOrderTalentId');
+        const talentSelected = document.getElementById('manualTalentSelected');
+
+        const requestKeyInput = document.getElementById('manualOrderRequestKey');
+        const amountInput = document.getElementById('manualOrderAmount');
+        const categoryInput = document.getElementById('manualOrderCategory');
+        const ratioToggle = document.getElementById('manualEnableRatioOverride');
+        const ratioModeInput = document.getElementById('manualRatioMode');
+        const ratioValueInput = document.getElementById('manualRatioValue');
+        const previewRate = document.getElementById('manualPreviewTalentRate');
+        const previewTalentNet = document.getElementById('manualPreviewTalentNet');
+        const previewStudioCut = document.getElementById('manualPreviewStudioCut');
+        const errorBox = document.getElementById('manualCreateOrderError');
+        const submitBtn = document.getElementById('manualCreateOrderSubmitBtn');
+
+        let selectedTalentRate = null;
+
+        function createRequestKey() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return `manual_${window.crypto.randomUUID().replace(/-/g, '')}`;
+            }
+            const randomPart = Math.random().toString(36).slice(2, 14);
+            const timePart = Date.now().toString(36);
+            return `manual_${timePart}_${randomPart}`;
+        }
+
+        function setError(message) {
+            if (!errorBox) return;
+            const text = String(message || '').trim();
+            if (!text) {
+                errorBox.style.display = 'none';
+                errorBox.textContent = '';
+                return;
+            }
+            errorBox.textContent = text;
+            errorBox.style.display = 'block';
+        }
+
+        function setSelectedChip(container, label, id, extraText) {
+            if (!container) return;
+            if (!label || !id) {
+                container.style.display = 'none';
+                container.innerHTML = '';
+                return;
+            }
+            container.style.display = 'block';
+            container.innerHTML = '';
+            const chip = document.createElement('span');
+            chip.className = 'manual-selected-chip';
+            chip.textContent = `${label} · ${id}${extraText ? ` · ${extraText}` : ''}`;
+            container.appendChild(chip);
+        }
+
+        function closeResults(panel) {
+            if (!panel) return;
+            panel.style.display = 'none';
+            panel.innerHTML = '';
+        }
+
+        function renderResults(panel, rows, onChoose, emptyText) {
+            if (!panel) return;
+            panel.innerHTML = '';
+            if (!rows.length) {
+                const empty = document.createElement('div');
+                empty.className = 'small text-secondary px-3 py-2';
+                empty.textContent = emptyText;
+                panel.appendChild(empty);
+                panel.style.display = 'block';
+                return;
+            }
+            rows.forEach(row => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'manual-search-item';
+                button.textContent = row.label;
+                button.addEventListener('click', () => onChoose(row));
+                panel.appendChild(button);
+            });
+            panel.style.display = 'block';
+        }
+
+        function debounce(fn, wait) {
+            let timer = null;
+            return (...args) => {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => fn(...args), wait);
+            };
+        }
+
+        async function fetchJson(url) {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin'
+            });
+            let payload = null;
+            try {
+                payload = await response.json();
+            } catch (_error) {
+                payload = null;
+            }
+            if (!response.ok || !payload || payload.success !== true) {
+                throw new Error(payload && payload.error ? payload.error : '資料讀取失敗，請稍後再試。');
+            }
+            return payload;
+        }
+
+        const searchMembers = debounce(async () => {
+            const keyword = String(memberInput && memberInput.value || '').trim();
+            memberHidden.value = '';
+            setSelectedChip(memberSelected, '', '', '');
+            if (keyword.length < 2) {
+                closeResults(memberResults);
+                return;
+            }
+            try {
+                const payload = await fetchJson(`/management/orders/create/member-options?q=${encodeURIComponent(keyword)}`);
+                const rows = (payload.members || []).map(member => ({
+                    id: member.id,
+                    nickname: member.nickname,
+                    label: `${member.nickname} · ${member.id} · VIP ${member.vipLevel} · 餘額 $${Number(member.balance || 0).toLocaleString()}`,
+                    value: member
+                }));
+                renderResults(memberResults, rows, item => {
+                    memberHidden.value = String(item.id);
+                    memberInput.value = `${item.nickname} (${item.id})`;
+                    setSelectedChip(memberSelected, item.nickname, item.id, `VIP ${item.value.vipLevel}`);
+                    closeResults(memberResults);
+                }, '找不到符合條件的會員');
+            } catch (error) {
+                setError(error.message || '會員搜尋失敗');
+            }
+        }, 240);
+
+        const searchTakers = debounce(async () => {
+            const keyword = String(talentInput && talentInput.value || '').trim();
+            talentHidden.value = '';
+            selectedTalentRate = null;
+            setSelectedChip(talentSelected, '', '', '');
+            refreshPreview();
+            if (keyword.length < 2) {
+                closeResults(talentResults);
+                return;
+            }
+            try {
+                const payload = await fetchJson(`/management/orders/create/taker-options?q=${encodeURIComponent(keyword)}`);
+                const rows = (payload.takers || []).map(taker => {
+                    const statusLabel = String(taker.status || 'idle');
+                    const hasPersonalRate = taker.personalRate !== null && taker.personalRate !== undefined;
+                    return {
+                        id: taker.id,
+                        nickname: taker.nickname,
+                        personalRate: hasPersonalRate ? Number(taker.personalRate) : null,
+                        label: `${taker.nickname} · ${taker.id} · 狀態 ${statusLabel}${hasPersonalRate ? ` · 個人成數 ${(Number(taker.personalRate) * 100).toFixed(2)}%` : ''}`,
+                        statusLabel
+                    };
+                });
+                renderResults(talentResults, rows, item => {
+                    talentHidden.value = String(item.id);
+                    talentInput.value = `${item.nickname} (${item.id})`;
+                    selectedTalentRate = item.personalRate;
+                    setSelectedChip(
+                        talentSelected,
+                        item.nickname,
+                        item.id,
+                        item.personalRate === null
+                            ? item.statusLabel
+                            : `${item.statusLabel} / ${(item.personalRate * 100).toFixed(2)}%`
+                    );
+                    closeResults(talentResults);
+                    refreshPreview();
+                }, '找不到符合條件的接單者');
+            } catch (error) {
+                setError(error.message || '接單者搜尋失敗');
+            }
+        }, 240);
+
+        function formatCurrency(value) {
+            return `$${Number(value || 0).toLocaleString('zh-TW', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            })}`;
+        }
+
+        function getBaseTalentRate() {
+            if (selectedTalentRate !== null && Number.isFinite(Number(selectedTalentRate))) {
+                return Number(selectedTalentRate);
+            }
+            const category = String(categoryInput && categoryInput.value || '陪玩單');
+            const fallback = Number(defaults[category]);
+            return Number.isFinite(fallback) ? fallback : 0.8;
+        }
+
+        function getAppliedTalentRate() {
+            let rate = getBaseTalentRate();
+            const overrideEnabled = Boolean(ratioToggle && ratioToggle.checked && canAdjustRate);
+            if (!overrideEnabled) return rate;
+
+            const ratioValue = Number(ratioValueInput && ratioValueInput.value);
+            if (!Number.isFinite(ratioValue)) return rate;
+            const rawRatio = Math.min(100, Math.max(0, ratioValue)) / 100;
+            const mode = String(ratioModeInput && ratioModeInput.value || 'talent_share');
+            rate = mode === 'studio_cut' ? (1 - rawRatio) : rawRatio;
+            if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+                return getBaseTalentRate();
+            }
+            return rate;
+        }
+
+        function refreshPreview() {
+            const amount = Number(amountInput && amountInput.value || 0);
+            const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
+            const rate = getAppliedTalentRate();
+            const talentNet = Math.round(safeAmount * rate);
+            const studioCut = Math.max(0, safeAmount - talentNet);
+            if (previewRate) previewRate.textContent = `${(rate * 100).toFixed(2)}%`;
+            if (previewTalentNet) previewTalentNet.textContent = formatCurrency(talentNet);
+            if (previewStudioCut) previewStudioCut.textContent = formatCurrency(studioCut);
+        }
+
+        function syncOverrideControls() {
+            if (!ratioModeInput || !ratioValueInput || !ratioToggle) return;
+            const enabled = canAdjustRate && ratioToggle.checked;
+            ratioModeInput.disabled = !enabled;
+            ratioValueInput.disabled = !enabled;
+            if (!enabled) ratioValueInput.value = '';
+            refreshPreview();
+        }
+
+        async function submitManualCreate(event) {
+            event.preventDefault();
+            setError('');
+
+            if (!memberHidden.value) {
+                setError('請先選擇有效會員。');
+                memberInput.focus();
+                return;
+            }
+            if (!talentHidden.value) {
+                setError('請先選擇有效接單者。');
+                talentInput.focus();
+                return;
+            }
+
+            if (!requestKeyInput.value) {
+                requestKeyInput.value = createRequestKey();
+            }
+
+            const params = new URLSearchParams(new FormData(form));
+            const submitLoading = window.MiHuFeedback && typeof window.MiHuFeedback.setButtonLoading === 'function';
+            if (submitLoading && submitBtn) {
+                window.MiHuFeedback.setButtonLoading(submitBtn, { loading: true, text: '建立中...' });
+            } else if (submitBtn) {
+                submitBtn.disabled = true;
+            }
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        Accept: 'application/json'
+                    },
+                    body: params.toString(),
+                    credentials: 'same-origin'
+                });
+
+                let payload = null;
+                try {
+                    payload = await response.json();
+                } catch (_error) {
+                    payload = null;
+                }
+
+                if (!response.ok || !payload || payload.success !== true) {
+                    const message = payload && payload.error ? payload.error : '手動建立訂單失敗，請稍後再試。';
+                    if (payload && payload.code === 'IDEMPOTENCY_CONFLICT') {
+                        requestKeyInput.value = createRequestKey();
+                    }
+                    setError(message);
+                    return;
+                }
+
+                if (window.MiHuFeedback && typeof window.MiHuFeedback.success === 'function') {
+                    window.MiHuFeedback.success(payload.successMsg || '手動訂單建立成功');
+                }
+                window.location.assign(payload.redirect || '/management/orders');
+            } catch (_error) {
+                setError('網路連線中斷，請稍後再試。');
+            } finally {
+                if (submitLoading && submitBtn) {
+                    window.MiHuFeedback.setButtonLoading(submitBtn, { loading: false });
+                } else if (submitBtn) {
+                    submitBtn.disabled = false;
+                }
+            }
+        }
+
+        if (memberInput) {
+            memberInput.addEventListener('input', () => {
+                setError('');
+                searchMembers();
+            });
+            memberInput.addEventListener('focus', () => {
+                if (memberInput.value.trim().length >= 2) searchMembers();
+            });
+        }
+
+        if (talentInput) {
+            talentInput.addEventListener('input', () => {
+                setError('');
+                searchTakers();
+            });
+            talentInput.addEventListener('focus', () => {
+                if (talentInput.value.trim().length >= 2) searchTakers();
+            });
+        }
+
+        document.addEventListener('click', event => {
+            if (!modalEl.contains(event.target)) return;
+            if (memberResults && !memberResults.contains(event.target) && event.target !== memberInput) {
+                closeResults(memberResults);
+            }
+            if (talentResults && !talentResults.contains(event.target) && event.target !== talentInput) {
+                closeResults(talentResults);
+            }
+        });
+
+        if (ratioToggle) ratioToggle.addEventListener('change', syncOverrideControls);
+        if (ratioModeInput) ratioModeInput.addEventListener('change', refreshPreview);
+        if (ratioValueInput) ratioValueInput.addEventListener('input', refreshPreview);
+        if (amountInput) amountInput.addEventListener('input', refreshPreview);
+        if (categoryInput) categoryInput.addEventListener('change', refreshPreview);
+
+        form.addEventListener('submit', submitManualCreate);
+        modalEl.addEventListener('show.bs.modal', () => {
+            if (!requestKeyInput.value) requestKeyInput.value = createRequestKey();
+            syncOverrideControls();
+            refreshPreview();
+            setError('');
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            closeResults(memberResults);
+            closeResults(talentResults);
+        });
+
+        syncOverrideControls();
+        refreshPreview();
+    })();
+</script>
+<% } %>

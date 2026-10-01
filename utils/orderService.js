@@ -1,10 +1,11 @@
 const db = require('../database');
 const crypto = require('crypto');
-const { dbRun } = require('./dbHelper');
+const { dbRun, dbGet: dbGetQuery } = require('./dbHelper');
 const { refundOrder, applyWalletDeltaInTransaction } = require('./walletService');
 const { withTransactionGate } = require('./transactionGate');
 const { writeAuditLog } = require('./auditService');
 const { calculateDiscount } = require('./discountHelper');
+const { syncMemberSpentAndVipInTransaction } = require('./orderSettlementService');
 const {
     normalizeStatus,
     assertKnownMutationStatus,
@@ -26,6 +27,22 @@ function getOrder(orderIdentifier) {
             resolve(row || null);
         });
     });
+}
+
+function getDbContext(context = null) {
+    if (context && typeof context.run === 'function' && typeof context.get === 'function') {
+        return context;
+    }
+    return {
+        run: dbRun,
+        get: dbGetQuery
+    };
+}
+
+async function getUserStudioId(userId, context = null) {
+    const dbContext = getDbContext(context);
+    const row = await dbContext.get('SELECT studio_id FROM users WHERE id = ?', [userId]);
+    return row ? Number(row.studio_id) : null;
 }
 
 function hasLinkedPayment(order) {
@@ -118,10 +135,16 @@ function requireReassignmentPermission(assigneeUpdate, allowReassignment) {
 }
 
 function createOrder(input = {}) {
-    return withTransactionGate(() => createOrderInternal(input));
+    return withTransactionGate(() => createOrderInternal(input, {}));
 }
 
-async function createOrderInternal(input = {}) {
+function createOrderInTransaction(input = {}, transactionContext) {
+    return createOrderInternal(input, { transactionContext });
+}
+
+async function createOrderInternal(input = {}, { transactionContext = null } = {}) {
+    const dbContext = getDbContext(transactionContext);
+    const ownsTransaction = !transactionContext;
     const orderNo = String(input.orderNo || '').trim();
     const bossId = String(input.bossId || '').trim();
     const studioId = Number(input.studioId);
@@ -141,32 +164,25 @@ async function createOrderInternal(input = {}) {
         throw new Error('訂單金額或時長無效');
     }
 
-    const boss = await new Promise((resolve, reject) => {
-        db.get('SELECT studio_id FROM users WHERE id = ?', [bossId], (error, row) => {
-            if (error) return reject(error);
-            resolve(row || null);
-        });
-    });
-    if (!boss || Number(boss.studio_id) !== studioId) throw new Error('訂單會員不屬於指定工作室');
+    const bossStudioId = await getUserStudioId(bossId, dbContext);
+    if (!Number.isInteger(bossStudioId) || bossStudioId !== studioId) throw new Error('訂單會員不屬於指定工作室');
     if (talentId) {
-        const talent = await new Promise((resolve, reject) => {
-            db.get('SELECT studio_id FROM users WHERE id = ?', [talentId], (error, row) => {
-                if (error) return reject(error);
-                resolve(row || null);
-            });
-        });
-        if (!talent || Number(talent.studio_id) !== studioId) throw new Error('陪玩師不屬於此訂單的工作室');
+        const talentStudioId = await getUserStudioId(talentId, dbContext);
+        if (!Number.isInteger(talentStudioId) || talentStudioId !== studioId) throw new Error('陪玩師不屬於此訂單的工作室');
     }
 
-    await dbRun('BEGIN IMMEDIATE');
+    if (ownsTransaction) await dbContext.run('BEGIN IMMEDIATE');
     try {
         const serviceId = input.serviceId || await resolveServiceId(studioId, game, category);
-        const personalRate = talentId ? await getPersonalTalentShareRate(talentId) : null;
+        const overrideRate = normalizeTalentShareRate(input.commissionRateOverride);
+        const personalRate = overrideRate !== null
+            ? overrideRate
+            : (talentId ? await getPersonalTalentShareRate(talentId) : null);
         const originalAmount = Number(input.originalAmount ?? (finalAmount + discount));
         const commission = await calculateCommissionByCategory(
             category, finalAmount, originalAmount, personalRate, { studioId, serviceId }
         );
-        const insert = await dbRun(`
+        const insert = await dbContext.run(`
             INSERT INTO orders (
                 order_no, boss_id, cs_id, cs_name, category, game, content_tier,
                 duration, unit, unit_price, total_amount, discount, extra, note,
@@ -217,10 +233,10 @@ async function createOrderInternal(input = {}) {
             },
             metadata: { source: input.source || 'order-service' }
         });
-        await dbRun('COMMIT');
+        if (ownsTransaction) await dbContext.run('COMMIT');
         return { id: insert.lastID, orderNo, serviceId, ...commission };
     } catch (error) {
-        await dbRun('ROLLBACK').catch(() => {});
+        if (ownsTransaction) await dbContext.run('ROLLBACK').catch(() => {});
         throw error;
     }
 }
@@ -515,17 +531,23 @@ async function startOrderInternal(orderIdentifier, operatorId = null) {
 }
 
 function completeOrder(orderIdentifier, operatorId = null, talentMessage = null) {
-    return withTransactionGate(() => completeOrderInternal(orderIdentifier, operatorId, talentMessage));
+    return withTransactionGate(() => completeOrderInternal(orderIdentifier, operatorId, talentMessage, {}));
 }
 
-async function completeOrderInternal(orderIdentifier, operatorId = null, talentMessage = null) {
-    await dbRun('BEGIN IMMEDIATE');
+function completeOrderInTransaction(orderIdentifier, operatorId = null, talentMessage = null, transactionContext) {
+    return completeOrderInternal(orderIdentifier, operatorId, talentMessage, { transactionContext });
+}
+
+async function completeOrderInternal(orderIdentifier, operatorId = null, talentMessage = null, { transactionContext = null } = {}) {
+    const dbContext = getDbContext(transactionContext);
+    const ownsTransaction = !transactionContext;
+    if (ownsTransaction) await dbContext.run('BEGIN IMMEDIATE');
     try {
         const order = await getOrder(orderIdentifier);
         if (!order) throw new Error('找不到目標訂單');
         const completeCheck = assertCompleteTransitionAllowed(order.status);
         if (completeCheck === 'already_completed') {
-            await dbRun('COMMIT');
+            if (ownsTransaction) await dbContext.run('COMMIT');
             return order;
         }
         const studioId = Number(order.studio_id);
@@ -556,7 +578,7 @@ async function completeOrderInternal(orderIdentifier, operatorId = null, talentM
             platformCommission = Number.isFinite(platformCommission) ? platformCommission : Math.max(0, finalAmount - talentNetEarning);
         }
 
-        const result = await dbRun(`
+        const result = await dbContext.run(`
             UPDATE orders SET status = 'completed', commission_rate_snapshot = ?,
                 platform_commission = ?, talent_earning = ?, end_time = DATETIME('now', 'localtime'),
                 talent_message = COALESCE(?, talent_message)
@@ -573,9 +595,16 @@ async function completeOrderInternal(orderIdentifier, operatorId = null, talentM
             after: { status: 'completed', talent_earning: talentNetEarning, platform_commission: platformCommission, talent_message: talentMessage },
             metadata: { source: 'order-service' }
         });
-        await dbRun('COMMIT');
+        await syncMemberSpentAndVipInTransaction({
+            userId: order.boss_id,
+            studioId,
+            operatorId,
+            source: 'order-complete',
+            expectedOrderSpentDelta: finalAmount
+        });
+        if (ownsTransaction) await dbContext.run('COMMIT');
     } catch (error) {
-        await dbRun('ROLLBACK').catch(() => {});
+        if (ownsTransaction) await dbContext.run('ROLLBACK').catch(() => {});
         throw error;
     }
     return getOrder(orderIdentifier);
@@ -585,4 +614,14 @@ async function cancelOrder(orderIdentifier, operatorId, source = 'management', o
     return refundOrder(orderIdentifier, operatorId, source, options);
 }
 
-module.exports = { createOrder, getOrder, updateOrder, assignOrder, startOrder, completeOrder, cancelOrder };
+module.exports = {
+    createOrder,
+    createOrderInTransaction,
+    getOrder,
+    updateOrder,
+    assignOrder,
+    startOrder,
+    completeOrder,
+    completeOrderInTransaction,
+    cancelOrder
+};
