@@ -411,3 +411,23 @@ test('duplicate submissions do not produce duplicate refunds', async () => {
         assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")).balance, 160);
     });
 });
+
+test('late batch deletion failure rolls back earlier refunds, orders and audit evidence', async () => {
+    await withFixture(async ({ db, service }) => {
+        await run(db, `INSERT INTO orders (id, order_no, boss_id, status, total_amount, studio_id, created_at) VALUES
+            (508, 'ORDER-508', 'member-a', 'accepted', 40, 1, '2026-01-05 12:00:00'),
+            (509, 'ORDER-509', 'member-a', 'accepted', 30, 1, '2026-01-05 12:00:00')`);
+        await run(db, `INSERT INTO wallet_transactions
+            (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id) VALUES
+            ('member-a', 'order_payment', -40, 170, 130, 'order', '508', 'payment', 'member-a'),
+            ('member-a', 'order_payment', -30, 130, 100, 'order', '509', 'payment', 'member-a')`);
+        await run(db, `CREATE TRIGGER reject_second_delete BEFORE DELETE ON orders
+            WHEN OLD.id = 509 BEGIN SELECT RAISE(ABORT, 'forced delete failure'); END`);
+
+        await assert.rejects(service.executeBatchDeleteAndRefund(['508', '509'], actor()), /forced delete failure/);
+        assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM orders WHERE id IN (508, 509)')).count, 2);
+        assert.equal((await get(db, "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type = 'refund'")).count, 0);
+        assert.equal((await get(db, "SELECT balance FROM user_wallets WHERE user_id = 'member-a'")).balance, 100);
+        assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM audit_logs')).count, 0);
+    });
+});

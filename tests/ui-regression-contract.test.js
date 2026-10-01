@@ -47,3 +47,17 @@ test('order refund confirmation submits through the CSRF-aware form event', () =
     assert.match(modal, /response\.status === 403/);
     assert.match(modal, /document\.getElementById\('isDeleteInputModal'\)\?\.remove\(\)/);
 });
+
+test('order edit modal keeps delete separate from refund and cancel', () => {
+    const modal = read('views/modals/order_detail_modal.ejs');
+    assert.match(modal, /id="btnRemoveOrderModal" onclick="openOrderDeletePreview\(\)"/);
+    assert.match(modal, /hasPerm\('action_order_batch_delete'\)/);
+    assert.match(modal, /全額退款並取消/);
+    assert.match(modal, /刪除訂單/);
+    const orders = read('views/orders.ejs');
+    assert.match(orders, /window\.openOrderDeletePreview =/);
+    assert.match(orders, /openDeletePreview\(\[id\], true\)/);
+    assert.match(orders, /id="btnBatchDeleteCancel"[^>]*>返回/);
+    assert.match(orders, /id="btnBatchDeleteConfirm"[^>]*>確認刪除/);
+    assert.doesNotMatch(orders, /previewModalEl\.addEventListener\('keydown'/);
+});

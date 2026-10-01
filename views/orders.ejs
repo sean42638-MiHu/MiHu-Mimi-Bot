@@ -156,6 +156,7 @@
             padding: 10px;
             margin-bottom: 8px;
             font-size: 0.87rem;
+            overflow-wrap: anywhere;
         }
         .batch-delete-modal .preview-item:last-child {
             margin-bottom: 0;
@@ -279,7 +280,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title fw-bold text-danger">
-                    <i class="fa-solid fa-triangle-exclamation me-2"></i>批量刪除訂單並退款確認
+                    <i class="fa-solid fa-triangle-exclamation me-2"></i><span id="batchDeletePreviewTitle">刪除訂單確認</span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
             </div>
@@ -297,8 +298,8 @@
                 <div id="batchPreviewBlocking" class="alert alert-danger py-2 px-3 small mb-0" style="display:none;"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="btnBatchDeleteCancel" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-danger-confirm" id="btnBatchDeleteConfirm">確認刪除並退款</button>
+                <button type="button" class="btn btn-secondary" id="btnBatchDeleteCancel" data-bs-dismiss="modal">返回</button>
+                <button type="button" class="btn btn-danger-confirm" id="btnBatchDeleteConfirm">確認刪除</button>
             </div>
         </div>
     </div>
@@ -361,6 +362,7 @@
 
         const form = document.getElementById('modalOrderEditForm');
         if (form) form.action = `/management/orders/update/${data.id}`;
+        window.currentOrderDeleteId = data.id;
         document.getElementById('isDeleteInputModal')?.remove();
         document.getElementById('orderRefundError').hidden = true;
 
@@ -474,15 +476,22 @@
         const previewOrderCount = document.getElementById('previewOrderCount');
         const previewRefundTotal = document.getElementById('previewRefundTotal');
         const previewBlocking = document.getElementById('batchPreviewBlocking');
+        const previewTitle = document.getElementById('batchDeletePreviewTitle');
         const batchDeleteConfirmBtn = document.getElementById('btnBatchDeleteConfirm');
         const batchDeleteCancelBtn = document.getElementById('btnBatchDeleteCancel');
         const batchDeleteModal = previewModalEl ? bootstrap.Modal.getOrCreateInstance(previewModalEl) : null;
 
         let latestPreviewSelection = [];
         let isSubmittingBatchDelete = false;
+        let isLoadingPreview = false;
+        let singleDeletePreview = false;
 
         function notifyError(message) {
             const text = String(message || '操作失敗，請稍後再試。');
+            if (previewBlocking && previewModalEl && previewModalEl.classList.contains('show')) {
+                previewBlocking.textContent = text;
+                previewBlocking.style.display = 'block';
+            }
             if (window.MiHuFeedback && typeof window.MiHuFeedback.error === 'function') {
                 window.MiHuFeedback.error(text);
             } else {
@@ -512,14 +521,17 @@
                 wrapper.className = 'preview-item';
                 const refundText = `$${Number(item.refundableAmount || 0).toLocaleString()} NTD`;
                 const deleteModeText = Number(item.refundableAmount || 0) > 0
-                    ? '本次退款'
-                    : '僅刪除 (已退款/免退款)';
+                    ? '退款並刪除'
+                    : '僅刪除（本次不退款）';
+                const statusLabels = { pending: '待接單', accepted: '已接單', in_progress: '進行中', completed: '已完成', cancelled: '已取消', refunded: '已退款' };
+                const statusText = statusLabels[item.status] || item.status || '--';
+                const orderAmount = Number(item.snapshot && item.snapshot.total_amount || 0);
                 wrapper.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div class="fw-semibold">${escapeHtml(item.orderNo)}</div>
                         <div class="text-success">${deleteModeText}：${refundText}</div>
                     </div>
-                    <div class="small text-secondary">狀態：${escapeHtml(item.status || '--')}</div>
+                    <div class="small text-secondary">會員：${escapeHtml(item.bossId)} · 訂單金額：$${orderAmount.toLocaleString()} NTD · 目前狀態：${escapeHtml(statusText)}</div>
                 `;
                 if (Array.isArray(item.reasons) && item.reasons.length) {
                     item.reasons.forEach(reason => {
@@ -639,7 +651,7 @@
 
                 window.location.assign(payload.redirect || '/management/orders');
             } catch (error) {
-                notifyError('網路異常，請稍後再試。');
+                notifyError('無法確認刪除結果，請先查詢最新訂單與錢包狀態，勿直接重複提交。');
             } finally {
                 isSubmittingBatchDelete = false;
                 if (batchBtn) batchBtn.disabled = false;
@@ -672,29 +684,65 @@
         });
 
         if (batchBtn && batchForm) {
-            batchBtn.addEventListener('click', async () => {
-                const checkedBoxes = document.querySelectorAll('.order-checkbox:checked');
-                if (checkedBoxes.length === 0) {
-                    notifyError('請至少勾選一筆訂單再進行批量刪除。');
-                    return;
-                }
-
-                const selectedIds = [...checkedBoxes].map(cb => String(cb.value || '').trim()).filter(Boolean);
-                latestPreviewSelection = selectedIds;
-                const preview = await requestBatchPreview(selectedIds);
-                if (!preview) return;
-
-                renderPreview(preview);
-                if (batchDeleteModal) {
-                    batchDeleteModal.show();
-                    setTimeout(() => {
-                        if (batchDeleteConfirmBtn && !batchDeleteConfirmBtn.disabled) {
-                            batchDeleteConfirmBtn.focus();
-                        } else if (batchDeleteCancelBtn) {
-                            batchDeleteCancelBtn.focus();
+            async function openDeletePreview(selectedIds, singleOrder) {
+                if (isLoadingPreview || isSubmittingBatchDelete || !selectedIds.length) return;
+                isLoadingPreview = true;
+                if (batchBtn) batchBtn.disabled = true;
+                try {
+                    const preview = await requestBatchPreview(selectedIds);
+                    if (!preview) return;
+                    latestPreviewSelection = selectedIds;
+                    singleDeletePreview = singleOrder;
+                    if (previewTitle) previewTitle.textContent = singleOrder ? '單筆刪除訂單確認' : '批次刪除訂單確認';
+                    renderPreview(preview);
+                    const showPreview = () => batchDeleteModal.show();
+                    const detailModalEl = document.getElementById('orderDetailModal');
+                    if (singleOrder) {
+                        const detailModal = bootstrap.Modal.getOrCreateInstance(detailModalEl);
+                        if (detailModal._isTransitioning) {
+                            await new Promise(resolve => detailModalEl.addEventListener(
+                                detailModal._isShown ? 'shown.bs.modal' : 'hidden.bs.modal', resolve, { once: true }
+                            ));
                         }
-                    }, 80);
+                        if (detailModalEl.classList.contains('show')) {
+                            const hidden = new Promise(resolve => detailModalEl.addEventListener('hidden.bs.modal', resolve, { once: true }));
+                            detailModal.hide();
+                            await hidden;
+                        }
+                    }
+                    showPreview();
+                } catch (error) {
+                    notifyError('無法取得刪除預覽，請確認連線後重新操作。');
+                } finally {
+                    isLoadingPreview = false;
+                    updateBatchButton();
                 }
+            }
+
+            window.openOrderDeletePreview = () => {
+                const id = String(window.currentOrderDeleteId || '').trim();
+                if (id) openDeletePreview([id], true);
+            };
+            batchBtn.addEventListener('click', () => {
+                const selectedIds = [...document.querySelectorAll('.order-checkbox:checked')]
+                    .map(cb => String(cb.value || '').trim()).filter(Boolean);
+                if (!selectedIds.length) return notifyError('請至少勾選一筆訂單再進行批次刪除。');
+                openDeletePreview(selectedIds, false);
+            });
+            previewModalEl.addEventListener('shown.bs.modal', () => {
+                (batchDeleteConfirmBtn.disabled ? batchDeleteCancelBtn : batchDeleteConfirmBtn).focus();
+            });
+            previewModalEl.addEventListener('hide.bs.modal', event => {
+                if (isSubmittingBatchDelete) event.preventDefault();
+            });
+            previewModalEl.addEventListener('hidden.bs.modal', () => {
+                if (!singleDeletePreview || isSubmittingBatchDelete) return;
+                singleDeletePreview = false;
+                const detailModalEl = document.getElementById('orderDetailModal');
+                detailModalEl.addEventListener('shown.bs.modal', () => {
+                    document.getElementById('btnRemoveOrderModal')?.focus();
+                }, { once: true });
+                bootstrap.Modal.getOrCreateInstance(detailModalEl).show();
             });
         }
 
@@ -704,14 +752,6 @@
             batchDeleteConfirmBtn.addEventListener('click', submitBatchDelete);
         }
 
-        if (previewModalEl) {
-            previewModalEl.addEventListener('keydown', event => {
-                if (event.key === 'Enter' && batchDeleteConfirmBtn && !batchDeleteConfirmBtn.disabled) {
-                    event.preventDefault();
-                    submitBatchDelete();
-                }
-            });
-        }
     });
 </script>
 </body>
