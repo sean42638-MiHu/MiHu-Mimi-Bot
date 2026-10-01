@@ -151,6 +151,28 @@ async function calculateOrderAdjustmentRefundBonusDelta(order, refundAmount) {
     return Math.min(Number(refundAmount), Math.max(0, availableBonus));
 }
 
+async function assertCompletedOrderFinancialAdjustmentAllowed(order, nextTalentEarning, currentTalentId) {
+    const payoutTable = await dbGetQuery("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'payouts'");
+    if (!payoutTable) return;
+    const earnerId = String(currentTalentId || order.talent_id || order.staff_id || '').trim();
+    if (!earnerId) throw new Error('已完成訂單缺少收益對象，無法安全調整');
+    const locked = await dbGetQuery(`
+        SELECT COALESCE(SUM(amount), 0) AS amount
+        FROM payouts
+        WHERE user_id = ? AND status IN ('pending', 'paid')
+    `, [earnerId]);
+    if (Number(locked && locked.amount || 0) > 0) throw new Error('已完成訂單已有提領或收益鎖定，無法調整');
+    const currentEarning = Number(order.talent_earning || 0);
+    const nextEarning = Number(nextTalentEarning || 0);
+    if (!Number.isFinite(currentEarning) || !Number.isFinite(nextEarning) || nextEarning < 0) {
+        throw new Error('完成單收益資料異常，無法調整');
+    }
+    if (nextEarning < currentEarning) {
+        const available = Number((currentEarning - Number(locked && locked.amount || 0)).toFixed(2));
+        if (currentEarning - nextEarning > available + 0.000001) throw new Error('陪陪收益不足以回沖調價差額');
+    }
+}
+
 function assertNoWalletCredit(walletDelta) {
     if (walletDelta > 0) throw new Error('訂單降價會增加會員錢包，請使用核准的退款流程');
 }
@@ -348,8 +370,8 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
         if (!order) throw new Error('找不到目標訂單');
         const currentStatus = normalizeStatus(order.status);
         assertKnownMutationStatus(currentStatus, '編輯');
-        if (['completed', 'cancelled', 'refunded', 'rejected'].includes(currentStatus)) {
-            throw new Error('已完成、已取消或已駁回訂單不可編輯');
+        if (['cancelled', 'refunded', 'rejected'].includes(currentStatus)) {
+            throw new Error('已取消、已退款或已駁回訂單不可編輯');
         }
 
         const studioId = Number(input.studio_id ?? order.studio_id);
@@ -368,7 +390,8 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
             throw new Error('訂單金額、折扣或時長無效');
         }
         const { finalAmount, discountAmount } = calculateDiscount(rawPrice, rawDiscount);
-        requirePriceAdjustment(priceTermsChanged(order, { duration, unitPrice, rawPrice, discountAmount, finalAmount }), allowPriceAdjustment);
+        const priceChanged = priceTermsChanged(order, { duration, unitPrice, rawPrice, discountAmount, finalAmount });
+        requirePriceAdjustment(priceChanged, allowPriceAdjustment);
 
         const assigneeUpdate = resolveAssigneeUpdate(input, order);
         requireReassignmentPermission(assigneeUpdate, allowReassignment);
@@ -407,13 +430,12 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
         const commission = await calculateCommissionByCategory(
             category, finalAmount, rawPrice > 0 ? rawPrice : finalAmount, personalRate, { studioId, serviceId }
         );
+        if (currentStatus === 'completed' && (priceChanged || assigneeUpdate.changed)) {
+            await assertCompletedOrderFinancialAdjustmentAllowed(order, commission.talentNetEarning, order.talent_id || order.staff_id);
+        }
         const status = input.status ?? order.status;
         const requestedStatus = normalizeStatus(status);
         assertInlineUpdateTransition(currentStatus, requestedStatus);
-        if (['completed', 'cancelled', 'refunded', 'rejected'].includes(String(order.status || '').toLowerCase())
-            && Math.abs(Number(order.total_amount || 0) - finalAmount) > 0.000001) {
-            throw new Error('終結訂單的價格異動需要人工財務處理');
-        }
         if (String(bossId) !== String(order.boss_id)) throw new Error('更換訂單會員需要人工財務處理');
         const walletDelta = Number(order.total_amount || 0) - finalAmount;
         if (walletDelta !== 0 && !(await hasLinkedPayment(order))) {

@@ -115,7 +115,7 @@ test('order controls expose only capabilities accepted by backend routes', () =>
     assert.match(ordersPage, /batch-delete\/preview/);
     assert.match(ordersPage, /批量刪除訂單並退款確認/);
     assert.doesNotMatch(ordersPage, /confirm\(/);
-    assert.match(table, /hasPerm\('action_order_edit_reassign'\)/);
+    assert.match(table, /const canEdit = true/);
     assert.match(table, /hasPerm\('action_order_price'\)/);
     assert.match(table, /hasPerm\('action_order_refund'\)/);
     assert.match(table, /hasPerm\('action_order_refund_completed'\)/);

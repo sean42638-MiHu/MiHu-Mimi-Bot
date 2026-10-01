@@ -158,7 +158,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (21,'ledger_viewer','Ledger Viewer','["view_management","view_member_ledger"]'),
         (22,'payroll_viewer','Payroll Viewer','["view_management","view_staff_payroll"]'),
         (17,'admin','店長','["view_manage_orders","action_order_create","action_order_manage","action_order_edit_reassign","action_order_price","action_order_refund","action_order_batch_delete","action_order_refund_completed"]'),
-        (18,'cs','客服','["view_manage_orders","action_order_create","action_order_manage","action_order_edit_reassign"]'),
+        (18,'cs','客服','["view_manage_orders","action_order_create","action_order_manage","action_order_edit_reassign","action_order_reassign"]'),
         (19,'legacy_order_manager','Legacy Order Manager','["action_order_management"]'),
         (20,'aftersales','售後','["view_manage_orders","action_order_manage","action_order_refund"]'),
         (14,'protected_deployer','Protected Deployer','["action_role_manage","action_bot_deploy_production"]'),
