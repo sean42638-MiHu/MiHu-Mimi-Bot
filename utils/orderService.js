@@ -379,12 +379,18 @@ async function updateOrderInternal(orderIdentifier, input = {}, { allowPriceAdju
 
         const category = input.category ?? order.category ?? '陪玩單';
         const game = input.game ?? order.game;
+        const rawDiscount = Number(input.discount ?? order.discount ?? 0);
+        const hasExplicitFinalAmount = hasOwnField(input, 'price') || hasOwnField(input, 'total_amount');
         const duration = Number(input.duration ?? order.duration ?? 1);
-        const unitPrice = Number(input.unit_price ?? order.unit_price ?? 0);
+        const explicitFinalAmount = Number(input.price ?? input.total_amount);
+        const unitPrice = Number(input.unit_price ?? (hasExplicitFinalAmount
+            ? explicitFinalAmount / duration
+            : order.unit_price ?? 0));
         const rawPrice = input.original_price !== undefined && input.original_price !== null
             ? Number(input.original_price)
-            : (unitPrice > 0 ? unitPrice * duration : Number(input.total_amount ?? order.total_amount ?? 0) + Number(order.discount || 0));
-        const rawDiscount = Number(input.discount ?? order.discount ?? 0);
+            : (hasExplicitFinalAmount
+                ? explicitFinalAmount + rawDiscount
+                : (unitPrice > 0 ? unitPrice * duration : Number(order.total_amount || 0) + Number(order.discount || 0)));
         if (![duration, unitPrice, rawPrice, rawDiscount].every(Number.isFinite)
             || duration <= 0 || unitPrice < 0 || rawPrice < 0 || rawDiscount < 0) {
             throw new Error('訂單金額、折扣或時長無效');
