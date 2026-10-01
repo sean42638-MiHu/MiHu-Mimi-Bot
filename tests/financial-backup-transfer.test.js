@@ -119,6 +119,10 @@ test('download runner freezes writers before transfer and keeps final confirmati
     assert.match(runner, /Keep both writers stopped until DB state and backup are verified/);
     assert.match(runner, /tr '\[:upper:\]' '\[:lower:\]'/);
     assert.match(runner, /od -An -N8 -tx1 \/dev\/urandom/);
+    assert.match(runner, /chown -R deploy:mihu/);
+    assert.match(runner, /chmod 2770/);
+    assert.match(runner, /testFinancialTransferPermissions\.sh/);
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'testFinancialTransferPermissions.sh'), 'utf8'), /TRANSFER_PERMISSION_TEST_PASS/);
 });
 
 test('production-style backup filename produces a valid shared transfer ID', async () => {
