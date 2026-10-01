@@ -60,6 +60,7 @@ test('permission editor renders every canonical switch once across two tabs', as
     assert.deepEqual(saved, ['action_order_management', 'view_manage_orders', 'view_management']);
     assert.equal(resolvePermissions(saved).includes('action_order_manage'), true);
     assert.throws(() => validatePermissionGrant(actor, ['member_adjust_balance'], { preserveLegacy: true }), RoleDelegationError);
+    assert.throws(() => validatePermissionGrant(resolvePermissions(['action_role_manage']), ['action_order_create']), RoleDelegationError);
 });
 
 test('role editor reloads checkbox state from stored raw permissions rather than alias implications', () => {

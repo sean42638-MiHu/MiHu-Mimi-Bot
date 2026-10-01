@@ -43,6 +43,15 @@ function canReassignOrder(res) {
     return hasResolvedPermission(res.locals.userPerms, 'action_order_reassign');
 }
 
+function requireManualOrderAccess(req, res, next) {
+    const permissions = Array.isArray(res.locals.userPerms) ? res.locals.userPerms : [];
+    const missing = [];
+    if (!hasResolvedPermission(permissions, 'view_manage_orders')) missing.push('view_manage_orders');
+    if (!hasResolvedPermission(permissions, 'action_order_create')) missing.push('action_order_create');
+    if (!missing.length) return next();
+    return denyPermission(req, res, missing, { kind: 'action', feature: '建立訂單' });
+}
+
 function buildBatchActorContext(req, res) {
     return {
         actorId: String(req.user.id)
@@ -131,6 +140,11 @@ function normalizeRateOverrideInput({ enableOverride, mode, value }) {
         error.code = 'MISSING_OVERRIDE_RATE';
         throw error;
     }
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(raw)) {
+        const error = new Error('分潤覆寫比例最多保留兩位小數。');
+        error.code = 'INVALID_OVERRIDE_RATE';
+        throw error;
+    }
     const percentage = Number(raw);
     if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
         const error = new Error('分潤覆寫比例必須介於 0 到 100。');
@@ -205,7 +219,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
                     currentUser: currentUser || req.user,
                     orders: orders || [],
                     talents: talents || [],
-                    canCreateManualOrder: hasResolvedPermission(res.locals.userPerms, 'action_order_manage'),
+                    canCreateManualOrder: hasResolvedPermission(res.locals.userPerms, 'action_order_create'),
                     canAdjustOrderPrice: hasResolvedPermission(res.locals.userPerms, 'action_order_price'),
                     defaultTalentShareRates: DEFAULT_TALENT_SHARE_RATES,
                     activePage: 'orders',
@@ -218,7 +232,7 @@ router.get('/', ensureAuth, checkPerm('view_manage_orders'), (req, res) => {
     });
 });
 
-router.get('/create/member-options', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
+router.get('/create/member-options', ensureAuth, requireManualOrderAccess, async (req, res) => {
     try {
         const keyword = String(req.query.q || '').trim();
         if (keyword.length < 2) return res.json({ success: true, members: [] });
@@ -240,7 +254,6 @@ router.get('/create/member-options', ensureAuth, checkPerm('action_order_manage'
                 u.global_name,
                 u.custom_nickname,
                 u.studio_id,
-                COALESCE(w.balance, 0) AS balance,
                 COALESCE(u.vip_level, 0) AS vip_level
             FROM users u
             LEFT JOIN user_wallets w ON w.user_id = u.id
@@ -260,7 +273,6 @@ router.get('/create/member-options', ensureAuth, checkPerm('action_order_manage'
             id: String(row.id),
             studioId: Number(row.studio_id),
             nickname: row.custom_nickname || row.global_name || row.username || row.id,
-            balance: Number(row.balance || 0),
             vipLevel: Number(row.vip_level || 0)
         }));
         return res.json({ success: true, members });
@@ -270,7 +282,56 @@ router.get('/create/member-options', ensureAuth, checkPerm('action_order_manage'
     }
 });
 
-router.get('/create/taker-options', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
+router.get('/create/member-wallet/:memberId', ensureAuth, requireManualOrderAccess, async (req, res) => {
+    try {
+        const allStudios = isPlatformSuperuser(res);
+        const actorStudioId = Number(req.user && req.user.studio_id);
+        if (!allStudios && (!Number.isInteger(actorStudioId) || actorStudioId <= 0)) {
+            return res.status(403).json({ success: false, error: '找不到已授權的工作室範圍' });
+        }
+
+        const row = await dbGetAsync(`
+            SELECT u.id, u.studio_id, u.role,
+                   COALESCE(u.custom_nickname, u.global_name, u.username, u.id) AS nickname,
+                   w.balance, w.bonus_balance
+            FROM users u
+            LEFT JOIN user_wallets w ON w.user_id = u.id
+            WHERE u.id = ?
+            LIMIT 1
+        `, [String(req.params.memberId || '').trim()]);
+        if (!row || row.role !== 'member') {
+            return res.status(404).json({ success: false, error: '找不到可建立訂單的會員，請重新搜尋。' });
+        }
+        if (!allStudios && Number(row.studio_id) !== actorStudioId) {
+            return res.status(404).json({ success: false, error: '找不到可建立訂單的會員，請重新搜尋。' });
+        }
+        if (row.balance === null || row.balance === undefined || row.bonus_balance === null || row.bonus_balance === undefined) {
+            return res.status(409).json({ success: false, error: '會員錢包資料不完整，無法建立訂單。' });
+        }
+
+        const balance = Number(row.balance);
+        const bonusBalance = Number(row.bonus_balance);
+        if (!Number.isFinite(balance) || !Number.isFinite(bonusBalance) || balance < 0 || bonusBalance < 0) {
+            return res.status(409).json({ success: false, error: '會員錢包資料異常，無法建立訂單。' });
+        }
+        return res.json({
+            success: true,
+            member: {
+                id: String(row.id),
+                nickname: row.nickname,
+                studioId: Number(row.studio_id),
+                balance,
+                bonusBalance,
+                payableBalance: balance
+            }
+        });
+    } catch (error) {
+        console.error('讀取手動建單會員錢包失敗:', error);
+        return res.status(500).json({ success: false, error: '會員錢包讀取失敗，請稍後再試。' });
+    }
+});
+
+router.get('/create/taker-options', ensureAuth, requireManualOrderAccess, async (req, res) => {
     try {
         const keyword = String(req.query.q || '').trim();
         if (keyword.length < 2) return res.json({ success: true, takers: [] });
@@ -328,9 +389,9 @@ router.get('/create/taker-options', ensureAuth, checkPerm('action_order_manage')
     }
 });
 
-router.post('/create', ensureAuth, checkPerm('action_order_manage'), async (req, res) => {
-    const responseWithError = (status, message, code = 'MANUAL_ORDER_CREATE_FAILED') => {
-        if (wantsJson(req)) return res.status(status).json({ success: false, code, error: message });
+router.post('/create', ensureAuth, requireManualOrderAccess, async (req, res) => {
+    const responseWithError = (status, message, code = 'MANUAL_ORDER_CREATE_FAILED', details = null) => {
+        if (wantsJson(req)) return res.status(status).json({ success: false, code, error: message, ...(details || {}) });
         return res.redirect(303, '/management/orders?error=' + encodeURIComponent(message));
     };
 
@@ -357,9 +418,6 @@ router.post('/create', ensureAuth, checkPerm('action_order_manage'), async (req,
 
         const result = await createManualOrder({
             actorId: req.user.id,
-            actorStudioId: Number(req.user && req.user.studio_id),
-            allowAllStudios: isPlatformSuperuser(res),
-            allowCommissionOverride: canAdjustOrderPrice(res),
             requestKey,
             bossId: String(req.body.boss_id || '').trim(),
             talentId: String(req.body.talent_id || '').trim(),
@@ -391,6 +449,7 @@ router.post('/create', ensureAuth, checkPerm('action_order_manage'), async (req,
                 code: result.idempotentReplay ? 'IDEMPOTENT_REPLAY' : 'CREATED',
                 orderId: result.orderId,
                 orderNo: result.orderNo,
+                wallet: result.wallet,
                 redirect,
                 successMsg
             });
@@ -400,14 +459,22 @@ router.post('/create', ensureAuth, checkPerm('action_order_manage'), async (req,
         if (error.code === 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN') {
             return denyPermission(req, res, ['action_order_price'], { kind: 'action', feature: '覆寫訂單分潤比例' });
         }
-        const statusCode = Number(error.statusCode || 0) || 500;
+        const inputError = /^(INVALID_|MISSING_)/.test(String(error.code || ''));
+        const statusCode = Number(error.statusCode || 0) || (inputError ? 400 : 500);
         const message = String(error.message || '手動建立訂單失敗，請稍後再試。');
         const code = String(error.code || 'MANUAL_ORDER_CREATE_FAILED');
-        if (statusCode === 403 && code === 'PERMISSION_DENIED') {
-            return denyPermission(req, res, ['action_order_manage'], { kind: 'action', feature: '手動建立訂單' });
+        if (statusCode === 403 && ['PERMISSION_DENIED', 'ORDER_CREATE_FORBIDDEN', 'ORDER_PAGE_ACCESS_FORBIDDEN'].includes(code)) {
+            const permission = code === 'ORDER_PAGE_ACCESS_FORBIDDEN' ? 'view_manage_orders' : 'action_order_create';
+            return denyPermission(req, res, [permission], { kind: 'action', feature: '建立訂單' });
         }
         console.error('❌ 手動建立訂單失敗:', error);
-        return responseWithError(statusCode, message, code);
+        return responseWithError(statusCode, message, code, error.walletSnapshot ? {
+            wallet: {
+                balance: Number(error.walletSnapshot.balance || 0),
+                bonusBalance: Number(error.walletSnapshot.bonusBalance || 0),
+                payableBalance: Number(error.walletSnapshot.balance || 0)
+            }
+        } : null);
     }
 });
 

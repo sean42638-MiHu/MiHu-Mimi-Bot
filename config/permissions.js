@@ -23,6 +23,7 @@ const granularDefinitions = [
     ['vip.manage', '管理 VIP', 'VIP', 'manage', 'high'],
     ['orders.view', '查看訂單', '訂單', 'read', 'low'],
     ['orders.manage', '管理訂單', '訂單', 'manage', 'high'],
+    ['action_order_create', '建立訂單', '訂單', 'manage', 'high'],
     ['orders.price_adjust', '調整訂單價格', '訂單', 'manage', 'high'],
     ['orders.refund', '退款訂單', '訂單', 'manage', 'high'],
     ['orders.batch_delete', '批量刪除訂單並退款', '訂單', 'manage', 'high'],

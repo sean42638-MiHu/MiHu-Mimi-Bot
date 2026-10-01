@@ -5,8 +5,11 @@ const { dbGet, dbRun } = require('../utils/dbHelper');
 const { withTransactionGate } = require('../utils/transactionGate');
 const { createOrderInTransaction, completeOrderInTransaction, getOrder } = require('../utils/orderService');
 const { normalizeTalentShareRate } = require('../utils/commissionHelper');
+const { readOrderPayerWalletSnapshot, assertOrderWalletDebitAllowed } = require('../utils/walletService');
+const { hasResolvedPermission, isPlatformSuperuserId, resolvePermissions } = require('../utils/permissionResolver');
 
 const MANUAL_ORDER_NO_PREFIX = 'MHM';
+const MANUAL_ORDER_CATEGORIES = new Set(['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單']);
 let idempotencySchemaReady = false;
 
 function createManualOrderError(message, code = 'MANUAL_ORDER_CREATE_FAILED', statusCode = 400) {
@@ -95,6 +98,9 @@ async function loadEligibleTaker(takerId, studioId) {
 function normalizeRatioOverride(input, { allowOverride }) {
     const normalized = String(input || '').trim();
     if (!normalized) return null;
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(normalized)) {
+        throw createManualOrderError('分潤覆寫比例無效，最多保留兩位小數。', 'INVALID_COMMISSION_OVERRIDE', 400);
+    }
     const parsed = normalizeTalentShareRate(normalized);
     if (parsed === null) {
         throw createManualOrderError('分潤覆寫比例無效，請輸入 0% 到 100% 之間的數值。', 'INVALID_COMMISSION_OVERRIDE', 400);
@@ -105,13 +111,58 @@ function normalizeRatioOverride(input, { allowOverride }) {
     return parsed;
 }
 
+function parseManualMoney(value, label) {
+    const raw = String(value ?? '').trim();
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(raw)) {
+        throw createManualOrderError(`${label}格式無效，最多保留兩位小數。`, 'INVALID_FINAL_AMOUNT', 400);
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000_000) {
+        throw createManualOrderError(`${label}必須介於 0 到 1000000000。`, 'INVALID_FINAL_AMOUNT', 400);
+    }
+    return Number(parsed.toFixed(2));
+}
+
+function parseManualDuration(value) {
+    const raw = String(value ?? '').trim();
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(raw)) {
+        throw createManualOrderError('時長/數量格式無效，最多保留兩位小數。', 'INVALID_DURATION', 400);
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 10_000) {
+        throw createManualOrderError('時長/數量必須大於 0 且不可超過 10000。', 'INVALID_DURATION', 400);
+    }
+    return parsed;
+}
+
+async function loadCurrentActor(actorId) {
+    const actor = await dbGet(`
+        SELECT u.id, u.role, u.studio_id, r.permissions
+        FROM users u
+        LEFT JOIN roles r ON r.role_key = u.role
+        WHERE u.id = ?
+        LIMIT 1
+    `, [actorId]);
+    if (!actor) throw createManualOrderError('找不到目前操作人員。', 'INVALID_ACTOR', 403);
+    const permissions = resolvePermissions(actor.permissions, isPlatformSuperuserId(actor.id));
+    if (!hasResolvedPermission(permissions, 'view_manage_orders')) {
+        throw createManualOrderError('需要訂單管理頁面存取權限。', 'ORDER_PAGE_ACCESS_FORBIDDEN', 403);
+    }
+    if (!hasResolvedPermission(permissions, 'action_order_create')) {
+        throw createManualOrderError('需要建立訂單權限。', 'ORDER_CREATE_FORBIDDEN', 403);
+    }
+    return {
+        id: String(actor.id),
+        studioId: Number(actor.studio_id),
+        allowAllStudios: hasResolvedPermission(permissions, '*'),
+        allowCommissionOverride: hasResolvedPermission(permissions, 'action_order_price')
+    };
+}
+
 async function createManualOrder(input) {
     await ensureIdempotencySchema();
 
     const actorId = String(input.actorId || '').trim();
-    const actorStudioId = Number(input.actorStudioId);
-    const allowAllStudios = Boolean(input.allowAllStudios);
-    const allowCommissionOverride = Boolean(input.allowCommissionOverride);
 
     if (!actorId) {
         throw createManualOrderError('缺少操作人員身分。', 'INVALID_ACTOR', 403);
@@ -128,21 +179,17 @@ async function createManualOrder(input) {
     const note = String(input.note || '').trim();
     const talentMessage = String(input.talentMessage || '').trim();
 
-    const duration = Number(input.duration);
-    const finalAmount = Number(input.finalAmount);
+    const duration = parseManualDuration(input.duration);
+    const finalAmount = parseManualMoney(input.finalAmount, '訂單金額');
 
     if (!bossId || !talentId || !category || !game) {
         throw createManualOrderError('建立訂單缺少必要欄位，請確認會員、接單人、類別與項目。', 'INVALID_MANUAL_ORDER_INPUT', 400);
     }
-    if (!Number.isFinite(duration) || duration <= 0) {
-        throw createManualOrderError('時長/數量格式無效。', 'INVALID_DURATION', 400);
+    if (!MANUAL_ORDER_CATEGORIES.has(category)) {
+        throw createManualOrderError('不支援的訂單類別。', 'INVALID_MANUAL_ORDER_CATEGORY', 400);
     }
-    if (!Number.isFinite(finalAmount) || finalAmount < 0) {
-        throw createManualOrderError('訂單金額格式無效。', 'INVALID_FINAL_AMOUNT', 400);
-    }
-
     const normalizedOverrideRate = normalizeRatioOverride(input.commissionRateOverride, {
-        allowOverride: allowCommissionOverride
+        allowOverride: true
     });
 
     const digestPayload = {
@@ -165,6 +212,11 @@ async function createManualOrder(input) {
     return withTransactionGate(async () => {
         await dbRun('BEGIN IMMEDIATE');
         try {
+            const actor = await loadCurrentActor(actorId);
+            if (normalizedOverrideRate !== null && !actor.allowCommissionOverride) {
+                throw createManualOrderError('調整分潤比例需要 orders.price_adjust 權限。', 'ORDER_PRICE_ADJUSTMENT_FORBIDDEN', 403);
+            }
+
             const boss = await dbGet('SELECT id, studio_id, role FROM users WHERE id = ? LIMIT 1', [bossId]);
             if (!boss) {
                 throw createManualOrderError('找不到指定會員，請重新搜尋後再試。', 'BOSS_NOT_FOUND', 400);
@@ -173,7 +225,7 @@ async function createManualOrder(input) {
             if (!Number.isInteger(studioId) || studioId <= 0) {
                 throw createManualOrderError('會員工作室資料異常，無法建立訂單。', 'INVALID_BOSS_STUDIO', 400);
             }
-            if (!allowAllStudios && studioId !== actorStudioId) {
+            if (!actor.allowAllStudios && (!Number.isInteger(actor.studioId) || studioId !== actor.studioId)) {
                 throw createManualOrderError('無權為其他工作室建立訂單。', 'PERMISSION_DENIED', 403);
             }
             if (String(boss.role || '').trim() !== 'member') {
@@ -213,6 +265,23 @@ async function createManualOrder(input) {
                 };
             }
 
+            let walletSnapshot;
+            try {
+                walletSnapshot = await readOrderPayerWalletSnapshot({ userId: bossId, studioId });
+                assertOrderWalletDebitAllowed(walletSnapshot, finalAmount);
+            } catch (error) {
+                if (error && error.code === 'WALLET_INSUFFICIENT_BALANCE' && walletSnapshot) {
+                    error.walletSnapshot = walletSnapshot;
+                }
+                if (error && error.code === 'WALLET_INSUFFICIENT_BALANCE') {
+                    const current = walletSnapshot || await readOrderPayerWalletSnapshot({ userId: bossId, studioId }).catch(() => null);
+                    if (current) error.walletSnapshot = current;
+                    error.statusCode = 400;
+                    error.message = '會員錢包主餘額不足，請確認最新餘額。';
+                }
+                throw error;
+            }
+
             const orderNo = await generateUniqueManualOrderNo(studioId);
             const unitPrice = duration > 0 ? Number((finalAmount / duration).toFixed(2)) : finalAmount;
             const initialStatus = targetStatus === 'completed' ? 'accepted' : 'in_progress';
@@ -236,7 +305,8 @@ async function createManualOrder(input) {
                 talentMessage: talentMessage || null,
                 studioId,
                 status: initialStatus,
-                walletDelta: 0,
+                walletDelta: finalAmount > 0 ? -finalAmount : 0,
+                walletReason: `手動建立訂單扣款 (${category})`,
                 operatorId: actorId,
                 source: 'management-manual-order',
                 commissionRateOverride: normalizedOverrideRate
@@ -264,7 +334,12 @@ async function createManualOrder(input) {
                 orderId: created.id,
                 orderNo,
                 studioId,
-                status: targetStatus
+                status: targetStatus,
+                wallet: {
+                    balance: Number((walletSnapshot.balance - finalAmount).toFixed(2)),
+                    bonusBalance: walletSnapshot.bonusBalance,
+                    deductedAmount: finalAmount
+                }
             };
         } catch (error) {
             await dbRun('ROLLBACK').catch(() => {});

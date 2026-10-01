@@ -185,7 +185,7 @@
     const canRefundCompletedOrders = typeof hasPerm === 'function' && hasPerm('action_order_refund_completed');
     const canCreateManualOrderView = typeof canCreateManualOrder !== 'undefined'
         ? !!canCreateManualOrder
-        : (typeof hasPerm === 'function' && hasPerm('action_order_manage'));
+        : (typeof hasPerm === 'function' && hasPerm('action_order_create'));
 %>
 
 <div class="app-layout">
