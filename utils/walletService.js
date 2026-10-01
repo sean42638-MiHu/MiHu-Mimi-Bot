@@ -163,6 +163,15 @@ function dbGet(sql, params = []) {
     });
 }
 
+function dbAll(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
+    });
+}
+
 async function applyRefundInTransaction(orderIdentifier, operatorId, source, { allowCompleted = false } = {}) {
     const order = await dbGet('SELECT * FROM orders WHERE id = ? OR order_no = ?', [orderIdentifier, orderIdentifier]);
     if (!order) throw new Error('找不到目標訂單');
@@ -176,9 +185,57 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
         throw error;
     }
 
-    const refundAmount = Math.max(0, Number(order.total_amount || 0));
+    const orderReference = String(order.id);
+    const orderPayments = await dbAll(`
+        SELECT amount
+        FROM wallet_transactions
+        WHERE user_id = ? AND reference_type = 'order' AND reference_id = ?
+          AND type IN ('order_payment', 'payment')
+        ORDER BY id ASC
+    `, [String(order.boss_id), orderReference]);
+    const existingRefunds = await dbAll(`
+        SELECT amount
+        FROM wallet_transactions
+        WHERE user_id = ? AND reference_type = 'order' AND reference_id = ? AND type = 'refund'
+        ORDER BY id ASC
+    `, [String(order.boss_id), orderReference]);
+    if (existingRefunds.length > 0) {
+        throw new Error(`訂單 ${order.order_no} 已有退款流水，不可重複退款`);
+    }
+
+    const adjustmentDescription = `Order price adjustment ${String(order.order_no)}`;
+    const orderAdjustments = await dbAll(`
+        SELECT amount
+        FROM wallet_transactions
+        WHERE user_id = ? AND type = 'order_adjustment'
+          AND reference_type = 'order_adjustment' AND description = ?
+        ORDER BY id ASC
+    `, [String(order.boss_id), adjustmentDescription]);
+    const invalidChargeRows = [...orderPayments, ...orderAdjustments]
+        .some(row => !Number.isFinite(Number(row.amount)) || Number(row.amount) >= 0);
+    if (invalidChargeRows) throw new Error(`訂單 ${order.order_no} 付款流水方向異常，無法安全退款`);
+
+    const paymentTotal = orderPayments.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const adjustmentTotal = orderAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const hasPaymentLedger = orderPayments.length > 0;
+    const isManualOrder = Boolean(await dbGet(`
+        SELECT id FROM order_creation_idempotency WHERE order_id = ? LIMIT 1
+    `, [order.id]).catch(error => {
+        if (String(error && error.message || '').includes('no such table')) return null;
+        throw error;
+    }));
+    const actualCharged = hasPaymentLedger ? -(paymentTotal + adjustmentTotal) : 0;
+    if (!Number.isFinite(actualCharged) || actualCharged < 0) {
+        throw new Error(`訂單 ${order.order_no} 淨扣款異常，無法安全退款`);
+    }
+    const fallbackLegacyCharge = !hasPaymentLedger && !isManualOrder
+        ? Math.max(0, Number(order.total_amount || 0))
+        : 0;
+    const refundAmount = Number((hasPaymentLedger ? actualCharged : fallbackLegacyCharge).toFixed(2));
     const wallet = await dbGet(`
         SELECT
+            u.studio_id AS studio_id,
+            w.user_id AS wallet_user_id,
             COALESCE(w.balance, 0) AS balance,
             COALESCE(w.bonus_balance, 0) AS bonus_balance,
             COALESCE(w.manual_spent, 0) AS manual_spent,
@@ -188,28 +245,34 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
         WHERE u.id = ?
     `, [order.boss_id]);
     if (!wallet) throw new Error('找不到訂單會員錢包');
+    if (Number(wallet.studio_id) !== Number(order.studio_id)) {
+        throw new Error('訂單會員錢包工作室不一致，無法安全退款');
+    }
+    if (!wallet.wallet_user_id) throw new Error('找不到訂單會員錢包，無法安全退款');
 
     const before = Number(wallet.balance || 0);
     const after = before + refundAmount;
-    await dbRun(`
-        INSERT INTO user_wallets (user_id, balance, bonus_balance, manual_spent, manual_deposited, updated_at)
-        VALUES (?, ?, ?, ?, ?, DATETIME('now', 'localtime'))
-        ON CONFLICT(user_id) DO UPDATE SET
-            balance = excluded.balance,
-            bonus_balance = excluded.bonus_balance,
-            manual_spent = excluded.manual_spent,
-            manual_deposited = excluded.manual_deposited,
-            updated_at = DATETIME('now', 'localtime')
-    `, [order.boss_id, after, wallet.bonus_balance, wallet.manual_spent, wallet.manual_deposited]);
-    await dbRun(
-        'UPDATE users SET balance = ?, bonus_balance = ?, manual_spent = ?, manual_deposited = ? WHERE id = ?',
-        [after, wallet.bonus_balance, wallet.manual_spent, wallet.manual_deposited, order.boss_id]
-    );
-    await dbRun(`
-        INSERT INTO wallet_transactions
-            (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id)
-        VALUES (?, 'refund', ?, ?, ?, 'order', ?, ?, ?)
-    `, [order.boss_id, refundAmount, before, after, String(order.id), `${source} 退款 - 訂單 ${order.order_no}`, operatorId]);
+    if (refundAmount > 0) {
+        await dbRun(`
+            INSERT INTO user_wallets (user_id, balance, bonus_balance, manual_spent, manual_deposited, updated_at)
+            VALUES (?, ?, ?, ?, ?, DATETIME('now', 'localtime'))
+            ON CONFLICT(user_id) DO UPDATE SET
+                balance = excluded.balance,
+                bonus_balance = excluded.bonus_balance,
+                manual_spent = excluded.manual_spent,
+                manual_deposited = excluded.manual_deposited,
+                updated_at = DATETIME('now', 'localtime')
+        `, [order.boss_id, after, wallet.bonus_balance, wallet.manual_spent, wallet.manual_deposited]);
+        await dbRun(
+            'UPDATE users SET balance = ?, bonus_balance = ?, manual_spent = ?, manual_deposited = ? WHERE id = ?',
+            [after, wallet.bonus_balance, wallet.manual_spent, wallet.manual_deposited, order.boss_id]
+        );
+        await dbRun(`
+            INSERT INTO wallet_transactions
+                (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description, operator_id)
+            VALUES (?, 'refund', ?, ?, ?, 'order', ?, ?, ?)
+        `, [order.boss_id, refundAmount, before, after, orderReference, `${source} 退款 - 訂單 ${order.order_no}`, operatorId]);
+    }
     await writeAuditLog({
         operatorId,
         studioId: order.studio_id,
@@ -217,8 +280,8 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
         targetType: 'order',
         targetId: order.id,
         before: { orderStatus: order.status, balance: before },
-        after: { orderStatus: 'cancelled', balance: after },
-        metadata: { refundAmount, source }
+        after: { orderStatus: 'cancelled', balance: refundAmount > 0 ? after : before },
+        metadata: { refundAmount, source, walletPaymentVerified: hasPaymentLedger }
     });
     const blockedStatuses = allowCompleted ? ['cancelled', 'refunded'] : ['completed', 'cancelled', 'refunded'];
     const statusPlaceholders = blockedStatuses.map(() => '?').join(', ');
@@ -233,10 +296,10 @@ async function applyRefundInTransaction(orderIdentifier, operatorId, source, { a
         studioId: Number(order.studio_id),
         operatorId,
         source: 'order-refund',
-        expectedOrderSpentDelta: status === 'completed' ? -refundAmount : 0
+        expectedOrderSpentDelta: status === 'completed' ? -Math.max(0, Number(order.total_amount || 0)) : 0
     });
 
-    return { order, refundAmount, balanceBefore: before, balanceAfter: after };
+    return { order, refundAmount, balanceBefore: before, balanceAfter: refundAmount > 0 ? after : before };
 }
 
 async function refundOrder(orderIdentifier, operatorId = null, source = 'management', options = {}) {

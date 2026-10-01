@@ -44,6 +44,11 @@ test('Unknown permissions are rejected and sensitive permission remains independ
 });
 
 test('Order view, management and refund are independent and Production roles follow policy', () => {
+    assert.equal(PERMISSION_METADATA.action_order_create.label, '建立訂單');
+    assert.equal(PERMISSION_METADATA.action_order_create.group, '訂單');
+    assert.equal(resolvePermissions(['action_order_manage']).includes('action_order_create'), false);
+    assert.equal(resolvePermissions(['action_order_management']).includes('action_order_create'), false);
+    assert.deepEqual(resolvePermissions(['action_order_create']), ['action_order_create']);
     assert.equal(PERMISSION_METADATA['action_order_refund'].mode, 'manage');
     assert.equal(PERMISSION_METADATA['action_order_batch_delete'].mode, 'manage');
     assert.equal(PERMISSION_METADATA['action_order_batch_delete'].risk, 'high');
@@ -106,6 +111,8 @@ test('Granular backend route matrix and no role-name authorization shortcuts', (
     assert.match(managementOrders, /router\.post\('\/batch-delete', ensureAuth, checkPerm\('action_order_batch_delete'\)/);
     assert.match(managementOrders, /router\.post\('\/cancel\/:id', ensureAuth, checkPerm\('action_order_refund'\)/);
     assert.match(managementOrders, /router\.post\('\/complete\/:id', ensureAuth, checkPerm\('action_order_manage'\)/);
+    assert.match(managementOrders, /router\.post\('\/create', ensureAuth, requireManualOrderAccess/);
+    assert.match(managementOrders, /router\.get\('\/create\/member-wallet\/:memberId', ensureAuth, requireManualOrderAccess/);
     assert.match(managementOrders, /allowPriceAdjustment: canAdjustOrderPrice\(res\)/);
     assert.match(legacyOrders, /router\.get\('\/orders', ensureAuth, checkPerm\('view_manage_orders'\)/);
     assert.match(legacyOrders, /router\.post\('\/orders\/update\/:id', ensureAuth, requireUpdatePermission/);
@@ -130,6 +137,7 @@ test('Role editor uses centralized metadata and permission delegation is validat
     const system = read('routes/system.js');
     const rolePermissionModal = read('views/modals/role_permission_modal.ejs');
     assert.match(rolePermissionModal, /permissionMetadata/);
+    assert.match(rolePermissionModal, /key: 'action_order_create', label: '建立訂單'/);
     assert.match(rolePermissionModal, /admin-permission-grid/);
     assert.doesNotMatch(rolePermissionModal, /role-permission-key/);
     assert.match(system, /validatePermissionGrant/);

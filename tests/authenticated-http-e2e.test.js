@@ -88,7 +88,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         balance_after REAL, reference_type TEXT, reference_id TEXT, description TEXT, operator_id TEXT, created_at TEXT
     )`);
     await run(`CREATE TABLE orders (
-        id INTEGER PRIMARY KEY, order_no TEXT, boss_id TEXT, cs_id TEXT, cs_name TEXT, category TEXT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT, order_no TEXT, boss_id TEXT, cs_id TEXT, cs_name TEXT, category TEXT,
         game TEXT, content_tier TEXT, duration REAL, unit TEXT, unit_price REAL, headcount REAL, tag TEXT,
         extra TEXT, discount REAL, note TEXT, talent_message TEXT, talent_id TEXT, staff_id TEXT,
         player_id TEXT, channel_id TEXT, message_id TEXT, total_amount REAL, status TEXT,
@@ -135,6 +135,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ('talent-a','talent-a','talent',1),
         ('604610298581876746','platform-user','admin',1),
         ('manager-limited','manager-limited','limited_staff_manager',1),('cs-orders','cs-orders','cs',1),
+        ('order-creator','order-creator','order_create_viewer',1),('order-creator-no-page','order-creator-no-page','order_create_no_page',1),
         ('legacy-orders','legacy-orders','legacy_order_manager',1),('aftersales-orders','aftersales-orders','aftersales',1),
         ('settings-viewer','settings-viewer','settings_viewer',1),
         ('roles-viewer','roles-viewer','roles_viewer',1),('legacy-roles','legacy-roles','legacy_roles',1),
@@ -145,7 +146,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ('star-actor','star-actor','star_actor',1)`);
     await run(`INSERT INTO roles (id,role_key,name,permissions) VALUES
         (1,'member','Member','["view_income","view_profile"]'),(2,'staff','Staff','["view_payout"]'),
-        (3,'manager','Manager','["view_management","action_order_management","action_member_management","action_member_balance","action_member_role_vip","action_staff_payroll_details","action_staff_management","action_system_management","action_role_management","view_payout","action_payout_sensitive","action_payout_export","action_payout_mark_paid","action_payout_reject"]'),
+        (3,'manager','Manager','["view_management","action_order_management","action_order_create","action_member_management","action_member_balance","action_member_role_vip","action_staff_payroll_details","action_staff_management","action_system_management","action_role_management","view_payout","action_payout_sensitive","action_payout_export","action_payout_mark_paid","action_payout_reject"]'),
         (4,'limited_staff_manager','Limited Staff Manager','["action_staff_management","view_payout"]'),
         (5,'settings_viewer','Settings Viewer','["view_system_settings"]'),(6,'roles_viewer','Roles Viewer','["view_roles"]'),
         (7,'legacy_roles','Legacy Roles','["action_role_management"]'),(8,'security_self','Self Editor','["action_role_manage"]'),
@@ -156,15 +157,17 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (13,'star_actor','Star Actor','["*"]'),
         (21,'ledger_viewer','Ledger Viewer','["view_management","view_member_ledger"]'),
         (22,'payroll_viewer','Payroll Viewer','["view_management","view_staff_payroll"]'),
-        (17,'admin','店長','["view_manage_orders","action_order_manage","action_order_price","action_order_refund","action_order_batch_delete","action_order_refund_completed"]'),
-        (18,'cs','客服','["view_manage_orders","action_order_manage","action_order_reassign"]'),
+        (17,'admin','店長','["view_manage_orders","action_order_create","action_order_manage","action_order_price","action_order_refund","action_order_batch_delete","action_order_refund_completed"]'),
+        (18,'cs','客服','["view_manage_orders","action_order_create","action_order_manage","action_order_reassign"]'),
         (19,'legacy_order_manager','Legacy Order Manager','["action_order_management"]'),
         (20,'aftersales','售後','["view_manage_orders","action_order_manage","action_order_refund"]'),
         (14,'protected_deployer','Protected Deployer','["action_role_manage","action_bot_deploy_production"]'),
         (15,'settings_target','Settings Target','["action_system_config"]'),
-        (16,'delegatable_target','Delegatable Target','["view_manage_members","view_manage_staff"]')`);
+        (16,'delegatable_target','Delegatable Target','["view_manage_members","view_manage_staff"]'),
+        (23,'order_create_viewer','Order Creator','["view_manage_orders","action_order_create"]'),
+        (24,'order_create_no_page','Order Creator Without Page','["action_order_create"]')`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','manager-b')");
-    await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP),('cs-orders',0,0,0,0,CURRENT_TIMESTAMP),('legacy-orders',0,0,0,0,CURRENT_TIMESTAMP),('aftersales-orders',0,0,0,0,CURRENT_TIMESTAMP)");
+    await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP),('cs-orders',0,0,0,0,CURRENT_TIMESTAMP),('order-creator',0,0,0,0,CURRENT_TIMESTAMP),('order-creator-no-page',0,0,0,0,CURRENT_TIMESTAMP),('legacy-orders',0,0,0,0,CURRENT_TIMESTAMP),('aftersales-orders',0,0,0,0,CURRENT_TIMESTAMP)");
     await run("INSERT INTO talents (user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions) VALUES ('talent-a','Talent A','chan-talent-a',0.82,'idle','[]')");
     await run(`INSERT INTO orders (id,order_no,boss_id,category,game,content_tier,duration,unit,unit_price,headcount,discount,total_amount,status,created_at,studio_id)
         VALUES (101,'ORDER-A','member-a','陪玩單','game','standard',1,'h',100,1,0,100,'pending',CURRENT_TIMESTAMP,1),
@@ -1427,12 +1430,76 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         });
         assert.equal(managerOrdersWithCreate.status, 200, managerOrdersWithCreate.body);
         assert.match(managerOrdersWithCreate.body, /手動建立訂單/);
+        assert.match(managerOrdersWithCreate.body, /建立訂單將立即扣除所選會員錢包餘額；進行中訂單於完成後才結算收益與累積消費。/);
+        assert.doesNotMatch(managerOrdersWithCreate.body, /不會扣除會員錢包/);
+        assert.match(managerOrdersWithCreate.body, /#f3f4f6/);
+        assert.match(managerOrdersWithCreate.body, /#9ca3af/);
+        assert.match(managerOrdersWithCreate.body, /#d8d4e8/);
+        assert.match(managerOrdersWithCreate.body, /#a8a3bb/);
+        assert.match(managerOrdersWithCreate.body, /create\/member-wallet/);
 
         const csOrdersWithCreate = await createRequest(port, 'GET', '/management/orders', {
             Host: `127.0.0.1:${port}`, Cookie: csSession.cookie
         });
         assert.equal(csOrdersWithCreate.status, 200, csOrdersWithCreate.body);
         assert.match(csOrdersWithCreate.body, /手動建立訂單/);
+
+        const legacyOrderManager = await createSession('legacy-orders');
+        const legacyOrdersPage = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: legacyOrderManager.cookie
+        });
+        assert.equal(legacyOrdersPage.status, 200, legacyOrdersPage.body);
+        assert.doesNotMatch(legacyOrdersPage.body, /id="manualCreateOrderModal"/);
+        const legacyCreateSearchDenied = await createRequest(port, 'GET', '/management/orders/create/member-options?q=member', {
+            Host: `127.0.0.1:${port}`, Cookie: legacyOrderManager.cookie, Accept: 'application/json'
+        });
+        assert.equal(legacyCreateSearchDenied.status, 403);
+        const legacyWalletPreviewDenied = await createRequest(port, 'GET', '/management/orders/create/member-wallet/member-a', {
+            Host: `127.0.0.1:${port}`, Cookie: legacyOrderManager.cookie, Accept: 'application/json'
+        });
+        assert.equal(legacyWalletPreviewDenied.status, 403);
+        const legacyDirectCreateDenied = await orderPostJson(legacyOrderManager, '/management/orders/create', manualCreatePayload({ final_amount: '0' }));
+        assert.equal(legacyDirectCreateDenied.response.status, 403, legacyDirectCreateDenied.response.body);
+
+        const createOnlyActor = await createSession('order-creator');
+        const createOnlyPage = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: createOnlyActor.cookie
+        });
+        assert.equal(createOnlyPage.status, 200, createOnlyPage.body);
+        assert.match(createOnlyPage.body, /id="manualCreateOrderModal"/);
+        const createOnlyWalletPreview = await createRequest(port, 'GET', '/management/orders/create/member-wallet/member-a', {
+            Host: `127.0.0.1:${port}`, Cookie: createOnlyActor.cookie, Accept: 'application/json'
+        });
+        assert.equal(createOnlyWalletPreview.status, 200, createOnlyWalletPreview.body);
+        assert.deepEqual(JSON.parse(createOnlyWalletPreview.body).member, {
+            id: 'member-a', nickname: 'member-a-renamed', studioId: 1, balance: 125, bonusBalance: 0, payableBalance: 125
+        });
+        const crossStudioWalletPreview = await createRequest(port, 'GET', '/management/orders/create/member-wallet/member-b', {
+            Host: `127.0.0.1:${port}`, Cookie: createOnlyActor.cookie, Accept: 'application/json'
+        });
+        assert.equal(crossStudioWalletPreview.status, 404);
+        const createOnlyOrder = await orderPostJson(createOnlyActor, '/management/orders/create', manualCreatePayload({ final_amount: '0' }));
+        assert.equal(createOnlyOrder.response.status, 200, createOnlyOrder.response.body);
+        assert.equal(createOnlyOrder.payload.success, true);
+        assert.equal(createOnlyOrder.payload.wallet.deductedAmount, 0);
+        const zeroOrderPaymentRows = await new Promise((resolve, reject) => db.all(
+            "SELECT user_id,type,amount,reference_id FROM wallet_transactions WHERE type IN ('order_payment','payment') AND reference_type='order' AND reference_id=?",
+            [String(createOnlyOrder.payload.orderId)],
+            (error, rows) => error ? reject(error) : resolve(rows || [])
+        ));
+        assert.deepEqual(zeroOrderPaymentRows, [], `zero order id=${createOnlyOrder.payload.orderId}`);
+
+        const createWithoutPageActor = await createSession('order-creator-no-page');
+        const createWithoutPageGet = await createRequest(port, 'GET', '/management/orders', {
+            Host: `127.0.0.1:${port}`, Cookie: createWithoutPageActor.cookie
+        });
+        assert.equal(createWithoutPageGet.status, 403);
+        const createWithoutPageApi = await createRequest(port, 'GET', '/management/orders/create/member-options?q=member', {
+            Host: `127.0.0.1:${port}`, Cookie: createWithoutPageActor.cookie, Accept: 'application/json'
+        });
+        assert.equal(createWithoutPageApi.status, 403);
+        const createWithoutPagePost = await orderPostJson(createWithoutPageActor, '/management/orders/create', manualCreatePayload({ final_amount: '0' }));
+        assert.equal(createWithoutPagePost.response.status, 403);
 
         const memberSearchAllowed = await createRequest(port, 'GET', '/management/orders/create/member-options?q=member', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie, Accept: 'application/json'
@@ -1442,6 +1509,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(memberSearchPayload.success, true);
         assert.ok(Array.isArray(memberSearchPayload.members));
         assert.equal(memberSearchPayload.members.some(member => member.id === 'member-a'), true);
+        assert.equal(Object.hasOwn(memberSearchPayload.members.find(member => member.id === 'member-a'), 'balance'), false);
 
         const takerSearchAllowed = await createRequest(port, 'GET', '/management/orders/create/taker-options?q=talent', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie, Accept: 'application/json'
@@ -1467,6 +1535,95 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         }));
         assert.equal(deniedOverrideByCs.response.status, 403, deniedOverrideByCs.response.body);
 
+        const crossStudioCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_cross_studio_${Date.now()}`,
+            boss_id: 'member-b',
+            final_amount: '1'
+        }));
+        assert.equal(crossStudioCreate.response.status, 403, crossStudioCreate.response.body);
+        const invalidTakerCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_invalid_taker_${Date.now()}`,
+            talent_id: 'staff-a',
+            final_amount: '1'
+        }));
+        assert.equal(invalidTakerCreate.response.status, 400, invalidTakerCreate.response.body);
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=5000, bonus_balance=80 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=5000, bonus_balance=80 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+
+        for (const invalidAmount of ['-1', 'NaN', 'Infinity', '1.001', '1000000001', '1e2']) {
+            const invalidCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+                request_key: `manual_invalid_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                final_amount: invalidAmount
+            }));
+            assert.equal(invalidCreate.response.status, 400, `${invalidAmount}: ${invalidCreate.response.body}`);
+        }
+
+        for (const category of ['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單']) {
+            const categoryCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+                request_key: `manual_category_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                category,
+                final_amount: '1',
+                manual_status: 'completed'
+            }));
+            assert.equal(categoryCreate.response.status, 200, `${category}: ${categoryCreate.response.body}`);
+            assert.equal(categoryCreate.payload.wallet.deductedAmount, 1);
+            assert.equal(await new Promise((resolve, reject) => db.get(
+                "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=? AND user_id='member-a' AND amount=-1",
+                [String(categoryCreate.payload.orderId)],
+                (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+            )), 1, category);
+            assert.equal(await new Promise((resolve, reject) => db.get(
+                'SELECT status FROM orders WHERE id=?', [categoryCreate.payload.orderId],
+                (error, row) => error ? reject(error) : resolve(row && row.status)
+            )), 'completed', category);
+        }
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=50 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=50 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        const exactBalanceOrder = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_exact_balance_${Date.now()}`,
+            final_amount: '50',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(exactBalanceOrder.response.status, 200, exactBalanceOrder.response.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 0, bonus_balance: 80 });
+        const exactBalanceRefundActor = await createSession('aftersales-orders');
+        const exactBalanceRefund = await orderPost(exactBalanceRefundActor, `/management/orders/cancel/${exactBalanceOrder.payload.orderId}`, {});
+        assert.equal(exactBalanceRefund.status, 303, exactBalanceRefund.headers.location || exactBalanceRefund.body);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), { balance: 50, bonus_balance: 80 });
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+            [String(exactBalanceOrder.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(Number(row && row.amount || 0))
+        )), 50);
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=5000 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=5000 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
         const orderSpentBeforeManualCreate = await new Promise((resolve, reject) => db.get(
             "SELECT COALESCE(SUM(total_amount), 0) AS total FROM orders WHERE boss_id = 'member-a' AND status = 'completed'",
             (error, row) => error ? reject(error) : resolve(Number(row.total || 0))
@@ -1492,6 +1649,48 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'SELECT COUNT(*) AS count FROM orders',
             (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
         ));
+
+        const walletDebitFailureKey = `manual_wallet_failure_${Date.now()}`;
+        const beforeWalletDebitFailure = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const beforeWalletDebitFailureLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        await new Promise((resolve, reject) => db.run(`
+            CREATE TRIGGER fail_manual_wallet_payment_ledger
+            BEFORE INSERT ON wallet_transactions
+            WHEN NEW.type = 'order_payment' AND NEW.reference_type = 'order'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced manual wallet payment failure');
+            END
+        `, error => error ? reject(error) : resolve()));
+        const walletDebitFailure = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: walletDebitFailureKey,
+            final_amount: '45',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(walletDebitFailure.response.status, 500, walletDebitFailure.response.body);
+        await new Promise((resolve, reject) => db.run('DROP TRIGGER fail_manual_wallet_payment_ledger', error => error ? reject(error) : resolve()));
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), beforeWalletDebitFailure);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), beforeWalletDebitFailureLedgerCount);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM orders',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), beforeManualCreateOrderCount);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM order_creation_idempotency WHERE request_key=?',
+            [walletDebitFailureKey],
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), 0);
 
         const idemKey = `manual_key_${Date.now()}`;
         const manualCreateFirst = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({ request_key: idemKey }));
@@ -1533,7 +1732,47 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'SELECT COUNT(*) AS count FROM wallet_transactions',
             (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
         ));
-        assert.equal(afterManualCreateLedgerCount, beforeManualCreateLedgerCount);
+        assert.equal(afterManualCreateLedgerCount, beforeManualCreateLedgerCount + 1);
+        const manualPaymentLedger = await new Promise((resolve, reject) => db.get(
+            "SELECT user_id, type, amount, balance_before, balance_after, reference_type, reference_id FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=?",
+            [String(createdOrderId)],
+            (error, row) => error ? reject(error) : resolve(row || null)
+        ));
+        assert.deepEqual(manualPaymentLedger, {
+            user_id: 'member-a', type: 'order_payment', amount: -321,
+            balance_before: 5000, balance_after: 4679, reference_type: 'order', reference_id: String(createdOrderId)
+        });
+        const manualWalletAfterCreate = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.deepEqual(manualWalletAfterCreate, { balance: 4679, bonus_balance: 80 });
+
+        const insufficientBefore = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const insufficientLedgerBefore = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        ));
+        const insufficientCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_insufficient_${Date.now()}`,
+            final_amount: '4680',
+            manual_status: 'in_progress'
+        }));
+        assert.equal(insufficientCreate.response.status, 400, insufficientCreate.response.body);
+        assert.equal(insufficientCreate.payload.code, 'WALLET_INSUFFICIENT_BALANCE');
+        assert.equal(insufficientCreate.payload.wallet.balance, 4679);
+        assert.equal(insufficientCreate.payload.wallet.bonusBalance, 80);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), insufficientBefore);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), insufficientLedgerBefore);
 
         const manualCreateReplay = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
             request_key: idemKey
@@ -1584,6 +1823,36 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ));
         assert.equal(orderSpentAfterCompletedCreate, orderSpentBeforeManualCreate + 321);
 
+        const completedManualRefundWalletBefore = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const completedManualRefundCreate = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_completed_refund_${Date.now()}`,
+            final_amount: '25',
+            manual_status: 'completed'
+        }));
+        assert.equal(completedManualRefundCreate.response.status, 200, completedManualRefundCreate.response.body);
+        const completedManualRefundAfterCharge = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(completedManualRefundAfterCharge.balance, completedManualRefundWalletBefore.balance - 25);
+        assert.equal(completedManualRefundAfterCharge.bonus_balance, completedManualRefundWalletBefore.bonus_balance);
+        assert.equal(completedManualRefundAfterCharge.manual_spent, completedManualRefundWalletBefore.manual_spent + 25);
+        const completedManualRefund = await orderPost(ordinaryAdmin, `/management/orders/cancel/${completedManualRefundCreate.payload.orderId}`, {});
+        assert.equal(completedManualRefund.status, 303, completedManualRefund.headers.location || completedManualRefund.body);
+        const completedManualRefundFinalWallet = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.deepEqual(completedManualRefundFinalWallet, completedManualRefundWalletBefore);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+            [String(completedManualRefundCreate.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(Number(row && row.amount || 0))
+        )), 25);
+
         const inProgressBeforeSpent = spentAfterCompletedCreate;
         const inProgressBeforeLedgerCount = await new Promise((resolve, reject) => db.get(
             'SELECT COUNT(*) AS count FROM wallet_transactions',
@@ -1633,7 +1902,97 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'SELECT COUNT(*) AS count FROM wallet_transactions',
             (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
         ));
-        assert.equal(inProgressAfterRepeatLedgerCount, inProgressBeforeLedgerCount);
+        assert.equal(inProgressAfterRepeatLedgerCount, inProgressBeforeLedgerCount + 1);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='order_payment' AND reference_type='order' AND reference_id=?",
+            [String(inProgressCreate.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), 1);
+
+        const cancelledProgress = await orderPostJson(managerA, '/management/orders/create', manualCreatePayload({
+            request_key: `manual_progress_cancel_${Date.now()}`,
+            manual_status: 'in_progress',
+            final_amount: '75'
+        }));
+        assert.equal(cancelledProgress.response.status, 200, cancelledProgress.response.body);
+        const beforeProgressCancel = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(beforeProgressCancel.balance, 4394);
+        const manualRefundAfterSalesSession = await createSession('aftersales-orders');
+        const progressRefund = await orderPost(manualRefundAfterSalesSession, `/management/orders/cancel/${cancelledProgress.payload.orderId}`, {});
+        assert.equal(progressRefund.status, 303, progressRefund.headers.location || progressRefund.body);
+        const afterProgressCancel = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, manual_spent FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(afterProgressCancel.balance, beforeProgressCancel.balance + 75);
+        assert.equal(afterProgressCancel.manual_spent, beforeProgressCancel.manual_spent);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT amount FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+            [String(cancelledProgress.payload.orderId)],
+            (error, row) => error ? reject(error) : resolve(Number(row && row.amount || 0))
+        )), 75);
+
+        const legacyUnpaidOrderId = 909;
+        await new Promise((resolve, reject) => db.run(`
+            INSERT INTO orders (id,order_no,boss_id,cs_id,category,game,content_tier,duration,unit,unit_price,
+                total_amount,discount,note,talent_id,staff_id,status,studio_id,created_at)
+            VALUES (?, 'LEGACY-MANUAL-UNPAID', 'member-a', 'manager-a', '陪玩單', 'legacy', 'standard', 1, '小時', 40,
+                40, 0, 'legacy unpaid manual', 'talent-a', 'talent-a', 'completed', 1, CURRENT_TIMESTAMP)
+        `, [legacyUnpaidOrderId], error => error ? reject(error) : resolve()));
+        await new Promise((resolve, reject) => db.run(`
+            INSERT INTO order_creation_idempotency (request_key,request_digest,order_id,operator_id,studio_id)
+            VALUES ('legacy_unpaid_manual_key','legacy-digest',?,'manager-a',1)
+        `, [legacyUnpaidOrderId], error => error ? reject(error) : resolve()));
+        const legacyBalanceBeforeRefund = await new Promise((resolve, reject) => db.get(
+            "SELECT balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.balance || 0))
+        ));
+        const legacyUnpaidRefund = await orderPost(ordinaryAdmin, `/management/orders/cancel/${legacyUnpaidOrderId}`, {});
+        assert.equal(legacyUnpaidRefund.status, 303, legacyUnpaidRefund.headers.location || legacyUnpaidRefund.body);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.balance || 0))
+        )), legacyBalanceBeforeRefund);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='refund' AND reference_type='order' AND reference_id=?",
+            [String(legacyUnpaidOrderId)],
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), 0);
+
+        const concurrencyBalance = 100;
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=? WHERE user_id='member-a'",
+            [concurrencyBalance], error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=? WHERE id='member-a'",
+            [concurrencyBalance], error => error ? reject(error) : resolve()
+        ));
+        const concurrentCreates = await Promise.all([
+            orderPostJson(managerA, '/management/orders/create', manualCreatePayload({ request_key: `manual_concurrent_a_${Date.now()}`, final_amount: '80', manual_status: 'in_progress' })),
+            orderPostJson(managerA, '/management/orders/create', manualCreatePayload({ request_key: `manual_concurrent_b_${Date.now()}`, final_amount: '80', manual_status: 'in_progress' }))
+        ]);
+        assert.deepEqual(concurrentCreates.map(result => result.response.status).sort(), [200, 400]);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(Number(row.balance))
+        )), 20);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            "SELECT COUNT(*) AS count FROM wallet_transactions WHERE type='order_payment' AND amount=-80 AND reference_type='order'",
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), 1);
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE user_wallets SET balance=5000 WHERE user_id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET balance=5000 WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
 
         await new Promise((resolve, reject) => db.run(
             "INSERT OR REPLACE INTO vip_tiers (level, name, spent_threshold, deposit_threshold, rewards, color, updated_at) VALUES (1, 'VIP 1', 1, 0, '[]', '#A855F7', CURRENT_TIMESTAMP)",
@@ -1648,6 +2007,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const beforeRollbackAuditSpent = await new Promise((resolve, reject) => db.get(
             "SELECT manual_spent FROM users WHERE id='member-a'",
             (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        const beforeRollbackAuditBalance = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const beforeRollbackAuditLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
         ));
         await new Promise((resolve, reject) => db.run(`
             CREATE TRIGGER fail_manual_order_create_audit
@@ -1668,6 +2035,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             "SELECT manual_spent FROM users WHERE id='member-a'",
             (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
         )), beforeRollbackAuditSpent);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), beforeRollbackAuditBalance);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), beforeRollbackAuditLedgerCount);
         assert.equal(await new Promise((resolve, reject) => db.get(
             'SELECT COUNT(*) AS count FROM order_creation_idempotency WHERE request_key = ?',
             [rollbackAuditKey],
@@ -1683,6 +2058,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const beforeRollbackVipSpent = await new Promise((resolve, reject) => db.get(
             "SELECT manual_spent FROM users WHERE id='member-a'",
             (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
+        ));
+        const beforeRollbackVipBalance = await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const beforeRollbackVipLedgerCount = await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
         ));
         await new Promise((resolve, reject) => db.run(`
             CREATE TRIGGER fail_manual_vip_recalc_audit
@@ -1707,6 +2090,14 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             "SELECT manual_spent FROM users WHERE id='member-a'",
             (error, row) => error ? reject(error) : resolve(Number(row.manual_spent || 0))
         )), beforeRollbackVipSpent);
+        assert.deepEqual(await new Promise((resolve, reject) => db.get(
+            "SELECT balance, bonus_balance FROM user_wallets WHERE user_id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        )), beforeRollbackVipBalance);
+        assert.equal(await new Promise((resolve, reject) => db.get(
+            'SELECT COUNT(*) AS count FROM wallet_transactions',
+            (error, row) => error ? reject(error) : resolve(Number(row.count || 0))
+        )), beforeRollbackVipLedgerCount);
         assert.equal(await new Promise((resolve, reject) => db.get(
             'SELECT COUNT(*) AS count FROM order_creation_idempotency WHERE request_key = ?',
             [rollbackVipKey],

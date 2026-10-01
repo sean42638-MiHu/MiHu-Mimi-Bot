@@ -1,7 +1,7 @@
 <%
     const canCreateOrder = typeof canCreateManualOrder === 'boolean'
         ? canCreateManualOrder
-        : (typeof hasPerm === 'function' && hasPerm('action_order_manage'));
+        : (typeof hasPerm === 'function' && hasPerm('action_order_create'));
     const canAdjustManualRate = typeof canAdjustOrderPrice === 'boolean'
         ? canAdjustOrderPrice
         : (typeof hasPerm === 'function' && hasPerm('action_order_price'));
@@ -30,8 +30,21 @@
         padding-right: 12px;
     }
 
+    #manualCreateOrderModal .manual-create-body::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    #manualCreateOrderModal .manual-create-body::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.72);
+    }
+
+    #manualCreateOrderModal .manual-create-body::-webkit-scrollbar-thumb {
+        background: rgba(217, 70, 239, 0.72);
+        border-radius: 999px;
+    }
+
     #manualCreateOrderModal .manual-form-label {
-        color: #cbd5f5;
+        color: #d8d4e8;
         font-size: 0.82rem;
         margin-bottom: 6px;
         font-weight: 700;
@@ -42,9 +55,29 @@
     #manualCreateOrderModal .manual-form-select {
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.16);
-        color: #f8fafc;
+        color: #f3f4f6;
         border-radius: 12px;
         min-height: 40px;
+    }
+
+    #manualCreateOrderModal .manual-form-control::placeholder {
+        color: #9ca3af;
+        opacity: 1;
+    }
+
+    #manualCreateOrderModal .manual-form-control:read-only,
+    #manualCreateOrderModal .manual-form-control:disabled,
+    #manualCreateOrderModal .manual-form-select:disabled {
+        color: #d1d5db;
+        background: rgba(148, 163, 184, 0.1);
+        border-color: rgba(148, 163, 184, 0.32);
+        opacity: 1;
+        cursor: not-allowed;
+    }
+
+    #manualCreateOrderModal .manual-form-select {
+        color: #f3f4f6;
+        color-scheme: dark;
     }
 
     #manualCreateOrderModal .manual-form-control:focus,
@@ -55,7 +88,7 @@
 
     #manualCreateOrderModal .manual-form-select option {
         background: #0f172a;
-        color: #f8fafc;
+        color: #f3f4f6;
     }
 
     #manualCreateOrderModal .manual-search-wrap {
@@ -81,9 +114,59 @@
         border: 0;
         padding: 10px 12px;
         text-align: left;
-        color: #e2e8f0;
+        color: #f3f4f6;
         background: transparent;
         font-size: 0.84rem;
+    }
+
+    #manualCreateOrderModal .manual-search-empty,
+    #manualCreateOrderModal .manual-help-text {
+        color: #a8a3bb;
+    }
+
+    #manualCreateOrderModal .manual-create-warning {
+        color: #fff1f2;
+        background: rgba(120, 53, 15, 0.44);
+        border: 1px solid rgba(251, 191, 36, 0.42);
+    }
+
+    #manualCreateOrderModal .manual-create-error {
+        color: #fee2e2;
+        background: rgba(127, 29, 29, 0.45);
+        border: 1px solid rgba(248, 113, 113, 0.55);
+    }
+
+    #manualCreateOrderModal .manual-wallet-card {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        border-radius: 12px;
+        background: rgba(8, 47, 73, 0.3);
+        color: #f3f4f6;
+    }
+
+    #manualCreateOrderModal .manual-wallet-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    #manualCreateOrderModal .manual-wallet-value {
+        display: block;
+        color: #f3f4f6;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+    }
+
+    #manualCreateOrderModal .manual-wallet-insufficient {
+        color: #fecaca;
+        font-weight: 700;
+    }
+
+    #manualCreateOrderModal .manual-submit-summary {
+        color: #f3f4f6;
+        max-width: 340px;
+        overflow-wrap: anywhere;
     }
 
     #manualCreateOrderModal .manual-search-item:hover,
@@ -120,7 +203,7 @@
 
     #manualCreateOrderModal .manual-preview-label {
         font-size: 0.72rem;
-        color: #a5b4fc;
+        color: #a8a3bb;
         display: block;
         margin-bottom: 2px;
     }
@@ -133,7 +216,8 @@
     }
 
     #manualCreateOrderModal .manual-override-disabled {
-        opacity: 0.55;
+        border-radius: 10px;
+        background: rgba(148, 163, 184, 0.06);
     }
 
     @media (max-width: 768px) {
@@ -154,6 +238,10 @@
         }
 
         #manualCreateOrderModal .manual-preview-grid {
+            grid-template-columns: 1fr;
+        }
+
+        #manualCreateOrderModal .manual-wallet-grid {
             grid-template-columns: 1fr;
         }
     }
@@ -186,9 +274,9 @@
                 </div>
 
                 <div class="modal-body manual-create-body">
-                    <div class="alert alert-danger py-2 px-3 small" id="manualCreateOrderError" style="display:none;"></div>
-                    <div class="alert alert-warning py-2 px-3 small mb-3">
-                        此操作建立訂單並依狀態結算，不會扣除會員錢包，也不代表已驗證收款。
+                    <div class="alert manual-create-error py-2 px-3 small" id="manualCreateOrderError" style="display:none;" role="alert"></div>
+                    <div class="alert manual-create-warning py-2 px-3 small mb-3">
+                        建立訂單將立即扣除所選會員錢包餘額；進行中訂單於完成後才結算收益與累積消費。
                     </div>
 
                     <div class="row g-3 mb-2">
@@ -199,6 +287,14 @@
                                 <div class="manual-search-results" id="manualMemberResults"></div>
                             </div>
                             <div id="manualMemberSelected" style="display:none;"></div>
+                            <div id="manualMemberWalletPreview" class="manual-wallet-card" style="display:none;" aria-live="polite">
+                                <div class="manual-wallet-grid">
+                                    <div><span class="manual-preview-label">可付款主餘額</span><span class="manual-wallet-value" id="manualWalletBalance">$0</span></div>
+                                    <div><span class="manual-preview-label">贈送金（本次不合併扣款）</span><span class="manual-wallet-value" id="manualWalletBonus">$0</span></div>
+                                    <div><span class="manual-preview-label">扣款後主餘額</span><span class="manual-wallet-value" id="manualWalletAfter">$0</span></div>
+                                </div>
+                                <div class="small mt-2" id="manualWalletPaymentPreview"></div>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label class="manual-form-label">接單人 (接單資格)</label>
@@ -279,9 +375,9 @@
                             </div>
                         </div>
                         <% if (!canAdjustManualRate) { %>
-                            <small class="text-warning d-block mt-2">此帳號沒有 orders.price_adjust 權限，僅能使用既有分潤規則。</small>
+                            <small class="manual-help-text d-block mt-2">此帳號沒有 orders.price_adjust 權限，僅能使用既有分潤規則。</small>
                         <% } else { %>
-                            <small class="text-secondary d-block mt-2">覆寫會影響訂單分潤快照，未啟用時採用接單者個人成數或類別預設。</small>
+                            <small class="manual-help-text d-block mt-2">覆寫會影響訂單分潤快照，未啟用時採用接單者個人成數或類別預設。</small>
                         <% } %>
                     </div>
 
@@ -317,7 +413,11 @@
 
                 <div class="modal-footer border-0 pt-2">
                     <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary" id="manualCreateOrderSubmitBtn" style="background:linear-gradient(135deg,#ec4899,#db2777); border:1px solid rgba(249,168,212,0.45);">建立訂單</button>
+                    <div class="d-flex flex-column align-items-end gap-1">
+                        <small class="manual-submit-summary" id="manualCreateOrderSubmitSummary" aria-live="polite">請先選擇會員與接單人</small>
+                        <small class="manual-help-text" id="manualCreateOrderValidation" aria-live="polite"></small>
+                        <button type="submit" class="btn btn-primary" id="manualCreateOrderSubmitBtn" disabled style="background:linear-gradient(135deg,#ec4899,#db2777); border:1px solid rgba(249,168,212,0.45);">建立訂單</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -340,6 +440,11 @@
         const memberResults = document.getElementById('manualMemberResults');
         const memberHidden = document.getElementById('manualOrderBossId');
         const memberSelected = document.getElementById('manualMemberSelected');
+        const memberWalletPreview = document.getElementById('manualMemberWalletPreview');
+        const walletBalance = document.getElementById('manualWalletBalance');
+        const walletBonus = document.getElementById('manualWalletBonus');
+        const walletAfter = document.getElementById('manualWalletAfter');
+        const walletPaymentPreview = document.getElementById('manualWalletPaymentPreview');
 
         const talentInput = document.getElementById('manualTalentSearch');
         const talentResults = document.getElementById('manualTalentResults');
@@ -357,8 +462,17 @@
         const previewStudioCut = document.getElementById('manualPreviewStudioCut');
         const errorBox = document.getElementById('manualCreateOrderError');
         const submitBtn = document.getElementById('manualCreateOrderSubmitBtn');
+        const submitSummary = document.getElementById('manualCreateOrderSubmitSummary');
+        const validationText = document.getElementById('manualCreateOrderValidation');
+        const durationInput = document.getElementById('manualOrderDuration');
+        const gameInput = document.getElementById('manualOrderGame');
 
         let selectedTalentRate = null;
+        let selectedMemberSnapshot = null;
+        let memberSearchSequence = 0;
+        let memberWalletSequence = 0;
+        let takerSearchSequence = 0;
+        let submitting = false;
 
         function createRequestKey() {
             if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -379,6 +493,76 @@
             }
             errorBox.textContent = text;
             errorBox.style.display = 'block';
+        }
+
+        function formatCurrency(value) {
+            return `$${Number(value || 0).toLocaleString('zh-TW', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            })}`;
+        }
+
+        function parseValidAmount() {
+            const raw = String(amountInput && amountInput.value || '').trim();
+            if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(raw)) return null;
+            const value = Number(raw);
+            return Number.isFinite(value) && value >= 0 && value <= 1000000000 ? Number(value.toFixed(2)) : null;
+        }
+
+        function updateWalletPreview() {
+            const amount = parseValidAmount();
+            const hasMember = Boolean(memberHidden && memberHidden.value && selectedMemberSnapshot
+                && selectedMemberSnapshot.id === String(memberHidden.value));
+            if (!hasMember || !memberWalletPreview) {
+                if (memberWalletPreview) memberWalletPreview.style.display = 'none';
+                if (submitSummary) submitSummary.textContent = '請先選擇有效會員與接單人';
+                updateSubmitState();
+                return;
+            }
+
+            memberWalletPreview.style.display = 'block';
+            const balance = Number(selectedMemberSnapshot.balance || 0);
+            const bonus = Number(selectedMemberSnapshot.bonusBalance || 0);
+            const after = amount === null ? balance : Number((balance - amount).toFixed(2));
+            if (walletBalance) walletBalance.textContent = formatCurrency(balance);
+            if (walletBonus) walletBonus.textContent = formatCurrency(bonus);
+            if (walletAfter) walletAfter.textContent = formatCurrency(after);
+            const enough = amount !== null && after >= 0;
+            if (walletPaymentPreview) {
+                walletPaymentPreview.className = `small mt-2 ${enough ? '' : 'manual-wallet-insufficient'}`;
+                walletPaymentPreview.textContent = amount === null
+                    ? '請輸入合法金額後預覽扣款。'
+                    : (enough
+                        ? `本次由主餘額扣款 ${formatCurrency(amount)}。贈送金維持獨立，不列入可付款額。`
+                        : `主餘額不足，尚缺 ${formatCurrency(Math.abs(after))}；送出時伺服器會再次核對。`);
+            }
+            if (submitSummary) {
+                submitSummary.textContent = `${selectedMemberSnapshot.nickname} (${selectedMemberSnapshot.id}) · 本次扣款 ${amount === null ? '金額無效' : formatCurrency(amount)}`;
+            }
+            updateSubmitState();
+        }
+
+        function updateSubmitState() {
+            if (!submitBtn) return;
+            const amount = parseValidAmount();
+            const durationRaw = String(durationInput && durationInput.value || '').trim();
+            const durationValid = /^(0|[1-9]\d*)(\.\d{1,2})?$/.test(durationRaw)
+                && Number.isFinite(Number(durationRaw)) && Number(durationRaw) > 0 && Number(durationRaw) <= 10000;
+            const walletReady = Boolean(selectedMemberSnapshot && selectedMemberSnapshot.id === String(memberHidden.value)
+                && amount !== null && Number(selectedMemberSnapshot.balance) >= amount);
+            const ready = Boolean(memberHidden.value && talentHidden.value && walletReady && durationValid
+                && String(gameInput && gameInput.value || '').trim() && !submitting);
+            submitBtn.disabled = !ready;
+            if (validationText) {
+                if (submitting) validationText.textContent = '訂單建立中…';
+                else if (!memberHidden.value) validationText.textContent = '請選擇有效會員。';
+                else if (!talentHidden.value) validationText.textContent = '請選擇有效接單人。';
+                else if (amount === null) validationText.textContent = '金額需為 0 至 1,000,000,000，最多兩位小數。';
+                else if (!durationValid) validationText.textContent = '時長/數量需大於 0，最多兩位小數。';
+                else if (!walletReady) validationText.textContent = '錢包主餘額不足或尚未載入。';
+                else if (!String(gameInput && gameInput.value || '').trim()) validationText.textContent = '請填寫服務項目。';
+                else validationText.textContent = '';
+            }
         }
 
         function setSelectedChip(container, label, id, extraText) {
@@ -407,7 +591,7 @@
             panel.innerHTML = '';
             if (!rows.length) {
                 const empty = document.createElement('div');
-                empty.className = 'small text-secondary px-3 py-2';
+                empty.className = 'manual-search-empty small px-3 py-2';
                 empty.textContent = emptyText;
                 panel.appendChild(empty);
                 panel.style.display = 'block';
@@ -450,45 +634,58 @@
             return payload;
         }
 
-        const searchMembers = debounce(async () => {
-            const keyword = String(memberInput && memberInput.value || '').trim();
-            memberHidden.value = '';
-            setSelectedChip(memberSelected, '', '', '');
+        const searchMembers = debounce(async (keyword, sequence) => {
             if (keyword.length < 2) {
                 closeResults(memberResults);
                 return;
             }
             try {
                 const payload = await fetchJson(`/management/orders/create/member-options?q=${encodeURIComponent(keyword)}`);
+                if (sequence !== memberSearchSequence || keyword !== String(memberInput.value || '').trim()) return;
                 const rows = (payload.members || []).map(member => ({
                     id: member.id,
                     nickname: member.nickname,
-                    label: `${member.nickname} · ${member.id} · VIP ${member.vipLevel} · 餘額 $${Number(member.balance || 0).toLocaleString()}`,
+                    label: `${member.nickname} · Discord ${member.id} · VIP ${member.vipLevel}`,
                     value: member
                 }));
                 renderResults(memberResults, rows, item => {
+                    memberSearchSequence += 1;
+                    const walletSequence = ++memberWalletSequence;
                     memberHidden.value = String(item.id);
                     memberInput.value = `${item.nickname} (${item.id})`;
-                    setSelectedChip(memberSelected, item.nickname, item.id, `VIP ${item.value.vipLevel}`);
                     closeResults(memberResults);
+                    setSelectedChip(memberSelected, item.nickname, item.id, `Discord ID ${item.id} · VIP ${item.value.vipLevel}`);
+                    selectedMemberSnapshot = null;
+                    updateWalletPreview();
+                    fetchJson(`/management/orders/create/member-wallet/${encodeURIComponent(item.id)}`)
+                        .then(walletPayload => {
+                            if (walletSequence !== memberWalletSequence || String(memberHidden.value) !== String(item.id)) return;
+                            selectedMemberSnapshot = walletPayload.member;
+                            updateWalletPreview();
+                        })
+                        .catch(error => {
+                            if (walletSequence !== memberWalletSequence) return;
+                            memberHidden.value = '';
+                            selectedMemberSnapshot = null;
+                            setSelectedChip(memberSelected, '', '', '');
+                            setError(error.message || '會員錢包讀取失敗');
+                            updateWalletPreview();
+                        });
                 }, '找不到符合條件的會員');
             } catch (error) {
+                if (sequence !== memberSearchSequence) return;
                 setError(error.message || '會員搜尋失敗');
             }
         }, 240);
 
-        const searchTakers = debounce(async () => {
-            const keyword = String(talentInput && talentInput.value || '').trim();
-            talentHidden.value = '';
-            selectedTalentRate = null;
-            setSelectedChip(talentSelected, '', '', '');
-            refreshPreview();
+        const searchTakers = debounce(async (keyword, sequence) => {
             if (keyword.length < 2) {
                 closeResults(talentResults);
                 return;
             }
             try {
                 const payload = await fetchJson(`/management/orders/create/taker-options?q=${encodeURIComponent(keyword)}`);
+                if (sequence !== takerSearchSequence || keyword !== String(talentInput.value || '').trim()) return;
                 const rows = (payload.takers || []).map(taker => {
                     const statusLabel = String(taker.status || 'idle');
                     const hasPersonalRate = taker.personalRate !== null && taker.personalRate !== undefined;
@@ -513,19 +710,14 @@
                             : `${item.statusLabel} / ${(item.personalRate * 100).toFixed(2)}%`
                     );
                     closeResults(talentResults);
+                        takerSearchSequence += 1;
                     refreshPreview();
                 }, '找不到符合條件的接單者');
             } catch (error) {
+                if (sequence !== takerSearchSequence) return;
                 setError(error.message || '接單者搜尋失敗');
             }
         }, 240);
-
-        function formatCurrency(value) {
-            return `$${Number(value || 0).toLocaleString('zh-TW', {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2
-            })}`;
-        }
 
         function getBaseTalentRate() {
             if (selectedTalentRate !== null && Number.isFinite(Number(selectedTalentRate))) {
@@ -561,6 +753,7 @@
             if (previewRate) previewRate.textContent = `${(rate * 100).toFixed(2)}%`;
             if (previewTalentNet) previewTalentNet.textContent = formatCurrency(talentNet);
             if (previewStudioCut) previewStudioCut.textContent = formatCurrency(studioCut);
+            updateWalletPreview();
         }
 
         function syncOverrideControls() {
@@ -586,6 +779,28 @@
                 talentInput.focus();
                 return;
             }
+
+            const amount = parseValidAmount();
+            if (amount === null) {
+                setError('訂單金額格式無效，最多兩位小數且不可超過 1,000,000,000。');
+                amountInput.focus();
+                updateSubmitState();
+                return;
+            }
+            if (!selectedMemberSnapshot || selectedMemberSnapshot.id !== String(memberHidden.value)) {
+                setError('會員錢包尚未載入，請稍候或重新選擇會員。');
+                return;
+            }
+            if (Number(selectedMemberSnapshot.balance) < amount) {
+                setError('會員錢包主餘額不足，請確認最新餘額。');
+                updateWalletPreview();
+                return;
+            }
+
+            if (submitting) return;
+            submitting = true;
+            updateSubmitState();
+            setError('');
 
             if (!requestKeyInput.value) {
                 requestKeyInput.value = createRequestKey();
@@ -619,6 +834,11 @@
 
                 if (!response.ok || !payload || payload.success !== true) {
                     const message = payload && payload.error ? payload.error : '手動建立訂單失敗，請稍後再試。';
+                    if (payload && payload.wallet && selectedMemberSnapshot
+                        && selectedMemberSnapshot.id === String(memberHidden.value)) {
+                        selectedMemberSnapshot = { ...selectedMemberSnapshot, ...payload.wallet };
+                        updateWalletPreview();
+                    }
                     if (payload && payload.code === 'IDEMPOTENCY_CONFLICT') {
                         requestKeyInput.value = createRequestKey();
                     }
@@ -633,31 +853,51 @@
             } catch (_error) {
                 setError('網路連線中斷，請稍後再試。');
             } finally {
+                submitting = false;
                 if (submitLoading && submitBtn) {
                     window.MiHuFeedback.setButtonLoading(submitBtn, { loading: false });
-                } else if (submitBtn) {
-                    submitBtn.disabled = false;
                 }
+                updateSubmitState();
             }
         }
 
         if (memberInput) {
             memberInput.addEventListener('input', () => {
                 setError('');
-                searchMembers();
+                memberSearchSequence += 1;
+                memberWalletSequence += 1;
+                memberHidden.value = '';
+                selectedMemberSnapshot = null;
+                setSelectedChip(memberSelected, '', '', '');
+                updateWalletPreview();
+                closeResults(memberResults);
+                const keyword = String(memberInput.value || '').trim();
+                searchMembers(keyword, memberSearchSequence);
             });
             memberInput.addEventListener('focus', () => {
-                if (memberInput.value.trim().length >= 2) searchMembers();
+                if (memberInput.value.trim().length >= 2) {
+                    memberSearchSequence += 1;
+                    searchMembers(memberInput.value.trim(), memberSearchSequence);
+                }
             });
         }
 
         if (talentInput) {
             talentInput.addEventListener('input', () => {
                 setError('');
-                searchTakers();
+                takerSearchSequence += 1;
+                talentHidden.value = '';
+                selectedTalentRate = null;
+                setSelectedChip(talentSelected, '', '', '');
+                closeResults(talentResults);
+                refreshPreview();
+                searchTakers(String(talentInput.value || '').trim(), takerSearchSequence);
             });
             talentInput.addEventListener('focus', () => {
-                if (talentInput.value.trim().length >= 2) searchTakers();
+                if (talentInput.value.trim().length >= 2) {
+                    takerSearchSequence += 1;
+                    searchTakers(talentInput.value.trim(), takerSearchSequence);
+                }
             });
         }
 
@@ -675,17 +915,20 @@
         if (ratioModeInput) ratioModeInput.addEventListener('change', refreshPreview);
         if (ratioValueInput) ratioValueInput.addEventListener('input', refreshPreview);
         if (amountInput) amountInput.addEventListener('input', refreshPreview);
+        if (durationInput) durationInput.addEventListener('input', updateSubmitState);
+        if (gameInput) gameInput.addEventListener('input', updateSubmitState);
         if (categoryInput) categoryInput.addEventListener('change', refreshPreview);
 
         form.addEventListener('submit', submitManualCreate);
         modalEl.addEventListener('show.bs.modal', () => {
-            if (!requestKeyInput.value) requestKeyInput.value = createRequestKey();
+            requestKeyInput.value = '';
             syncOverrideControls();
             refreshPreview();
             setError('');
         });
 
         modalEl.addEventListener('hidden.bs.modal', () => {
+            requestKeyInput.value = '';
             closeResults(memberResults);
             closeResults(talentResults);
         });
