@@ -21,7 +21,7 @@ const {
     authorizeRoleCreation, authorizeRoleMutation, canGrantPermission, canModifyRole, isRoleDelegationError,
     loadActorContext, loadRoleById, loadRoleByKey, permissionDiff, validatePermissionGrant
 } = require('../services/roleDelegationService');
-const { ROLE_DEFINITIONS } = require('../utils/roleHelper');
+const { ROLE_BADGE_CLASS_MAP, ROLE_BADGE_INLINE_STYLE_MAP, DEFAULT_ROLE_BADGE_INLINE_STYLE } = require('../utils/roleHelper');
 const { getSystemHealth } = require('../services/systemHealthService');
 const { listAuditLogs } = require('../services/auditLogService');
 
@@ -560,7 +560,9 @@ router.get('/system/roles', ensureAuth, checkPerm('view_roles'), async (req, res
         legacyPermissionKeys: [...KNOWN_LEGACY_PERMISSIONS],
         legacyPermissionImplications: PERMISSION_IMPLICATIONS,
         canGrantWildcard: hasResolvedPermission(actor.permissions, '*'),
-        roleBadgeClassMap: Object.fromEntries(Object.entries(ROLE_DEFINITIONS).map(([key, value]) => [key, String(value.badgeClass || 'role-badge role-badge-default')]))
+        roleBadgeClassMap: ROLE_BADGE_CLASS_MAP,
+        roleBadgeInlineStyleMap: ROLE_BADGE_INLINE_STYLE_MAP,
+        roleBadgeDefaultInlineStyle: DEFAULT_ROLE_BADGE_INLINE_STYLE
     });
 });
 

@@ -109,6 +109,9 @@
                     const roleObj = (typeof getRoleInfo === 'function')
                         ? getRoleInfo(m.role)
                         : { name: '會員', badgeClass: 'role-badge role-badge-member' };
+                    const roleBadgeStyle = (typeof getRoleBadgeInlineStyle === 'function')
+                        ? getRoleBadgeInlineStyle(m.role)
+                        : '';
 
                     const vipNum = Number(m.vip_level || 0);
 
@@ -154,7 +157,7 @@
 
                         <!-- 👤 全後台身分 100% 同步標籤 -->
                         <td class="text-center">
-                            <span class="<%= roleObj.badgeClass %>">
+                            <span class="<%= roleObj.badgeClass %>" style="<%= roleBadgeStyle %>" title="<%= roleObj.name %>">
                                 <%= roleObj.name %>
                             </span>
                         </td>

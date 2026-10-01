@@ -5,6 +5,8 @@ const delegatablePermissionKeys = new Set(rolePageConfig.delegatablePermissions 
 const legacyPermissionImplications = rolePageConfig.legacyPermissionImplications || {};
 const permissionLabelMap = rolePageConfig.permissionLabels || {};
 const roleBadgeClassMap = rolePageConfig.roleBadgeClassMap || {};
+const roleBadgeInlineStyleMap = rolePageConfig.roleBadgeInlineStyleMap || {};
+const roleBadgeDefaultInlineStyle = String(rolePageConfig.roleBadgeDefaultInlineStyle || '');
 const canGrantWildcard = Boolean(rolePageConfig.canGrantWildcard);
 
 function canDelegatePermissionKey(permissionKey) {
@@ -14,6 +16,11 @@ function canDelegatePermissionKey(permissionKey) {
 function resolveRoleBadgeClass(roleKey) {
     const key = String(roleKey || '').trim().toLowerCase();
     return roleBadgeClassMap[key] || 'role-badge role-badge-default';
+}
+
+function resolveRoleBadgeInlineStyle(roleKey) {
+    const key = String(roleKey || '').trim().toLowerCase();
+    return roleBadgeInlineStyleMap[key] || roleBadgeDefaultInlineStyle;
 }
 
 function notifyPermissionHint(message) {
@@ -271,6 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const nameBadge = document.getElementById('viewRoleNameBadge');
             nameBadge.textContent = name;
             nameBadge.className = `role-pill-badge ${resolveRoleBadgeClass(roleKey)}`;
+            nameBadge.setAttribute('style', resolveRoleBadgeInlineStyle(roleKey));
+            nameBadge.title = String(name || '職位');
             nameBadge.dataset.rolekey = roleKey;
             document.getElementById('viewRoleCategoryText').textContent = `[ ${category} · Lv.${tier} ]`;
             document.getElementById('viewRoleDesc').textContent = desc || '無特別說明';

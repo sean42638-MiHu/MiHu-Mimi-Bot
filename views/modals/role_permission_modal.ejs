@@ -1,10 +1,11 @@
 <!-- 彈窗 1：檢視身分權限 Modal -->
+<% const rolePermissionModalBadgeStyle = (typeof getRoleBadgeInlineStyle === 'function') ? getRoleBadgeInlineStyle('member') : ''; %>
 <div class="modal fade" id="viewRoleModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 850px;">
         <div class="modal-content modal-content-glass role-modal-content">
             <div class="modal-header border-0 pb-0 pt-4 px-4">
                 <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
-                    <span id="viewRoleNameBadge" class="role-pill-badge role-badge role-badge-default fs-6 px-3 py-1">職位</span>
+                    <span id="viewRoleNameBadge" class="role-pill-badge role-badge role-badge-default fs-6 px-3 py-1" style="<%= rolePermissionModalBadgeStyle %>" title="職位">職位</span>
                     <span id="viewRoleCategoryText" class="small text-secondary fw-normal">階級</span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>

@@ -24,11 +24,72 @@ const UNKNOWN_ROLE = Object.freeze({
     weight: 0
 });
 
+const ROLE_BADGE_BASE_INLINE_STYLE = Object.freeze([
+    'display: inline-flex !important',
+    'align-items: center !important',
+    'justify-content: center !important',
+    'padding: 4px 16px !important',
+    'border-radius: 9999px !important',
+    'font-size: 13px !important',
+    'font-weight: 600 !important',
+    'letter-spacing: 0.5px !important',
+    'white-space: nowrap !important',
+    'max-width: min(100%, 18ch) !important',
+    'min-width: 0 !important',
+    'overflow: hidden !important',
+    'text-overflow: ellipsis !important',
+    'box-sizing: border-box !important',
+    'vertical-align: middle !important'
+].join('; ') + ';');
+
+const ROLE_BADGE_PALETTE = Object.freeze({
+    admin: Object.freeze({ background: 'rgba(255,70,85,0.2)', color: '#ff4655', border: '1.5px solid #ff4655', boxShadow: '0 0 10px rgba(255,70,85,0.4)' }),
+    owner: Object.freeze({ background: 'rgba(255,70,85,0.2)', color: '#ff4655', border: '1.5px solid #ff4655', boxShadow: '0 0 10px rgba(255,70,85,0.4)' }),
+    cfo: Object.freeze({ background: 'rgba(168,85,247,0.2)', color: '#c084fc', border: '1.5px solid #a855f7', boxShadow: '0 0 10px rgba(168,85,247,0.4)' }),
+    aftersales: Object.freeze({ background: 'rgba(234,179,8,0.2)', color: '#fde047', border: '1.5px solid #eab308', boxShadow: '0 0 10px rgba(234,179,8,0.4)' }),
+    after_sales: Object.freeze({ background: 'rgba(234,179,8,0.2)', color: '#fde047', border: '1.5px solid #eab308', boxShadow: '0 0 10px rgba(234,179,8,0.4)' }),
+    manager: Object.freeze({ background: 'rgba(56,189,248,0.2)', color: '#38bdf8', border: '1.5px solid #38bdf8', boxShadow: '0 0 10px rgba(56,189,248,0.4)' }),
+    cs_director: Object.freeze({ background: 'rgba(56,189,248,0.2)', color: '#38bdf8', border: '1.5px solid #38bdf8', boxShadow: '0 0 10px rgba(56,189,248,0.4)' }),
+    cs: Object.freeze({ background: 'rgba(6,182,212,0.2)', color: '#22d3ee', border: '1.5px solid #06b6d4', boxShadow: '0 0 10px rgba(6,182,212,0.4)' }),
+    reviewer: Object.freeze({ background: 'rgba(16,185,129,0.2)', color: '#34d399', border: '1.5px solid #10b981', boxShadow: '0 0 10px rgba(16,185,129,0.4)' }),
+    talent: Object.freeze({ background: 'rgba(236,72,153,0.2)', color: '#f472b6', border: '1.5px solid #ec4899', boxShadow: '0 0 10px rgba(236,72,153,0.4)' }),
+    staff: Object.freeze({ background: 'rgba(236,72,153,0.2)', color: '#f472b6', border: '1.5px solid #ec4899', boxShadow: '0 0 10px rgba(236,72,153,0.4)' }),
+    member: Object.freeze({ background: 'rgba(107,114,128,0.2)', color: '#d1d5db', border: '1.5px solid #6b7280', boxShadow: '0 0 8px rgba(107,114,128,0.3)' }),
+    unknown: Object.freeze({ background: 'rgba(107,114,128,0.2)', color: '#d1d5db', border: '1.5px solid #6b7280', boxShadow: '0 0 8px rgba(107,114,128,0.3)' })
+});
+
+function normalizeRoleKey(roleKey) {
+    return String(roleKey || '').trim().toLowerCase();
+}
+
+function toRoleBadgeInlineStyle(palette) {
+    const selectedPalette = palette || ROLE_BADGE_PALETTE.unknown;
+    return `${ROLE_BADGE_BASE_INLINE_STYLE} background: ${selectedPalette.background} !important; color: ${selectedPalette.color} !important; border: ${selectedPalette.border} !important; box-shadow: ${selectedPalette.boxShadow} !important;`;
+}
+
+const ROLE_BADGE_CLASS_MAP = Object.freeze({
+    ...Object.fromEntries(Object.entries(ROLE_DEFINITIONS).map(([key, value]) => [key, String(value.badgeClass || 'role-badge role-badge-default')])),
+    unknown: UNKNOWN_ROLE.badgeClass
+});
+
+const ROLE_BADGE_INLINE_STYLE_MAP = Object.freeze(
+    Object.fromEntries(
+        Object.keys(ROLE_BADGE_CLASS_MAP).map(key => [key, toRoleBadgeInlineStyle(ROLE_BADGE_PALETTE[key] || ROLE_BADGE_PALETTE.unknown)])
+    )
+);
+
+const DEFAULT_ROLE_BADGE_INLINE_STYLE = ROLE_BADGE_INLINE_STYLE_MAP.unknown;
+
+function getRoleBadgeInlineStyle(roleKey) {
+    const key = normalizeRoleKey(roleKey);
+    return ROLE_BADGE_INLINE_STYLE_MAP[key] || DEFAULT_ROLE_BADGE_INLINE_STYLE;
+}
+
 /**
  * 取得指定身分 key 的完整資訊
  */
 function getRoleInfo(roleKey) {
-    const key = String(roleKey || '').toLowerCase();
+    const key = normalizeRoleKey(roleKey);
     return ROLE_DEFINITIONS[key] || UNKNOWN_ROLE;
 }
 
@@ -50,6 +111,10 @@ function sortByRoleWeight(userArray) {
 
 module.exports = {
     ROLE_DEFINITIONS,
+    ROLE_BADGE_CLASS_MAP,
+    ROLE_BADGE_INLINE_STYLE_MAP,
+    DEFAULT_ROLE_BADGE_INLINE_STYLE,
+    getRoleBadgeInlineStyle,
     getRoleInfo,
     sortByRoleWeight
 };
