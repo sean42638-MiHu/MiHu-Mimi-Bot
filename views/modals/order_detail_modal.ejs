@@ -216,7 +216,7 @@
                     </div>
 
                     <div class="d-flex gap-2">
-                        <button type="button" id="btnEnableEdit" onclick="switchEditMode(true)" class="btn btn-sm btn-outline-info rounded-pill px-4 fw-semibold" style="display: none;">
+                        <button type="button" id="btnEnableEdit" onclick="switchEditMode(true)" class="btn btn-sm btn-outline-info rounded-pill px-4 fw-semibold">
                             <i class="fa-solid fa-pen-to-square me-1"></i>編輯訂單
                         </button>
                         <button type="button" id="btnCloseView" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">關閉</button>
@@ -324,7 +324,7 @@
                 formCard.style.borderColor = 'rgba(255, 255, 255, 0.08)';
             }
 
-            if (btnEnableEdit && window.currentOrderCanEdit) btnEnableEdit.style.display = 'inline-block';
+            if (btnEnableEdit) btnEnableEdit.style.display = 'inline-block';
             if (btnCloseView) btnCloseView.style.display = 'inline-block';
             if (btnCancelEdit) btnCancelEdit.style.display = 'none';
             if (btnSaveOrderModal) btnSaveOrderModal.style.display = 'none';
