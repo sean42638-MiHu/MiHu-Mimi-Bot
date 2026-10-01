@@ -50,16 +50,19 @@
         background-color: rgba(255, 255, 255, 0.03) !important;
     }
 
-    /* 身分 Badge */
-    .role-badge {
+    /* 指令頁身分 Badge（局部，不覆蓋共用 role-badge） */
+    .command-role-badge {
         font-size: 0.78rem;
         padding: 4px 12px;
-        border-radius: 12px;
+        border-radius: 50px;
         background: rgba(168, 85, 247, 0.15);
         color: #c084fc !important;
         border: 1px solid rgba(168, 85, 247, 0.3);
         font-weight: 600;
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
     }
 
     /* 斜線指令高亮標籤 (自動補上 / 斜線) */
@@ -128,7 +131,7 @@
                             <td class="fw-bold text-white" style="font-size: 0.95rem;"><%= cmdName %></td>
                             <td><span class="cmd-tag"><%= rawKey %></span></td>
                             <td class="small"><%= Array.isArray(cmd.guilds) ? cmd.guilds.join('、') : '未設定' %></td>
-                            <td><span class="role-badge"><%= minRole %></span></td>
+                            <td><span class="command-role-badge"><%= minRole %></span></td>
                             <td class="cmd-desc-text"><%= desc %></td>
                             <td style="text-align: center;">
                                 <span class="status-pill-enabled">
