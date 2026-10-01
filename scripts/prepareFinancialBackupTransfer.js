@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { createManifest, parseArgs, requireArg } = require('../utils/financialTransferContract');
+const { createManifest, parseArgs, requireArg, sha256File } = require('../utils/financialTransferContract');
 
 function main(argv = process.argv.slice(2)) {
     const args = parseArgs(argv);
@@ -17,7 +17,12 @@ function main(argv = process.argv.slice(2)) {
     const backupId = String(args['backup-id'] || `financial-${new Date().toISOString().replace(/[-:.TZ]/g, '')}-${crypto.randomBytes(6).toString('hex')}`);
     fs.mkdirSync(path.join(outputDir, 'mirrors'), { recursive: true, mode: 0o700 });
     fs.copyFileSync(path.join(backupDir, backupFile), path.join(outputDir, 'database.sqlite'));
-    fs.copyFileSync(path.join(backupDir, manifestFile), path.join(outputDir, 'database.manifest.json'));
+    const sourceManifest = JSON.parse(fs.readFileSync(path.join(backupDir, manifestFile), 'utf8'));
+    fs.writeFileSync(path.join(outputDir, 'database.manifest.json'), `${JSON.stringify({
+        ...sourceManifest,
+        backupFile: 'database.sqlite',
+        backupSha256: sha256File(path.join(outputDir, 'database.sqlite'))
+    }, null, 2)}\n`, { mode: 0o600 });
     for (const name of ['users.json', 'orders.json', 'topups.json', 'payouts.json']) {
         const source = path.join(dataDir, name);
         if (fs.existsSync(source)) fs.copyFileSync(source, path.join(outputDir, 'mirrors', name));
