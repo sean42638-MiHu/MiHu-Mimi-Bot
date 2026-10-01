@@ -10,6 +10,8 @@ WEB=mihu-web.service
 BOT=mihu-bot.service
 PORT=3000
 OFFSITE_MODE="${CLEAR_OFFSITE_MODE:-mounted}"
+SCP_TARGET="${CLEAR_SCP_TARGET:-deploy@172.237.72.87}"
+WINDOWS_BACKUP_ROOT='D:/mihu-bot-mimi/backups'
 
 : "${CLEAR_RELEASE_COMMIT:?Set the reviewed, merged full commit SHA}"
 : "${CLEAR_PREVIEW_FINGERPRINT:?Set the reviewed read-only preview fingerprint}"
@@ -150,10 +152,12 @@ else
   sudo mv -- "$transfer_tmp" "$transfer_root"
   sudo chmod 700 "$transfer_root"
   transfer_receipt="$transfer_root/receipt.json"
+  windows_transfer_root="$WINDOWS_BACKUP_ROOT/$transfer_id"
   echo "Download bundle: $transfer_root"
-  echo "Windows: scp -r deploy@<VPS>:${transfer_root} <local-backup-directory>"
-  echo "Windows: node scripts/verifyFinancialBackupReceipt.js --mode local --root <downloaded-directory> --receipt <downloaded-directory>/receipt.json"
-  echo "Windows: scp <downloaded-directory>/receipt.json deploy@<VPS>:${transfer_receipt}"
+  echo "Windows: New-Item -ItemType Directory -Force -Path '$WINDOWS_BACKUP_ROOT' | Out-Null"
+  echo "Windows: scp -r ${SCP_TARGET}:${transfer_root} '$windows_transfer_root'"
+  echo "Windows: node scripts/verifyFinancialBackupReceipt.js --mode local --root '$windows_transfer_root' --receipt '$windows_transfer_root/receipt.json'"
+  echo "Windows: scp '$windows_transfer_root/receipt.json' ${SCP_TARGET}:${transfer_receipt}"
   read -r -p 'After Windows hash verification and receipt upload, type TRANSFER_READY: ' transfer_ready
   [ "$transfer_ready" = TRANSFER_READY ] || fail 'Transfer receipt was not uploaded'
   sudo chown -R mihu:mihu "$transfer_root"
