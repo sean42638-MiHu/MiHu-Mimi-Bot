@@ -18,6 +18,7 @@ const SALARY_IMPORT_MAX_FILE_SIZE = 1024 * 1024;
 const SALARY_IMPORT_MAX_ROWS = 500;
 const SALARY_IMPORT_PREVIEW_TTL_MINUTES = 30;
 const SALARY_IMPORT_BASE_VERSION = 'salary-import-v1';
+const SALARY_SETTINGS_PAGE_SIZE = 15;
 const ROLE_RULE_USER_ID_PREFIX = 'role:';
 
 function sha256(value) {
@@ -186,12 +187,17 @@ function nowMonth(date = new Date()) {
     return `${values.year}-${values.month}`;
 }
 
-function normalizeAmount(value, { allowZero = false } = {}) {
-    const amount = Number(value);
-    if (!Number.isFinite(amount)) throw new Error('金額格式無效');
-    const rounded = Math.round(amount * 100) / 100;
-    if (!allowZero && rounded === 0) throw new Error('金額不可為 0');
-    return rounded;
+function normalizeAmount(value, { allowZero = false, allowNegative = true, fieldLabel = '金額' } = {}) {
+    const raw = typeof value === 'number' ? String(value) : String(value ?? '').trim();
+    if (!raw) throw new Error(`${fieldLabel}不可空白`);
+    if (/[eE]/.test(raw)) throw new Error(`${fieldLabel}格式無效`);
+    if (!/^[+-]?\d+(?:\.\d{1,2})?$/.test(raw)) throw new Error(`${fieldLabel}格式無效（最多 2 位小數）`);
+
+    const amount = Number(raw);
+    if (!Number.isFinite(amount)) throw new Error(`${fieldLabel}格式無效`);
+    if (!allowZero && amount === 0) throw new Error(`${fieldLabel}不可為 0`);
+    if (!allowNegative && amount < 0) throw new Error(`${fieldLabel}不可為負數`);
+    return Number(amount.toFixed(2));
 }
 
 function sumAmountsInCents(rows) {
@@ -264,7 +270,7 @@ async function listSalarySettings({ studioId, month = nowMonth(), page = 1, sear
     const normalizedMonth = normalizeMonth(month);
     const normalizedSearch = String(search || '').trim().slice(0, 80);
     const requestedPage = Math.max(1, Math.floor(Number(page) || 1));
-    const pageSize = 50;
+    const pageSize = SALARY_SETTINGS_PAGE_SIZE;
     const searchPattern = `%${normalizedSearch}%`;
     const staffFilter = `studio_id = ? AND (role IS NULL OR role != 'member')
         AND (? = '' OR id LIKE ? OR COALESCE(custom_nickname, '') LIKE ? OR COALESCE(global_name, '') LIKE ? OR COALESCE(username, '') LIKE ?)`;
@@ -277,7 +283,7 @@ async function listSalarySettings({ studioId, month = nowMonth(), page = 1, sear
         SELECT id, username, global_name, custom_nickname, role
         FROM users
         WHERE ${staffFilter}
-        ORDER BY COALESCE(custom_nickname, global_name, username) ASC
+        ORDER BY COALESCE(custom_nickname, global_name, username, id) ASC, id ASC
         LIMIT ? OFFSET ?
     `, [studioId, normalizedSearch, searchPattern, searchPattern, searchPattern, searchPattern,
         pageSize, (currentPage - 1) * pageSize]);
@@ -303,12 +309,11 @@ async function listSalarySettings({ studioId, month = nowMonth(), page = 1, sear
     `, [studioId]);
     const adjustmentMap = new Map(adjustmentTotals.map(row => [row.user_id, Number(row.total_adjustment || 0)]));
 
-    const salaryRows = [];
-    for (const user of staff) {
+    const salaryRows = await Promise.all(staff.map(async user => {
         const payoutSummary = await getPayoutSummary({ userId: user.id, studioId });
         const userRules = rules.filter(item => item.user_id === user.id || (item.role_key && item.role_key === user.role));
         const totalAdjustment = adjustmentMap.get(user.id) || 0;
-        salaryRows.push({
+        return {
             userId: user.id,
             displayName: user.custom_nickname || user.global_name || user.username || user.id,
             role: user.role || 'staff',
@@ -325,8 +330,10 @@ async function listSalarySettings({ studioId, month = nowMonth(), page = 1, sear
                 effectiveMonth: rule.effective_month,
                 note: rule.note || ''
             }))
-        });
-    }
+        };
+    }));
+
+    const distributionStatus = await getMonthlyDistributionStatus({ studioId, month: normalizedMonth });
 
     return {
         month: normalizedMonth,
@@ -339,10 +346,81 @@ async function listSalarySettings({ studioId, month = nowMonth(), page = 1, sear
         rules,
         ruleRecords: ruleRecords.map(rule => ({ ...rule, amount: Number(rule.amount), payout_day: Number(rule.payout_day || 1) })),
         roles,
+        distributionStatus,
         recentAdjustments: adjustmentRows.map(row => ({
             ...row,
             amount: Number(row.amount)
         }))
+    };
+}
+
+async function getMonthlyDistributionStatus({ studioId, month = nowMonth() }) {
+    const normalizedMonth = normalizeMonth(month);
+    const activeRules = await resolveActiveRulesForMonth({ studioId, month: normalizedMonth });
+    if (!activeRules.length) {
+        return {
+            month: normalizedMonth,
+            totalRules: 0,
+            committedRules: 0,
+            pendingRules: 0,
+            locked: false,
+            message: '本月尚無可派發規則'
+        };
+    }
+
+    let committedRules = 0;
+    for (const rule of activeRules) {
+        const committed = await dbGet(`SELECT id FROM salary_batches
+            WHERE studio_id = ? AND rule_id IS ? AND batch_month = ? AND batch_kind = ? AND status = 'committed'`,
+        [studioId, rule.id || null, normalizedMonth, BATCH_KIND_FIXED_MONTHLY]);
+        if (committed) committedRules += 1;
+    }
+
+    const totalRules = activeRules.length;
+    const pendingRules = Math.max(0, totalRules - committedRules);
+    const locked = totalRules > 0 && pendingRules === 0;
+    return {
+        month: normalizedMonth,
+        totalRules,
+        committedRules,
+        pendingRules,
+        locked,
+        message: locked ? '🔒 本月已完成派發' : `尚有 ${pendingRules} 筆規則待派發`
+    };
+}
+
+async function searchSalaryAdjustmentStaff({ studioId, query = '', limit = 15 }) {
+    const normalizedQuery = String(query || '').trim().slice(0, 80);
+    if (!normalizedQuery) return [];
+
+    const fixedLimit = Math.max(1, Math.min(15, Number(limit) || 15));
+    const pattern = `%${normalizedQuery}%`;
+    return dbAll(`
+        SELECT id, username, global_name, custom_nickname, role
+        FROM users
+        WHERE studio_id = ?
+            AND LOWER(COALESCE(role, '')) != 'member'
+            AND (
+                id LIKE ?
+                OR COALESCE(custom_nickname, '') LIKE ?
+                OR COALESCE(global_name, '') LIKE ?
+                OR COALESCE(username, '') LIKE ?
+            )
+        ORDER BY COALESCE(custom_nickname, global_name, username, id) ASC, id ASC
+        LIMIT ?
+    `, [studioId, pattern, pattern, pattern, pattern, fixedLimit]);
+}
+
+async function getSalaryAdjustmentStaffSnapshot({ studioId, userId }) {
+    const user = await getStudioUser({ studioId, userId });
+    const summary = await getPayoutSummary({ userId: user.id, studioId });
+    return {
+        userId: user.id,
+        displayName: user.custom_nickname || user.global_name || user.username || user.id,
+        role: user.role || 'staff',
+        availableAmount: Number(summary.availableAmount || 0),
+        totalEarned: Number(summary.totalEarned || 0),
+        pendingAmount: Number(summary.pendingAmount || 0)
     };
 }
 
@@ -486,7 +564,7 @@ async function upsertSalaryRule({ studioId, operatorId, ruleId = null, userId = 
     return withSalaryTransaction(async () => {
     await assertSalaryOperatorPermission({ operatorId, studioId, permission: 'action_salary_rule_manage' });
     const month = normalizeMonth(effectiveMonth || nowMonth());
-    const normalizedAmount = normalizeAmount(amount);
+    const normalizedAmount = normalizeAmount(amount, { allowNegative: false, fieldLabel: '薪資金額' });
     const normalizedItemName = String(itemName || '').trim().slice(0, 80);
     const normalizedNote = String(note || '').trim().slice(0, 200);
     const normalizedPayoutDay = Number(payoutDay);
@@ -1031,6 +1109,8 @@ module.exports = {
     SALARY_IMPORT_MAX_FILE_SIZE,
     SALARY_IMPORT_MAX_ROWS,
     listSalarySettings,
+    searchSalaryAdjustmentStaff,
+    getSalaryAdjustmentStaffSnapshot,
     previewManualAdjustment,
     createManualAdjustmentPreview,
     executeManualAdjustment,
@@ -1042,6 +1122,7 @@ module.exports = {
     buildSalaryImportTemplateCsv,
     buildSalaryImportTemplateXlsxBuffer,
     cleanupExpiredImportPreviews,
+    getMonthlyDistributionStatus,
     previewMonthlyDistribution,
     distributeMonthlyFixedSalary,
     nowMonth,

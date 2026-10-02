@@ -1,0 +1,126 @@
+<%
+    const detail = incomeDetail || {};
+    const summary = detail.summary || {};
+    const rows = Array.isArray(detail.rows) ? detail.rows : [];
+    const categoryTotals = Array.isArray(detail.categoryTotals) ? detail.categoryTotals : [];
+    const currentMonth = detail.month || '';
+    const currentPage = Number(detail.page || 1);
+    const totalPages = Number(detail.totalPages || 1);
+    const hasPrev = currentPage > 1;
+    const hasNext = currentPage < totalPages;
+    const typeLabels = {
+        commission: '訂單分潤',
+        fixed_salary: '固定月薪',
+        earned_adjustment: '收入調整',
+        allowance: '薪資津貼',
+        deduction: '合法薪資扣減',
+        history_adjustment: '歷史收入校正'
+    };
+%>
+
+<div class="modal fade" id="incomeLedgerModal" tabindex="-1" aria-labelledby="incomeLedgerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border border-warning-subtle shadow-lg">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="incomeLedgerModalLabel"><i class="fa-solid fa-file-invoice-dollar text-warning me-2"></i>薪資與分潤明細</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <form method="GET" action="/income" class="row g-2 align-items-end mb-3">
+                    <input type="hidden" name="income_modal" value="1">
+                    <input type="hidden" name="income_page" value="1">
+                    <div class="col-md-4">
+                        <label for="incomeMonthFilter" class="form-label small text-secondary mb-1">查詢月份</label>
+                        <input type="month" id="incomeMonthFilter" name="income_month" value="<%= currentMonth %>" class="form-control form-control-sm bg-dark text-light border-secondary" required>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-warning btn-sm w-100 fw-semibold">更新明細</button>
+                    </div>
+                    <div class="col-md-5 text-md-end text-secondary small">
+                        <span>共 <%= Number(detail.totalRows || 0).toLocaleString() %> 筆 · 第 <%= currentPage %> / <%= totalPages %> 頁</span>
+                    </div>
+                </form>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-3">
+                        <div class="border border-secondary rounded-3 p-2 h-100">
+                            <div class="small text-secondary">淨薪資</div>
+                            <div class="fw-bold text-warning">$<%= Number(summary.netSalary || 0).toLocaleString() %></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border border-secondary rounded-3 p-2 h-100">
+                            <div class="small text-secondary">已實領</div>
+                            <div class="fw-bold text-success">$<%= Number(summary.paidAmount || 0).toLocaleString() %></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border border-secondary rounded-3 p-2 h-100">
+                            <div class="small text-secondary">申請中</div>
+                            <div class="fw-bold text-info">$<%= Number(summary.pendingAmount || 0).toLocaleString() %></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border border-secondary rounded-3 p-2 h-100">
+                            <div class="small text-secondary">可提領</div>
+                            <div class="fw-bold text-primary">$<%= Number(summary.availableAmount || 0).toLocaleString() %></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-secondary py-2 px-3 small border-secondary mb-3" role="note">
+                    明細目前以「訂單結束時間月份」與「薪資調整 adjustment_month」歸屬。跨月調價／退款若尚未產生對應歷史校正事件，系統不會自動回沖前月明細。
+                </div>
+
+                <% if (categoryTotals.length) { %>
+                    <div class="mb-3 d-flex flex-wrap gap-2">
+                        <% categoryTotals.forEach(item => { %>
+                            <span class="badge rounded-pill text-bg-secondary">
+                                <%= item.category %>：$<%= Number(item.amount || 0).toLocaleString() %>
+                            </span>
+                        <% }) %>
+                    </div>
+                <% } %>
+
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm align-middle mb-2">
+                        <thead>
+                            <tr class="text-secondary">
+                                <th>時間</th>
+                                <th>分類</th>
+                                <th>來源</th>
+                                <th class="text-end">金額 (NTD)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% if (!rows.length) { %>
+                                <tr>
+                                    <td colspan="4" class="text-center text-secondary py-4">本月尚無薪資或分潤明細</td>
+                                </tr>
+                            <% } %>
+                            <% rows.forEach(row => { %>
+                                <tr>
+                                    <td><%= (row.occurredAt || '').replace('T', ' ').slice(0, 16) || '-' %></td>
+                                    <td><%= row.category || '-' %></td>
+                                    <td>
+                                        <div><%= typeLabels[row.entryType] || row.entryType || '收入' %></div>
+                                        <div class="small text-secondary"><%= row.description || '-' %></div>
+                                    </td>
+                                    <td class="text-end <%= Number(row.amount || 0) >= 0 ? 'text-success' : 'text-danger' %>">
+                                        <%= Number(row.amount || 0) >= 0 ? '+' : '' %>$<%= Number(row.amount || 0).toLocaleString() %>
+                                    </td>
+                                </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <a class="btn btn-outline-light btn-sm <%= hasPrev ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.max(1, currentPage - 1) %>" aria-disabled="<%= hasPrev ? 'false' : 'true' %>">上一頁</a>
+                    <span class="small text-secondary">第 <%= currentPage %> / <%= totalPages %> 頁</span>
+                    <a class="btn btn-outline-light btn-sm <%= hasNext ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.min(totalPages, currentPage + 1) %>" aria-disabled="<%= hasNext ? 'false' : 'true' %>">下一頁</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
