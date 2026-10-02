@@ -14,7 +14,12 @@ function resolveBackupContext(env = process.env) {
         const production = inspectProductionDatabaseConfig(env);
         if (!production.ok) throw new Error(production.errors.join('; '));
         if (env.PRODUCTION_WRITES_DISABLED !== 'YES') throw new Error('Confirm all Production writers are stopped with PRODUCTION_WRITES_DISABLED=YES');
-        if (env.BACKUP_STORAGE_VERIFIED !== 'YES') throw new Error('Confirm external backup storage with BACKUP_STORAGE_VERIFIED=YES');
+        const verifiedOffsiteStorage = env.BACKUP_STORAGE_VERIFIED === 'YES';
+        const confirmedLocalTransferStaging = env.BACKUP_STAGING_CONFIRM === 'YES'
+            && env.BACKUP_TRANSFER_PENDING === 'YES';
+        if (!verifiedOffsiteStorage && !confirmedLocalTransferStaging) {
+            throw new Error('Confirm verified external backup storage, or explicitly confirm local transfer staging with BACKUP_STAGING_CONFIRM=YES and BACKUP_TRANSFER_PENDING=YES');
+        }
         databasePath = production.databasePath;
     } else {
         databasePath = getDatabasePath(env);
@@ -24,7 +29,14 @@ function resolveBackupContext(env = process.env) {
     const backupDirectory = String(env.DATABASE_BACKUP_DIR || '').trim();
     if (!backupDirectory || !path.isAbsolute(backupDirectory)) throw new Error('DATABASE_BACKUP_DIR must be an explicit absolute path');
     if (path.resolve(backupDirectory) === path.dirname(databasePath)) throw new Error('Backup directory must be separate from the database directory');
-    return { databasePath, backupDirectory: path.resolve(backupDirectory) };
+    return {
+        databasePath,
+        backupDirectory: path.resolve(backupDirectory),
+        backupPurpose: String(env.NODE_ENV || '').toLowerCase() === 'production'
+            && env.BACKUP_STORAGE_VERIFIED !== 'YES'
+            ? 'local-transfer-staging-only'
+            : 'verified-backup-storage'
+    };
 }
 
 function createSqliteBackup(sourcePath, destinationPath) {
@@ -47,7 +59,7 @@ function createSqliteBackup(sourcePath, destinationPath) {
 }
 
 async function createDatabaseBackup(env = process.env, now = new Date()) {
-    const { databasePath, backupDirectory } = resolveBackupContext(env);
+    const { databasePath, backupDirectory, backupPurpose } = resolveBackupContext(env);
     if (!await verifySqliteIntegrity(databasePath)) throw new Error('Source database integrity check failed; backup refused');
     const sourceFileSha256 = await sha256File(databasePath);
     const schemaState = await inspectSqliteSchemaState(databasePath);
@@ -76,6 +88,7 @@ async function createDatabaseBackup(env = process.env, now = new Date()) {
         schemaState: schemaState.state,
         tableCount: schemaState.tableCount,
         backupSha256: await sha256File(backupPath),
+        backupPurpose,
         integrity: 'ok'
     };
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
