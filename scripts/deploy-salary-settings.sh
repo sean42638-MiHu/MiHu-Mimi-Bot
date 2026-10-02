@@ -16,6 +16,7 @@ EXPECTED_DATABASE_PATH="${EXPECTED_DATABASE_PATH:-/var/lib/mihu/database.sqlite}
 WINDOWS_BACKUP_ROOT="${WINDOWS_BACKUP_ROOT:-D:/mihu-bot-mimi/backups}"
 SCP_TARGET="${SCP_TARGET:-deploy@172.237.72.87}"
 TRANSFER_PARENT="${TRANSFER_PARENT:-/var/tmp}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 STAGE=init
 STATE_DIR="${STATE_DIR:-/var/tmp/mihu-salary-deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
@@ -529,6 +530,8 @@ trap on_error ERR INT TERM
 
 for command in sudo git systemctl systemd-run "$NODE_BIN" "$NPM_BIN" curl sed grep od tr id tar; do require_cmd "$command"; done
 if ! command -v lsof >/dev/null 2>&1 && ! command -v fuser >/dev/null 2>&1; then fail 'lsof or fuser is required'; fi
+[ -r "$SCRIPT_DIR/verifySalaryBackupStaging.js" ] || fail 'upload verifySalaryBackupStaging.js beside this runner'
+sudo -u mihu test -r "$SCRIPT_DIR/verifySalaryBackupStaging.js" || fail 'mihu cannot read the backup staging verifier beside this runner'
 
 STAGE=enter_app_dir
 [ -d "$APP_DIR" ] || fail "app directory missing: $APP_DIR"
@@ -689,24 +692,25 @@ BACKUP_OUTPUT="$(run_unit WEB \
   --setenv=BACKUP_TRANSFER_PENDING=YES \
   --setenv=BACKUP_CONFIRM=YES \
   --setenv=NODE_PATH="$APP_DIR/node_modules" \
-  --setenv=SALARY_BACKUP_TOOL_ENTRY="$BACKUP_TOOL_DIR/scripts/backupDatabase.js" \
-  "$NODE_BIN" - <<'NODE'
-const { createDatabaseBackup } = require(process.env.SALARY_BACKUP_TOOL_ENTRY);
-createDatabaseBackup(process.env).then(report => {
-  console.log('MIHU_JSON:' + JSON.stringify(report));
-}).catch(error => { console.error(error.message); process.exit(1); });
-NODE
-)"
+  "$NODE_BIN" "$BACKUP_TOOL_DIR/scripts/backupDatabase.js")"
 printf '%s\n' "$BACKUP_OUTPUT"
-BACKUP_JSON="$(extract_json_marker "$BACKUP_OUTPUT")" || fail 'backup report missing'
+BACKUP_JSON="$BACKUP_OUTPUT"
+"$NODE_BIN" -e 'JSON.parse(process.argv[1])' "$BACKUP_JSON" || fail 'backup stdout is not valid JSON'
 [ "$(json_get "$BACKUP_JSON" integrity)" = ok ] || fail 'backup integrity not ok'
-[ "$(json_get "$BACKUP_JSON" backupPurpose)" = local-transfer-staging-only ] || fail 'target backup utility did not identify this as local transfer staging'
 BACKUP_FILE="$(json_get "$BACKUP_JSON" backupFile)"
 BACKUP_MANIFEST="$(json_get "$BACKUP_JSON" manifestFile)"
 [ -n "$BACKUP_FILE" ] && [ -n "$BACKUP_MANIFEST" ] || fail 'backup output lacks artifact names'
 BACKUP_FILE_PATH="${DATABASE_BACKUP_DIR%/}/$BACKUP_FILE"
 BACKUP_MANIFEST_PATH="${DATABASE_BACKUP_DIR%/}/$BACKUP_MANIFEST"
+log "backup manifest created: $BACKUP_MANIFEST_PATH"
 [ -s "$BACKUP_FILE_PATH" ] && [ -s "$BACKUP_MANIFEST_PATH" ] || fail 'backup file or manifest not present'
+
+STAGING_VERIFY_OUTPUT="$(run_unit WEB \
+  "$NODE_BIN" "$SCRIPT_DIR/verifySalaryBackupStaging.js" \
+  --report-json "$BACKUP_JSON" --backup-dir "$DATABASE_BACKUP_DIR")"
+printf '%s\n' "$STAGING_VERIFY_OUTPUT"
+STAGING_VERIFY_JSON="$(extract_json_marker "$STAGING_VERIFY_OUTPUT")" || fail 'target backup staging verifier returned no result'
+[ "$(json_get "$STAGING_VERIFY_JSON" status)" = BACKUP_STAGING_VERIFIED ] || fail 'target backup manifest staging contract failed'
 
 STAGE=prepare_windows_transfer
 BACKUP_STEM="${BACKUP_FILE%.sqlite}"

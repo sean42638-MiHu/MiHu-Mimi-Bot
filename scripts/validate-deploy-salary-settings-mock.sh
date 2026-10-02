@@ -189,6 +189,18 @@ if [[ "$program" == *npm ]]; then
   fi
 fi
 if [[ "$program" == *node || "$program" == node ]]; then
+  if [[ "${cmd[1]:-}" == *backupDatabase.js ]]; then
+    backup_path="$DATABASE_BACKUP_DIR/mihu-database-mock.sqlite"
+    manifest_path="$backup_path.manifest.json"
+    printf 'mock-sqlite-backup' > "$backup_path"
+    digest="$(node -e 'const fs=require("fs"),crypto=require("crypto");process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$backup_path")"
+    printf '{"contractVersion":1,"backupFile":"mihu-database-mock.sqlite","backupSha256":"%s","backupPurpose":"local-transfer-staging-only","integrity":"ok"}\n' "$digest" > "$manifest_path"
+    printf '{"backupFile":"mihu-database-mock.sqlite","manifestFile":"mihu-database-mock.sqlite.manifest.json","backupSha256":"%s","integrity":"ok"}\n' "$digest"
+    exit 0
+  fi
+  if [[ "${cmd[1]:-}" == *verifySalaryBackupStaging.js ]]; then
+    exec "${cmd[0]}" "${cmd[@]:1}"
+  fi
   if [ "${cmd[1]:-}" = -p ] && [ "${cmd[2]:-}" = process.version ]; then echo v24.21.0; exit 0; fi
   if [ "${cmd[1]:-}" = -e ]; then
     code="${cmd[2]:-}"
