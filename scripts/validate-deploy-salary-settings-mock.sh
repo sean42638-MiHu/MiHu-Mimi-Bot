@@ -194,7 +194,23 @@ if [[ "$program" == *node || "$program" == node ]]; then
     manifest_path="$backup_path.manifest.json"
     printf 'mock-sqlite-backup' > "$backup_path"
     digest="$(node -e 'const fs=require("fs"),crypto=require("crypto");process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$backup_path")"
-    printf '{"contractVersion":1,"backupFile":"mihu-database-mock.sqlite","backupSha256":"%s","backupPurpose":"local-transfer-staging-only","integrity":"ok"}\n' "$digest" > "$manifest_path"
+    purpose_mode="${MOCK_BACKUP_PURPOSE_MODE:-staging}"
+    case "$purpose_mode" in
+      staging)
+        printf '{"contractVersion":1,"backupFile":"mihu-database-mock.sqlite","backupSha256":"%s","backupPurpose":"local-transfer-staging-only","integrity":"ok"}\n' "$digest" > "$manifest_path"
+        ;;
+      external)
+        printf '{"contractVersion":1,"backupFile":"mihu-database-mock.sqlite","backupSha256":"%s","backupPurpose":"verified-backup-storage","integrity":"ok"}\n' "$digest" > "$manifest_path"
+        ;;
+      missing)
+        printf '{"contractVersion":1,"backupFile":"mihu-database-mock.sqlite","backupSha256":"%s","integrity":"ok"}\n' "$digest" > "$manifest_path"
+        ;;
+      *)
+        echo "unsupported MOCK_BACKUP_PURPOSE_MODE=$purpose_mode" >&2
+        exit 1
+        ;;
+    esac
+    [ "${MOCK_BACKUP_OUTPUT_NOISE:-0}" != 1 ] || printf 'backup-helper-finished\n'
     printf '{"backupFile":"mihu-database-mock.sqlite","manifestFile":"mihu-database-mock.sqlite.manifest.json","backupSha256":"%s","integrity":"ok"}\n' "$digest"
     exit 0
   fi
@@ -605,6 +621,16 @@ EOF
       grep -Fxq "EnvironmentFile=$envdir/bot.env" "$state/environment-properties.log"
       ! grep -Fq "EnvironmentFile=$envdir/common.env $envdir/web.env" "$state/environment-properties.log"
       ;;
+    success-noisy-backup-output)
+      grep -q 'SALARY_DEPLOYMENT_SUCCESS' "$root/$name.log"
+      grep -q 'backup-helper-finished' "$root/$name.log"
+      ;;
+    backup-staging-purpose-missing|backup-staging-purpose-external)
+      grep -q 'Backup manifest does not identify local-transfer-staging-only mode' "$root/$name.log"
+      grep -q 'pre-migration recovery complete' "$root/$name.log"
+      grep -q 'backup_manifest=' "$root/$name.log"
+      ! grep -q 'backup_manifest=not-created' "$root/$name.log"
+      ;;
     pre-migration-failure)
       grep -q 'failure before migration; restore rollback code=' "$root/$name.log"
       grep -q 'pre-migration recovery complete' "$root/$name.log"
@@ -651,6 +677,9 @@ EOF
 
 run_case success 0 active active
 run_case success-preserve-inactive-bot 0 active inactive inactive
+run_case success-noisy-backup-output 0 active active MOCK_BACKUP_OUTPUT_NOISE=1
+run_case backup-staging-purpose-missing 1 active active MOCK_BACKUP_PURPOSE_MODE=missing
+run_case backup-staging-purpose-external 1 active active MOCK_BACKUP_PURPOSE_MODE=external
 run_case governance-action-required-confirmed 0 active active MOCK_PREFLIGHT_STATUS=ACTION_REQUIRED
 run_case governance-action-required-unconfirmed 1 active active MOCK_PREFLIGHT_STATUS=ACTION_REQUIRED MOCK_PREFLIGHT_RESPONSE=NO
 run_case preflight-structural-failure 1 active active MOCK_PREFLIGHT_STATUS=ACTION_REQUIRED MOCK_PREFLIGHT_SCHEMA_FAIL=1

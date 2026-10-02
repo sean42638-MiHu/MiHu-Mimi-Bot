@@ -694,16 +694,23 @@ BACKUP_OUTPUT="$(run_unit WEB \
   --setenv=NODE_PATH="$APP_DIR/node_modules" \
   "$NODE_BIN" "$BACKUP_TOOL_DIR/scripts/backupDatabase.js")"
 printf '%s\n' "$BACKUP_OUTPUT"
-BACKUP_JSON="$BACKUP_OUTPUT"
-"$NODE_BIN" -e 'JSON.parse(process.argv[1])' "$BACKUP_JSON" || fail 'backup stdout is not valid JSON'
-[ "$(json_get "$BACKUP_JSON" integrity)" = ok ] || fail 'backup integrity not ok'
+BACKUP_PARSE_OUTPUT="$("$NODE_BIN" "$SCRIPT_DIR/verifySalaryBackupStaging.js" --mode parse --report-output "$BACKUP_OUTPUT")" \
+  || fail 'backup stdout did not contain a valid JSON report'
+BACKUP_JSON="$(extract_json_marker "$BACKUP_PARSE_OUTPUT")" || fail 'backup report parser returned no JSON'
 BACKUP_FILE="$(json_get "$BACKUP_JSON" backupFile)"
 BACKUP_MANIFEST="$(json_get "$BACKUP_JSON" manifestFile)"
+[ -n "$BACKUP_FILE" ] && [ -n "$BACKUP_MANIFEST" ] && {
+  BACKUP_FILE_PATH="${DATABASE_BACKUP_DIR%/}/$BACKUP_FILE"
+  BACKUP_MANIFEST_PATH="${DATABASE_BACKUP_DIR%/}/$BACKUP_MANIFEST"
+  log "backup manifest candidate: $BACKUP_MANIFEST_PATH"
+}
+[ "$(json_get "$BACKUP_JSON" integrity)" = ok ] || fail 'backup integrity not ok'
 [ -n "$BACKUP_FILE" ] && [ -n "$BACKUP_MANIFEST" ] || fail 'backup output lacks artifact names'
-BACKUP_FILE_PATH="${DATABASE_BACKUP_DIR%/}/$BACKUP_FILE"
-BACKUP_MANIFEST_PATH="${DATABASE_BACKUP_DIR%/}/$BACKUP_MANIFEST"
-log "backup manifest created: $BACKUP_MANIFEST_PATH"
+[ -n "$BACKUP_FILE_PATH" ] && [ -n "$BACKUP_MANIFEST_PATH" ] || fail 'backup paths could not be resolved from backup output'
+[ "$(basename "$BACKUP_FILE")" = "$BACKUP_FILE" ] || fail 'backup output backupFile must be a filename'
+[ "$(basename "$BACKUP_MANIFEST")" = "$BACKUP_MANIFEST" ] || fail 'backup output manifestFile must be a filename'
 [ -s "$BACKUP_FILE_PATH" ] && [ -s "$BACKUP_MANIFEST_PATH" ] || fail 'backup file or manifest not present'
+log "backup manifest created: $BACKUP_MANIFEST_PATH"
 
 STAGING_VERIFY_OUTPUT="$(run_unit WEB \
   "$NODE_BIN" "$SCRIPT_DIR/verifySalaryBackupStaging.js" \

@@ -45,7 +45,12 @@ function invokeBackup({ databasePath, dataDirectory, backupDirectory, extraEnv =
 }
 
 function verifyActualOutput(stdout, backupDirectory) {
-    const report = JSON.parse(stdout);
+    const parsed = spawnSync(process.execPath, [runnerVerifierPath, '--mode', 'parse', '--report-output', stdout], {
+        cwd: repositoryRoot,
+        encoding: 'utf8'
+    });
+    assert.equal(parsed.status, 0, parsed.stderr);
+    const report = JSON.parse(parsed.stdout.trim().replace(/^MIHU_JSON:/, ''));
     const result = spawnSync(process.execPath, [runnerVerifierPath, '--report-json', stdout.trim(), '--backup-dir', backupDirectory], {
         cwd: repositoryRoot,
         encoding: 'utf8'
@@ -79,17 +84,26 @@ test('target release backup CLI stdout and manifest match runner staging verifie
             extraEnv: { BACKUP_STAGING_CONFIRM: 'YES', BACKUP_TRANSFER_PENDING: 'YES' }
         });
         assert.equal(stagingResult.status, 0, stagingResult.stderr);
-        const { report, verification } = verifyActualOutput(stagingResult.stdout, stagingDirectory);
+        const noisyOutput = `backup-helper-finished\nMIHU_JSON:${stagingResult.stdout.trim()}\n`;
+        const { report, verification } = verifyActualOutput(noisyOutput, stagingDirectory);
         assert.deepEqual(Object.keys(report).sort(), ['backupFile', 'backupSha256', 'integrity', 'manifestFile']);
         assert.equal(verification.status, 'BACKUP_STAGING_VERIFIED');
         assert.equal(verification.backupPurpose, 'local-transfer-staging-only');
+        assert.equal(path.basename(verification.manifestPath), report.manifestFile);
+        assert.equal(path.basename(verification.backupPath), report.backupFile);
 
         const manifestPath = path.join(stagingDirectory, report.manifestFile);
         const originalManifest = fs.readFileSync(manifestPath, 'utf8');
         const manifest = JSON.parse(originalManifest);
         delete manifest.backupPurpose;
         fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-        const missingMarker = spawnSync(process.execPath, [runnerVerifierPath, '--report-json', stagingResult.stdout.trim(), '--backup-dir', stagingDirectory], {
+        const parsedBeforeFailure = spawnSync(process.execPath, [runnerVerifierPath, '--mode', 'parse', '--report-output', noisyOutput], {
+            cwd: repositoryRoot, encoding: 'utf8'
+        });
+        assert.equal(parsedBeforeFailure.status, 0, parsedBeforeFailure.stderr);
+        const parsedReport = JSON.parse(parsedBeforeFailure.stdout.trim().replace(/^MIHU_JSON:/, ''));
+        assert.equal(path.join(stagingDirectory, parsedReport.manifestFile), manifestPath);
+        const missingMarker = spawnSync(process.execPath, [runnerVerifierPath, '--report-output', noisyOutput, '--backup-dir', stagingDirectory], {
             cwd: repositoryRoot, encoding: 'utf8'
         });
         assert.notEqual(missingMarker.status, 0);

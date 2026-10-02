@@ -8,6 +8,32 @@ function sha256File(filePath) {
     return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+function parseBackupReportOutput(output) {
+    const raw = String(output || '').trim();
+    if (!raw) throw new Error('Backup report output is empty');
+    const candidates = [raw];
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index];
+        candidates.push(line);
+        if (line.startsWith('MIHU_JSON:')) candidates.push(line.slice('MIHU_JSON:'.length));
+    }
+
+    const seen = new Set();
+    for (const candidate of candidates) {
+        const jsonText = String(candidate || '').trim();
+        if (!jsonText || seen.has(jsonText)) continue;
+        seen.add(jsonText);
+        try {
+            const report = JSON.parse(jsonText);
+            if (report && typeof report === 'object' && !Array.isArray(report)) return report;
+        } catch {
+            // Try next candidate.
+        }
+    }
+    throw new Error('Backup report output does not contain a valid JSON object');
+}
+
 function verifyBackupStagingContract({ report, backupDirectory }) {
     if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('Backup report must be a JSON object');
     for (const field of ['backupFile', 'manifestFile', 'backupSha256', 'integrity']) {
@@ -41,7 +67,9 @@ function verifyBackupStagingContract({ report, backupDirectory }) {
         backupFile: report.backupFile,
         manifestFile: report.manifestFile,
         backupSha256: artifactSha256,
-        backupPurpose: manifest.backupPurpose
+        backupPurpose: manifest.backupPurpose,
+        backupPath,
+        manifestPath
     };
 }
 
@@ -56,7 +84,12 @@ function parseCliArgs(argv) {
 
 function main(argv = process.argv.slice(2)) {
     const args = parseCliArgs(argv);
-    const report = JSON.parse(String(args['report-json'] || ''));
+    const report = parseBackupReportOutput(String(args['report-json'] || args['report-output'] || ''));
+    if (String(args.mode || '').toLowerCase() === 'parse') {
+        process.stdout.write(`MIHU_JSON:${JSON.stringify(report)}\n`);
+        return report;
+    }
+    if (!args['backup-dir']) throw new Error('Expected --backup-dir for verification mode');
     const result = verifyBackupStagingContract({
         report,
         backupDirectory: args['backup-dir']
@@ -73,4 +106,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { main, verifyBackupStagingContract };
+module.exports = { main, verifyBackupStagingContract, parseBackupReportOutput };
