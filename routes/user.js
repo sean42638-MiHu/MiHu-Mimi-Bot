@@ -7,10 +7,10 @@ const { calculateCommissionByCategory, normalizeTalentShareRate } = require('../
 const { checkAndUpdateVipLevel } = require('../utils/vipHelper');
 const { DEFAULT_VIP_COLOR, normalizeVipColor } = require('../utils/vipColor');
 const { resolveVipLevel, resolveVipTier, parseVipLevel, resolveVipTheme, resolveVipVisual } = require('../utils/vipResolver');
-const { dbGet, dbRun } = require('../utils/dbHelper');
+const { dbAll, dbGet, dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
-const { getEmployeePayoutOverview } = require('../services/payoutService');
+const { getEmployeePayoutOverview, listSalaryCommissionDetails } = require('../services/payoutService');
 const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
 
 const payrollProfileFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
@@ -342,124 +342,117 @@ router.get('/wallet', ensureAuth, checkPerm('view_wallet'), (req, res) => {
 // =========================================================================
 router.get('/income', ensureAuth, checkPerm('view_income'), async (req, res) => {
     const userId = req.user.id;
+    const studioId = Number(req.user.studio_id);
+    if (!Number.isInteger(studioId) || studioId <= 0) return res.status(403).send('找不到已授權的工作室範圍');
 
-    db.get('SELECT * FROM users WHERE id = ?', [userId], async (err, currentUser) => {
-        db.get('SELECT commission_rate FROM talents WHERE user_id = ?', [userId], async (tErr, talentRow) => {
-            const commissionRows = await new Promise((resolve) => {
-                db.all('SELECT category, rate FROM commission_settings ORDER BY category', (cErr, rows) => resolve(rows || []));
-            });
-            const globalCommissions = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
-            commissionRows.forEach(row => {
-                const aliases = { '有獎': '有獎單', '冠名': '冠名單', '獎金': '獎金單', '其他': '其他單', '活動單': '其他單' };
-                const canonicalCategory = aliases[row.category] || row.category;
-                const hasCanonicalRow = commissionRows.some(candidate => candidate.category === canonicalCategory);
-                if (row.category !== canonicalCategory && hasCanonicalRow) return;
-                const rate = normalizeTalentShareRate(row.rate);
-                if (rate === null) return;
-                globalCommissions[canonicalCategory] = rate;
-            });
-            
-            const normalizedPersonalRate = normalizeTalentShareRate(talentRow && talentRow.commission_rate);
-            const personalRate = normalizedPersonalRate > 0 ? normalizedPersonalRate : null;
+    try {
+        const currentUser = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+        const talentRow = await dbGet('SELECT commission_rate FROM talents WHERE user_id = ?', [userId]);
+        const commissionRows = await dbAll('SELECT category, rate FROM commission_settings ORDER BY category');
 
-            if (!talentRow && currentUser) {
-                db.run('INSERT OR IGNORE INTO talents (user_id, nickname, commission_rate, status) VALUES (?, ?, NULL, "idle")', 
-                    [userId, currentUser.custom_nickname || currentUser.username], 
-                    () => syncTalentsJsonFromDb()
-                );
-            }
-
-            const orderSql = `
-                SELECT 
-                    o.*,
-                    b.username as boss_username,
-                    b.global_name as boss_global_name,
-                    b.custom_nickname as boss_nickname,
-                    b.avatar as boss_avatar
-                FROM orders o
-                LEFT JOIN users b ON o.boss_id = b.id
-                WHERE o.talent_id = ? OR o.staff_id = ?
-                ORDER BY o.created_at DESC
-            `;
-
-            db.all(orderSql, [userId, userId], async (oErr, orders) => {
-                const orderList = orders || [];
-                const completedOrders = orderList.filter(o => o.status === 'completed');
-                if (completedOrders.some(order => order.talent_earning == null
-                    && (!Number.isInteger(Number(order.studio_id)) || Number(order.studio_id) <= 0))) {
-                    return res.status(409).send('歷史訂單缺少工作室範圍，無法安全試算佣金');
-                }
-
-                // 🚀 模組化計算 single order 收益 (以原價算陪陪收益)
-                async function computeOrderTalentEarning(o) {
-                    if (o.talent_earning !== null && o.talent_earning !== undefined) return Number(o.talent_earning);
-
-                    const finalPrice = Number(o.total_amount || 0);
-                    // 計算原價 (unit_price * duration)，若欄位缺失則回退以 finalPrice + discount 或 finalPrice 算
-                    const unitPrice = Number(o.unit_price || 0);
-                    const duration = Number(o.duration || 1);
-                    const discount = Number(o.discount || 0);
-                    
-                    let originalPrice = (unitPrice > 0) ? (unitPrice * duration) : (finalPrice + discount);
-                    if (originalPrice <= 0) originalPrice = finalPrice;
-
-                    const snapshotRate = normalizeTalentShareRate(o.commission_rate_snapshot);
-                    if (snapshotRate !== null) return Math.round(originalPrice * snapshotRate);
-
-                    const cat = o.category || '陪玩單';
-                    const studioId = Number(o.studio_id);
-                    if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('歷史訂單缺少工作室範圍');
-                    const { talentNetEarning } = await calculateCommissionByCategory(
-                        cat, finalPrice, originalPrice, personalRate,
-                        { studioId }
-                    );
-                    return talentNetEarning;
-                }
-
-                // 1. 歷史累積總收入 (原價分潤)
-                let totalIncome = 0;
-                for (let o of completedOrders) {
-                    totalIncome += await computeOrderTalentEarning(o);
-                }
-
-                // 2. 當月累積收入 (原價分潤)
-                const currentMonthPrefix = new Date().toISOString().slice(0, 7);
-                const monthlyOrders = completedOrders.filter(o => {
-                    const dateStr = o.end_time || o.created_at || '';
-                    return dateStr.startsWith(currentMonthPrefix);
-                });
-                
-                let monthlyIncome = 0;
-                for (let o of monthlyOrders) {
-                    monthlyIncome += await computeOrderTalentEarning(o);
-                }
-
-                try {
-                    const payoutOverview = await getEmployeePayoutOverview({
-                        userId,
-                        studioId: Number(req.user.studio_id)
-                    });
-                    res.render('income', {
-                        user: currentUser || req.user,
-                        personalRate: personalRate,
-                        globalCommissions: globalCommissions,
-                        stats: {
-                            totalIncome: totalIncome,
-                            monthlyIncome: monthlyIncome,
-                            totalWithdrawn: payoutOverview.paidAmount,
-                            pendingWithdrawals: payoutOverview.pendingAmount,
-                            availableToWithdraw: payoutOverview.availableAmount
-                        },
-                        payoutOverview,
-                        orders: orderList
-                    });
-                } catch (error) {
-                    console.error('載入提款資訊失敗:', error.message);
-                    return res.status(503).send('目前無法載入可提領薪資，請稍後再試');
-                }
-            });
+        const globalCommissions = { '陪玩單': 0.80, '禮物單': 0.85, '有獎單': 0.90, '冠名單': 0.85, '其他單': 0.80, '獎金單': 1.00 };
+        commissionRows.forEach(row => {
+            const rawCategory = String(row.category || '').trim();
+            if (!rawCategory) return;
+            const canonicalCategory = rawCategory.endsWith('單') ? rawCategory : `${rawCategory}單`;
+            const hasCanonicalRow = commissionRows.some(candidate => candidate.category === canonicalCategory);
+            if (row.category !== canonicalCategory && hasCanonicalRow) return;
+            const rate = normalizeTalentShareRate(row.rate);
+            if (rate === null) return;
+            globalCommissions[canonicalCategory] = rate;
         });
-    });
+
+        const normalizedPersonalRate = normalizeTalentShareRate(talentRow && talentRow.commission_rate);
+        const personalRate = normalizedPersonalRate > 0 ? normalizedPersonalRate : null;
+
+        if (!talentRow && currentUser) {
+            await dbRun('INSERT OR IGNORE INTO talents (user_id, nickname, commission_rate, status) VALUES (?, ?, NULL, "idle")',
+                [userId, currentUser.custom_nickname || currentUser.username]);
+            syncTalentsJsonFromDb();
+        }
+
+        const orderSql = `
+            SELECT
+                o.*,
+                b.username as boss_username,
+                b.global_name as boss_global_name,
+                b.custom_nickname as boss_nickname,
+                b.avatar as boss_avatar
+            FROM orders o
+            LEFT JOIN users b ON o.boss_id = b.id
+            WHERE (o.talent_id = ? OR o.staff_id = ?)
+                AND o.studio_id = ?
+            ORDER BY o.created_at DESC
+        `;
+        const orderList = await dbAll(orderSql, [userId, userId, studioId]);
+        const completedOrders = orderList.filter(order => order.status === 'completed');
+        if (completedOrders.some(order => order.talent_earning == null
+            && (!Number.isInteger(Number(order.studio_id)) || Number(order.studio_id) <= 0))) {
+            return res.status(409).send('歷史訂單缺少工作室範圍，無法安全試算佣金');
+        }
+
+        async function computeOrderTalentEarning(order) {
+            if (order.talent_earning !== null && order.talent_earning !== undefined) return Number(order.talent_earning);
+
+            const finalPrice = Number(order.total_amount || 0);
+            const unitPrice = Number(order.unit_price || 0);
+            const duration = Number(order.duration || 1);
+            const discount = Number(order.discount || 0);
+            let originalPrice = (unitPrice > 0) ? (unitPrice * duration) : (finalPrice + discount);
+            if (originalPrice <= 0) originalPrice = finalPrice;
+
+            const snapshotRate = normalizeTalentShareRate(order.commission_rate_snapshot);
+            if (snapshotRate !== null) return Math.round(originalPrice * snapshotRate);
+
+            const category = order.category || '陪玩單';
+            const orderStudioId = Number(order.studio_id);
+            if (!Number.isInteger(orderStudioId) || orderStudioId <= 0) throw new Error('歷史訂單缺少工作室範圍');
+            const { talentNetEarning } = await calculateCommissionByCategory(
+                category, finalPrice, originalPrice, personalRate,
+                { studioId: orderStudioId }
+            );
+            return talentNetEarning;
+        }
+
+        let totalIncome = 0;
+        for (const order of completedOrders) totalIncome += await computeOrderTalentEarning(order);
+
+        const payoutOverview = await getEmployeePayoutOverview({ userId, studioId });
+        const currentMonthPrefix = payoutOverview.withdrawalPeriod;
+        const monthlyOrders = completedOrders.filter(order => {
+            const dateStr = order.end_time || order.created_at || '';
+            return String(dateStr).startsWith(currentMonthPrefix);
+        });
+        let monthlyIncome = 0;
+        for (const order of monthlyOrders) monthlyIncome += await computeOrderTalentEarning(order);
+
+        const incomeDetail = await listSalaryCommissionDetails({
+            userId,
+            studioId,
+            month: req.query.income_month || payoutOverview.withdrawalPeriod,
+            page: req.query.income_page || 1
+        });
+
+        return res.render('income', {
+            user: currentUser || req.user,
+            personalRate,
+            globalCommissions,
+            stats: {
+                totalIncome,
+                monthlyIncome,
+                totalWithdrawn: payoutOverview.paidAmount,
+                pendingWithdrawals: payoutOverview.pendingAmount,
+                availableToWithdraw: payoutOverview.availableAmount
+            },
+            payoutOverview,
+            incomeDetail,
+            openIncomeDetailModal: String(req.query.income_modal || '') === '1',
+            orders: orderList
+        });
+    } catch (error) {
+        console.error('載入收入頁失敗:', error.message);
+        return res.status(503).send('目前無法載入收入與提款資訊，請稍後再試');
+    }
 });
 // =========================================================================
 // 5. 我的訂單 (My Orders)

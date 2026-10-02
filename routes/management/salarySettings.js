@@ -4,9 +4,13 @@ const path = require('node:path');
 
 const router = express.Router();
 const { ensureAuth, checkPerm } = require('../../middleware/auth');
+const { getRoleInfo } = require('../../utils/roleHelper');
+const { DEFAULT_AVATAR_URL } = require('../../utils/avatarUrl');
 const {
     SALARY_IMPORT_MAX_FILE_SIZE,
     listSalarySettings,
+    searchSalaryAdjustmentStaff,
+    getSalaryAdjustmentStaffSnapshot,
     createManualAdjustmentPreview,
     executeManualAdjustment,
     upsertSalaryRule,
@@ -84,6 +88,28 @@ function handleActionError(req, res, error, options = {}) {
     });
 }
 
+function serializeStaffCandidate(user) {
+    const roleInfo = getRoleInfo(user.role);
+    return {
+        userId: user.id,
+        displayName: user.custom_nickname || user.global_name || user.username || user.id,
+        roleKey: user.role || 'staff',
+        roleName: roleInfo.name,
+        roleBadgeClass: roleInfo.badgeClass,
+        avatarUrl: DEFAULT_AVATAR_URL
+    };
+}
+
+function serializeStaffSnapshot(snapshot) {
+    const roleInfo = getRoleInfo(snapshot.role);
+    return {
+        ...snapshot,
+        roleName: roleInfo.name,
+        roleBadgeClass: roleInfo.badgeClass,
+        avatarUrl: DEFAULT_AVATAR_URL
+    };
+}
+
 router.get('/', ensureAuth, checkPerm('view_payroll'), async (req, res) => {
     const studioId = getActorStudioId(req);
     if (!studioId) return denyStudioScope(req, res);
@@ -98,6 +124,7 @@ router.get('/', ensureAuth, checkPerm('view_payroll'), async (req, res) => {
             month: pageData.month,
             search: pageData.search,
             page: pageData.page,
+            pageSize: pageData.pageSize,
             totalPages: pageData.totalPages,
             totalStaff: pageData.totalStaff,
             salaryRows: pageData.salaryRows,
@@ -105,6 +132,7 @@ router.get('/', ensureAuth, checkPerm('view_payroll'), async (req, res) => {
             rules: pageData.rules,
             ruleRecords: pageData.ruleRecords,
             roles: pageData.roles,
+            distributionStatus: pageData.distributionStatus,
             successMsg: req.query.successMsg || null,
             errorMsg: req.query.error || null,
             formState: {
@@ -118,6 +146,48 @@ router.get('/', ensureAuth, checkPerm('view_payroll'), async (req, res) => {
         return res.status(400).send(error.message);
     }
 });
+
+router.get('/adjustments/staff-search',
+    ensureAuth,
+    checkPerm('view_payroll'),
+    checkPerm('action_salary_adjust'),
+    async (req, res) => {
+        const studioId = getActorStudioId(req);
+        if (!studioId) return denyStudioScope(req, res);
+        try {
+            const query = String(req.query.q || '').trim();
+            if (!query) {
+                return res.json({ success: true, query: '', results: [] });
+            }
+            const users = await searchSalaryAdjustmentStaff({ studioId, query, limit: 15 });
+            return res.json({
+                success: true,
+                query,
+                results: users.map(serializeStaffCandidate)
+            });
+        } catch (error) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+    }
+);
+
+router.get('/adjustments/staff/:userId/snapshot',
+    ensureAuth,
+    checkPerm('view_payroll'),
+    checkPerm('action_salary_adjust'),
+    async (req, res) => {
+        const studioId = getActorStudioId(req);
+        if (!studioId) return denyStudioScope(req, res);
+        try {
+            const userId = String(req.params.userId || '').trim();
+            if (!userId) return res.status(400).json({ success: false, message: '成員編號不可空白' });
+            const snapshot = await getSalaryAdjustmentStaffSnapshot({ studioId, userId });
+            return res.json({ success: true, snapshot: serializeStaffSnapshot(snapshot) });
+        } catch (error) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+    }
+);
 
 router.post('/adjustments/preview', ensureAuth, checkPerm('action_salary_adjust'), async (req, res) => {
     const studioId = getActorStudioId(req);

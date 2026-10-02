@@ -3,12 +3,14 @@ const { dbAll, dbGet, dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
 const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
+const { hasResolvedPermission, isPlatformSuperuserId } = require('../utils/permissionResolver');
 
 const PAYOUT_STATES = Object.freeze({ PENDING: 'pending', PAID: 'paid', REJECTED: 'rejected' });
 const PAYOUT_LEDGER_TYPES = Object.freeze({ RESERVE: 'PAYOUT_RESERVE', PAID: 'PAYOUT_PAID', RELEASE: 'PAYOUT_RELEASE' });
 const BUSINESS_TIMEZONE_ENV = 'BUSINESS_TIMEZONE';
 const USER_PAYROLL_FIELDS = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 const PAYOUT_PAYROLL_FIELDS = ['bank_name_snapshot', 'bank_code_snapshot', 'bank_branch_snapshot', 'account_name_snapshot', 'bank_account_snapshot'];
+const INCOME_DETAIL_PAGE_SIZE = 15;
 
 function getLocalDateParts(date, timeZone) {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -37,6 +39,90 @@ function sanitizeRejectionReason(value) {
         .replace(/\b[A-Z][12]\d{8}\b/gi, '[REDACTED ID]')
         .replace(/\b\d(?:[\s-]?\d){6,}\b/g, '[REDACTED NUMBER]')
         .slice(0, 500);
+}
+
+function hasText(value) {
+    return String(value || '').trim().length > 0;
+}
+
+function hasBankDetails(user) {
+    if (!user || typeof user !== 'object') return false;
+    return hasText(user.real_name)
+        && hasText(user.bank_name)
+        && hasText(user.bank_code)
+        && hasText(user.bank_account);
+}
+
+function normalizeMonth(value, fallbackMonth) {
+    const month = String(value || fallbackMonth || '').trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('月份格式無效，請使用 YYYY-MM');
+    return month;
+}
+
+function normalizeOrderCategory(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '其他單';
+    return raw.endsWith('單') ? raw : `${raw}單`;
+}
+
+function buildWithdrawalGate({ summary, bankDetailsReady, activePeriodPayout, hasPermission = true }) {
+    const reasons = [];
+    if (!hasPermission) {
+        reasons.push({
+            code: 'NO_PERMISSION',
+            message: '目前帳號沒有提款申請權限，請聯絡管理員協助。'
+        });
+    }
+
+    if (!bankDetailsReady) {
+        reasons.push({
+            code: 'ACCOUNT_MISSING',
+            message: '薪轉帳戶資料尚未完成，請先到個人檔案補齊本名與銀行資訊。',
+            actionUrl: '/profile',
+            actionText: '前往帳戶設定'
+        });
+    }
+
+    if (!summary.windowOpen) {
+        reasons.push({
+            code: 'TIME_WINDOW_CLOSED',
+            message: `目前不在提款開放期間（每月 ${summary.settings.startDay} 日至 ${summary.settings.endDay} 日，${summary.settings.timeZone}）。`
+        });
+    }
+
+    if (summary.availableAmount < summary.settings.minimumAmount) {
+        if (summary.availableAmount <= 0) {
+            reasons.push({
+                code: 'NO_AVAILABLE_BALANCE',
+                message: '目前可提領薪資為 0，暫時無法申請。'
+            });
+        } else {
+            reasons.push({
+                code: 'BELOW_MINIMUM',
+                message: `目前可提領薪資未達最低門檻（最低 ${summary.settings.minimumAmount}，目前 ${summary.availableAmount.toFixed(2)}）。`
+            });
+        }
+    }
+
+    if (activePeriodPayout) {
+        reasons.push({
+            code: 'ALREADY_REQUESTED',
+            message: `本提款週期已存在 ${activePeriodPayout.status === 'pending' ? '撥款中' : '已撥款'}申請，請待本期結束後再申請。`
+        });
+    }
+
+    return {
+        allowed: reasons.length === 0,
+        primaryReason: reasons[0] || null,
+        reasons,
+        timeZone: summary.settings.timeZone,
+        period: {
+            month: summary.withdrawalPeriod,
+            startDay: summary.settings.startDay,
+            endDay: summary.settings.endDay,
+            dayOfMonth: summary.dayOfMonth
+        }
+    };
 }
 
 async function getSettings() {
@@ -72,9 +158,12 @@ function earnedSalarySql() {
                 * COALESCE(
                     o.commission_rate_snapshot,
                     t.commission_rate,
-                    (SELECT cs.rate FROM commission_settings cs WHERE cs.category = CASE o.category
-                        WHEN '有獎' THEN '有獎單' WHEN '冠名' THEN '冠名單' WHEN '獎金' THEN '獎金單'
-                        WHEN '其他' THEN '其他單' WHEN '活動單' THEN '其他單' ELSE o.category END),
+                    (SELECT cs.rate FROM commission_settings cs WHERE cs.category = o.category),
+                    (SELECT cs_normalized.rate FROM commission_settings cs_normalized
+                        WHERE cs_normalized.category = CASE
+                            WHEN o.category LIKE '%單' THEN o.category
+                            ELSE o.category || '單'
+                        END),
                     (SELECT fallback.rate FROM commission_settings fallback WHERE fallback.category = '其他單'),
                     0.80
                 )
@@ -134,9 +223,23 @@ async function getPayoutSummary({ userId, studioId, date = new Date() }) {
 }
 
 async function getEmployeePayoutOverview({ userId, studioId, date = new Date() }) {
-    const user = await dbGet('SELECT studio_id FROM users WHERE id = ?', [userId]);
-    if (!user || Number(user.studio_id) !== Number(studioId)) throw new Error('會員工作室範圍不一致');
+    const encryptedUser = await dbGet(`
+        SELECT studio_id, real_name, bank_name, bank_code, bank_branch, bank_account
+        FROM users
+        WHERE id = ?
+    `, [userId]);
+    if (!encryptedUser || Number(encryptedUser.studio_id) !== Number(studioId)) throw new Error('會員工作室範圍不一致');
+    const user = decryptSensitiveFields(encryptedUser, USER_PAYROLL_FIELDS);
     const summary = await getPayoutSummary({ userId, studioId, date });
+    const bankDetailsReady = hasBankDetails(user);
+    const activePeriodPayout = await dbGet(`
+        SELECT id, withdrawal_no, status
+        FROM payouts
+        WHERE user_id = ? AND studio_id = ? AND withdrawal_period = ?
+            AND status IN ('pending', 'paid')
+        ORDER BY id DESC
+        LIMIT 1
+    `, [userId, studioId, summary.withdrawalPeriod]);
     const payouts = await dbAll(`
         SELECT id, withdrawal_no, amount, status, requested_at, paid_at,
             rejected_at, rejected_reason, bank_name_snapshot, bank_code_snapshot,
@@ -147,12 +250,18 @@ async function getEmployeePayoutOverview({ userId, studioId, date = new Date() }
     `, [userId, studioId]);
     return {
         ...summary,
-        bankDetailsReady: Boolean(await dbGet(`
-            SELECT 1 AS ready FROM users
-                        WHERE id = ? AND TRIM(COALESCE(real_name, '')) != ''
-                            AND TRIM(COALESCE(bank_name, '')) != '' AND TRIM(COALESCE(bank_code, '')) != ''
-                            AND TRIM(COALESCE(bank_account, '')) != ''
-        `, [userId])),
+        bankDetailsReady,
+        activePeriodPayout: activePeriodPayout ? {
+            id: Number(activePeriodPayout.id),
+            withdrawal_no: activePeriodPayout.withdrawal_no,
+            status: activePeriodPayout.status
+        } : null,
+        withdrawalGate: buildWithdrawalGate({
+            summary,
+            bankDetailsReady,
+            activePeriodPayout,
+            hasPermission: true
+        }),
         payouts: payouts.map(payout => {
             const safePayout = decryptSensitiveFields(payout, PAYOUT_PAYROLL_FIELDS);
             return {
@@ -174,6 +283,221 @@ async function getEmployeePayoutOverview({ userId, studioId, date = new Date() }
     };
 }
 
+async function assertWithdrawalRequesterPermission({ operatorId, studioId, permission = 'view_income' }) {
+    if (!permission) return;
+    if (!operatorId) throw new Error('缺少操作人身分');
+    if (isPlatformSuperuserId(operatorId)) return;
+    const actor = await dbGet(`
+        SELECT u.studio_id, r.permissions
+        FROM users u
+        LEFT JOIN roles r ON r.role_key = u.role
+        WHERE u.id = ?
+    `, [operatorId]);
+    if (!actor || Number(actor.studio_id) !== Number(studioId)) throw new Error('操作者工作室範圍已變更，請重新登入');
+    if (!hasResolvedPermission(actor.permissions || [], permission)) throw new Error('操作權限已變更，請重新整理後再試');
+}
+
+async function listSalaryCommissionDetails({ userId, studioId, month = null, page = 1, pageSize = INCOME_DETAIL_PAGE_SIZE, date = new Date() }) {
+    const user = await dbGet('SELECT studio_id FROM users WHERE id = ?', [userId]);
+    if (!user || Number(user.studio_id) !== Number(studioId)) throw new Error('會員工作室範圍不一致');
+
+    const summary = await getPayoutSummary({ userId, studioId, date });
+    const normalizedMonth = normalizeMonth(month, summary.withdrawalPeriod);
+    const fixedPageSize = Math.max(5, Math.min(50, Math.floor(Number(pageSize) || INCOME_DETAIL_PAGE_SIZE)));
+    const requestedPage = Math.max(1, Math.floor(Number(page) || 1));
+
+    const orderRows = await dbAll(`
+        SELECT
+            o.id,
+            o.order_no,
+            o.category,
+            COALESCE(NULLIF(o.end_time, ''), o.created_at) AS occurred_at,
+            ROUND(COALESCE(o.talent_earning,
+                ROUND(
+                    COALESCE(NULLIF(o.unit_price, 0) * COALESCE(o.duration, 1), o.total_amount + COALESCE(o.discount, 0), o.total_amount)
+                    * COALESCE(
+                        o.commission_rate_snapshot,
+                        t.commission_rate,
+                        (SELECT cs.rate FROM commission_settings cs WHERE cs.category = o.category),
+                        (SELECT cs_normalized.rate FROM commission_settings cs_normalized
+                            WHERE cs_normalized.category = CASE
+                                WHEN o.category LIKE '%單' THEN o.category
+                                ELSE o.category || '單'
+                            END),
+                        (SELECT fallback.rate FROM commission_settings fallback WHERE fallback.category = '其他單'),
+                        0.80
+                    )
+                )
+            ), 2) AS commission_amount
+        FROM orders o
+        LEFT JOIN talents t ON t.user_id = COALESCE(o.talent_id, o.staff_id)
+        WHERE (o.talent_id = ? OR o.staff_id = ?)
+            AND o.studio_id = ?
+            AND o.status = 'completed'
+            AND SUBSTR(COALESCE(NULLIF(o.end_time, ''), o.created_at), 1, 7) = ?
+        ORDER BY occurred_at DESC, o.id DESC
+    `, [userId, userId, studioId, normalizedMonth]);
+
+    const adjustmentRows = await dbAll(`
+        SELECT
+            id,
+            adjustment_type,
+            available_delta,
+            earned_delta,
+            history_delta,
+            reason,
+            created_at
+        FROM salary_adjustments
+        WHERE user_id = ? AND studio_id = ? AND adjustment_month = ?
+        ORDER BY created_at DESC, id DESC
+    `, [userId, studioId, normalizedMonth]);
+
+    const categories = [];
+    const categorySeen = new Set();
+    const categoryTotals = new Map();
+    const detailRows = [];
+
+    for (const row of orderRows) {
+        const amount = Number(row.commission_amount || 0);
+        const category = normalizeOrderCategory(row.category);
+        if (!categorySeen.has(category)) {
+            categorySeen.add(category);
+            categories.push(category);
+        }
+        categoryTotals.set(category, Number((Number(categoryTotals.get(category) || 0) + amount).toFixed(2)));
+        detailRows.push({
+            sourceType: 'order',
+            entryType: 'commission',
+            sourceId: `order:${row.id}`,
+            occurredAt: row.occurred_at || '',
+            category,
+            description: `訂單分潤 ${row.order_no || `#${row.id}`}`,
+            amount
+        });
+    }
+
+    for (const row of adjustmentRows) {
+        const createdAt = row.created_at || '';
+        const reason = String(row.reason || '').trim() || '薪資調整';
+        const adjustmentType = String(row.adjustment_type || '').trim();
+        const earnedDelta = Number(row.earned_delta || 0);
+        const availableDelta = Number(row.available_delta || 0);
+        const historyDelta = Number(row.history_delta || 0);
+
+        if (earnedDelta !== 0) {
+            detailRows.push({
+                sourceType: 'salary_adjustment',
+                entryType: adjustmentType === 'distribution' ? 'fixed_salary' : 'earned_adjustment',
+                sourceId: `adjustment:${row.id}:earned`,
+                occurredAt: createdAt,
+                category: adjustmentType === 'distribution' ? '固定月薪' : '收入調整',
+                description: reason,
+                amount: earnedDelta
+            });
+        }
+
+        if (availableDelta > 0) {
+            detailRows.push({
+                sourceType: 'salary_adjustment',
+                entryType: 'allowance',
+                sourceId: `adjustment:${row.id}:available`,
+                occurredAt: createdAt,
+                category: '薪資津貼',
+                description: reason,
+                amount: availableDelta
+            });
+        } else if (availableDelta < 0) {
+            detailRows.push({
+                sourceType: 'salary_adjustment',
+                entryType: 'deduction',
+                sourceId: `adjustment:${row.id}:available`,
+                occurredAt: createdAt,
+                category: '合法薪資扣減',
+                description: reason,
+                amount: availableDelta
+            });
+        }
+
+        if (historyDelta !== 0) {
+            detailRows.push({
+                sourceType: 'salary_adjustment',
+                entryType: 'history_adjustment',
+                sourceId: `adjustment:${row.id}:history`,
+                occurredAt: createdAt,
+                category: '歷史收入校正',
+                description: reason,
+                amount: historyDelta
+            });
+        }
+    }
+
+    detailRows.sort((left, right) => {
+        const dateDiff = String(right.occurredAt || '').localeCompare(String(left.occurredAt || ''));
+        if (dateDiff !== 0) return dateDiff;
+        return String(right.sourceId || '').localeCompare(String(left.sourceId || ''));
+    });
+
+    const commissionIncome = Number(detailRows
+        .filter(item => item.entryType === 'commission')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        .toFixed(2));
+    const fixedSalaryIncome = Number(detailRows
+        .filter(item => item.entryType === 'fixed_salary' || item.entryType === 'earned_adjustment')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        .toFixed(2));
+    const allowanceIncome = Number(detailRows
+        .filter(item => item.entryType === 'allowance')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        .toFixed(2));
+    const deductionAmount = Number(Math.abs(detailRows
+        .filter(item => item.entryType === 'deduction')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0))
+        .toFixed(2));
+    const historyAdjustment = Number(detailRows
+        .filter(item => item.entryType === 'history_adjustment')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        .toFixed(2));
+
+    const netSalary = Number((
+        commissionIncome
+        + fixedSalaryIncome
+        + allowanceIncome
+        - deductionAmount
+        + historyAdjustment
+    ).toFixed(2));
+
+    const totalRows = detailRows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / fixedPageSize));
+    const currentPage = Math.min(requestedPage, totalPages);
+    const pageStart = (currentPage - 1) * fixedPageSize;
+    const pageRows = detailRows.slice(pageStart, pageStart + fixedPageSize);
+
+    return {
+        month: normalizedMonth,
+        page: currentPage,
+        pageSize: fixedPageSize,
+        totalPages,
+        totalRows,
+        rows: pageRows,
+        categories,
+        categoryTotals: categories.map(category => ({
+            category,
+            amount: Number((categoryTotals.get(category) || 0).toFixed(2))
+        })),
+        summary: {
+            commissionIncome,
+            fixedSalaryIncome,
+            allowanceIncome,
+            deductionAmount,
+            historyAdjustment,
+            netSalary,
+            paidAmount: Number(summary.paidAmount || 0),
+            pendingAmount: Number(summary.pendingAmount || 0),
+            availableAmount: Number(summary.availableAmount || 0)
+        }
+    };
+}
+
 function assertRequestWindow(summary) {
     if (!summary.windowOpen) throw new Error('目前不在每月提款申請期間');
 }
@@ -189,7 +513,7 @@ async function appendPayoutLedger({ payout, type, amount, availableBefore, avail
         availableBefore, availableAfter, reservedBefore, reservedAfter, operatorId, reason || null]);
 }
 
-async function requestWithdrawal({ userId, amount, operatorId = userId, date = new Date() }) {
+async function requestWithdrawal({ userId, amount, operatorId = userId, date = new Date(), requiredPermission = null }) {
     return withTransactionGate(async () => {
         await dbRun('BEGIN IMMEDIATE');
         try {
@@ -201,6 +525,7 @@ async function requestWithdrawal({ userId, amount, operatorId = userId, date = n
             if (!user) throw new Error('找不到提領會員');
             const studioId = Number(user.studio_id);
             if (!Number.isInteger(studioId) || studioId <= 0) throw new Error('會員缺少有效工作室範圍');
+            await assertWithdrawalRequesterPermission({ operatorId, studioId, permission: requiredPermission });
             if (!user.real_name || !user.bank_name || !user.bank_code || !user.bank_account) {
                 throw new Error('薪轉資料不完整，請先完成銀行帳戶資料設定');
             }
@@ -471,6 +796,7 @@ module.exports = {
     getSettings,
     getPayoutSummary,
     getEmployeePayoutOverview,
+    listSalaryCommissionDetails,
     requestWithdrawal,
     markPayoutPaid,
     markPayoutsPaid,

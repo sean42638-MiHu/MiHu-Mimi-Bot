@@ -314,6 +314,41 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(homeAlias.status, 302);
         assert.equal(homeAlias.headers.location, '/dashboard');
 
+        const incomePage = await createRequest(port, 'GET', '/income', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie
+        });
+        assert.equal(incomePage.status, 200, incomePage.body);
+        assert.match(incomePage.body, /薪資與分潤明細/);
+        assert.match(incomePage.body, /id="withdrawalGateNotice"/);
+        assert.doesNotMatch(incomePage.body, /ORDER-B/);
+
+        const memberBankSnapshot = await new Promise((resolve, reject) => db.get(
+            "SELECT real_name,bank_name,bank_code,bank_branch,bank_account FROM users WHERE id='member-a'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET bank_code='', bank_account='' WHERE id='member-a'",
+            error => error ? reject(error) : resolve()
+        ));
+        const incomePageMissingAccount = await createRequest(port, 'GET', '/income', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie
+        });
+        assert.equal(incomePageMissingAccount.status, 200, incomePageMissingAccount.body);
+        assert.match(incomePageMissingAccount.body, /薪轉帳戶資料尚未完成/);
+        assert.match(incomePageMissingAccount.body, /href="\/profile"/);
+        assert.match(incomePageMissingAccount.body, /ACCOUNT_MISSING/);
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE users SET real_name=?, bank_name=?, bank_code=?, bank_branch=?, bank_account=? WHERE id='member-a'",
+            [
+                memberBankSnapshot.real_name,
+                memberBankSnapshot.bank_name,
+                memberBankSnapshot.bank_code,
+                memberBankSnapshot.bank_branch,
+                memberBankSnapshot.bank_account
+            ],
+            error => error ? reject(error) : resolve()
+        ));
+
         const managerA = await createSession('manager-a');
         const managerPayrollPage = await createRequest(port, 'GET', '/management/payroll', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
@@ -905,8 +940,47 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: staffSession.cookie,
             'X-CSRF-Token': staffSession.csrfToken, 'Content-Type': 'application/json'
         }, JSON.stringify({ amount: 100 }));
-        assert.equal(staffRequest.status, 201, staffRequest.body);
-        const staffPayoutId = JSON.parse(staffRequest.body).withdrawal.id;
+        assert.equal(staffRequest.status, 403, staffRequest.body);
+        const staffSnapshot = encryptSensitiveFields({
+            bank_name_snapshot: 'Test Bank',
+            bank_code_snapshot: '808',
+            bank_branch_snapshot: 'Main',
+            account_name_snapshot: 'Staff A',
+            bank_account_snapshot: '123456789'
+        }, ['bank_name_snapshot', 'bank_code_snapshot', 'bank_branch_snapshot', 'account_name_snapshot', 'bank_account_snapshot']);
+        const staffPayoutId = await new Promise((resolve, reject) => db.run(`
+            INSERT INTO payouts (withdrawal_no,user_id,studio_id,withdrawal_period,amount,status,requested_at,bank_name_snapshot,bank_code_snapshot,bank_branch_snapshot,account_name_snapshot,bank_account_snapshot)
+            VALUES ('WD-STAFF-FIXTURE','staff-a',1,'2099-01',100,'pending',CURRENT_TIMESTAMP,?,?,?,?,?)
+        `, [
+            staffSnapshot.bank_name_snapshot,
+            staffSnapshot.bank_code_snapshot,
+            staffSnapshot.bank_branch_snapshot,
+            staffSnapshot.account_name_snapshot,
+            staffSnapshot.bank_account_snapshot
+        ], function (error) { error ? reject(error) : resolve(this.lastID); }));
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE roles SET permissions = ? WHERE role_key = ?",
+            [JSON.stringify(['view_profile', 'view_dashboard']), 'member'],
+            error => error ? reject(error) : resolve()
+        ));
+        const revokedMemberRequest = await createRequest(port, 'POST', '/api/withdrawals/request', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/json'
+        }, JSON.stringify({ amount: 100 }));
+        assert.equal(revokedMemberRequest.status, 403, revokedMemberRequest.body);
+
+        await new Promise((resolve, reject) => db.run(
+            "UPDATE roles SET permissions = ? WHERE role_key = ?",
+            [JSON.stringify(['view_income', 'view_profile', 'view_profile_discord', 'action_profile_nickname', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'],
+            error => error ? reject(error) : resolve()
+        ));
+        const memberRetryRequest = await createRequest(port, 'POST', '/api/withdrawals/request', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/json'
+        }, JSON.stringify({ amount: 100 }));
+        assert.equal(memberRetryRequest.status, 400, memberRetryRequest.body);
+        assert.match(memberRetryRequest.body, /本提款週期已申請過提款/);
 
         const payrollPage = await createRequest(port, 'GET', '/management/payroll', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
@@ -1329,6 +1403,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(settings.body, /獨立 Runtime 管理；網站不啟動 Bot/);
         assert.match(settings.body, /data-copy-discord-command/);
         assert.doesNotMatch(settings.body, /立即部署|同步到 Discord|執行註冊/);
+        assert.doesNotMatch(settings.body, /href="\/system\/payout-settings"/);
+        assert.doesNotMatch(settings.body, /薪資提款設定/);
         assert.doesNotMatch(settings.body, /action="\/system\/bot-settings\/sync"/);
         assert.equal(deniedLegacyGet.status, 403);
         assert.equal(legacyGet.status, 302);

@@ -31,14 +31,15 @@ async function setupFixture(databasePath) {
     await run(db, `CREATE TABLE users (
         id TEXT PRIMARY KEY, studio_id INTEGER, username TEXT, global_name TEXT, custom_nickname TEXT,
         real_name TEXT, bank_name TEXT,
-        bank_code TEXT, bank_branch TEXT, bank_account TEXT, balance REAL DEFAULT 0
+        bank_code TEXT, bank_branch TEXT, bank_account TEXT, role TEXT, balance REAL DEFAULT 0
     )`);
+    await run(db, 'CREATE TABLE roles (role_key TEXT PRIMARY KEY, permissions TEXT)');
     await run(db, 'CREATE TABLE user_wallets (user_id TEXT PRIMARY KEY, balance REAL)');
     await run(db, `CREATE TABLE orders (
         id INTEGER PRIMARY KEY, boss_id TEXT, talent_id TEXT, staff_id TEXT,
         studio_id INTEGER, status TEXT, total_amount REAL, discount REAL,
         unit_price REAL, duration REAL, talent_earning REAL, commission_rate_snapshot REAL,
-        platform_commission REAL, category TEXT
+        platform_commission REAL, category TEXT, created_at TEXT, end_time TEXT, order_no TEXT
     )`);
     await run(db, 'CREATE TABLE talents (user_id TEXT PRIMARY KEY, commission_rate REAL)');
     await run(db, 'CREATE TABLE commission_settings (category TEXT PRIMARY KEY, rate REAL)');
@@ -53,7 +54,8 @@ async function setupFixture(databasePath) {
     await run(db, `CREATE TABLE salary_adjustments (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, studio_id INTEGER NOT NULL,
         available_delta REAL NOT NULL DEFAULT 0, earned_delta REAL NOT NULL DEFAULT 0,
-        history_delta REAL NOT NULL DEFAULT 0
+        history_delta REAL NOT NULL DEFAULT 0,
+        adjustment_month TEXT, adjustment_type TEXT, reason TEXT, created_at TEXT
     )`);
     await run(db, `CREATE UNIQUE INDEX idx_payouts_active_period
         ON payouts(user_id,studio_id,withdrawal_period)
@@ -74,20 +76,23 @@ async function setupFixture(databasePath) {
     for (const [id, username, name, branch, account, balance, studioId] of [
         ['user-a', 'alice', 'Alice Example', 'Main', '123456789', 100, 1],
         ['user-b', 'bob', 'Bob Example', 'Main', '987654321', 200, 1],
-        ['user-c', 'carol', 'Carol Example', 'Other', '111222333', 300, 2]
+        ['user-c', 'carol', 'Carol Example', 'Other', '111222333', 300, 2],
+        ['user-d', 'dylan', 'Dylan Example', 'Main', '222333444', 150, 1]
     ]) {
         const sensitive = encryptSensitiveFields({
             real_name: name, bank_name: 'Bank', bank_code: '808', bank_branch: branch, bank_account: account
         }, ['real_name','bank_name','bank_code','bank_branch','bank_account']);
-        await run(db, `INSERT INTO users (id,studio_id,username,global_name,custom_nickname,real_name,bank_name,bank_code,bank_branch,bank_account,balance)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, studioId, username, username, username,
+        await run(db, `INSERT INTO users (id,studio_id,username,global_name,custom_nickname,real_name,bank_name,bank_code,bank_branch,bank_account,role,balance)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'member', ?)`, [id, studioId, username, username, username,
             sensitive.real_name, sensitive.bank_name, sensitive.bank_code, sensitive.bank_branch, sensitive.bank_account, balance]);
     }
-    await run(db, "INSERT INTO user_wallets VALUES ('user-a',100),('user-b',200),('user-c',300)");
-    await run(db, `INSERT INTO orders (id,boss_id,talent_id,studio_id,status,total_amount,discount,unit_price,duration,talent_earning,commission_rate_snapshot,platform_commission,category)
-        VALUES (1,'customer','user-a',1,'completed',10000,0,10000,1,10000,1,0,'陪玩單'),
-               (2,'customer','user-b',1,'completed',8000,0,8000,1,8000,1,0,'陪玩單'),
-               (3,'customer','user-c',2,'completed',5000,0,5000,1,5000,1,0,'陪玩單')`);
+    await run(db, "INSERT INTO roles (role_key, permissions) VALUES ('member', '[\"view_income\"]')");
+    await run(db, "INSERT INTO user_wallets VALUES ('user-a',100),('user-b',200),('user-c',300),('user-d',150)");
+    await run(db, `INSERT INTO orders (id,boss_id,talent_id,studio_id,status,total_amount,discount,unit_price,duration,talent_earning,commission_rate_snapshot,platform_commission,category,created_at,end_time,order_no)
+        VALUES (1,'customer','user-a',1,'completed',10000,0,10000,1,10000,1,0,'陪玩單','2026-09-02 10:00:00','2026-09-02 11:00:00','A-001'),
+               (2,'customer','user-b',1,'completed',8000,0,8000,1,8000,1,0,'陪玩單','2026-09-03 10:00:00','2026-09-03 11:00:00','B-001'),
+               (3,'customer','user-c',2,'completed',5000,0,5000,1,5000,1,0,'陪玩單','2026-09-04 10:00:00','2026-09-04 11:00:00','C-001'),
+               (4,'customer','user-d',1,'completed',2000,0,2000,1,2000,1,0,'陪玩單','2026-09-02 15:00:00','2026-09-02 16:00:00','D-001')`);
     for (const [key, value] of [
         ['withdrawal_start_day','2'], ['withdrawal_end_day','6'],
         ['withdrawal_min_amount','100'], ['business_timezone','Asia/Taipei']
@@ -113,6 +118,10 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-03-31T12:00:00.000Z') })).windowOpen, true);
         await run(db, "UPDATE system_settings SET setting_value='2' WHERE setting_key='withdrawal_start_day'");
         await run(db, "UPDATE system_settings SET setting_value='6' WHERE setting_key='withdrawal_end_day'");
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T15:59:59.000Z') })).windowOpen, false);
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T16:00:00.000Z') })).windowOpen, true);
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T15:59:59.000Z') })).windowOpen, true);
+        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T16:00:00.000Z') })).windowOpen, false);
         await run(db, "INSERT INTO payouts (user_id,amount,status) VALUES ('user-b',250,'completed')");
         const legacySummary = await service.getPayoutSummary({ userId: 'user-b', studioId: 1, date: testDate });
         assert.equal(legacySummary.paidAmount, 250);
@@ -120,6 +129,48 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         const legacyOverview = await service.getEmployeePayoutOverview({ userId: 'user-b', studioId: 1, date: testDate });
         assert.equal(legacyOverview.payouts[0].status, 'completed');
         assert.equal(legacyOverview.bankDetailsReady, true);
+        const settingsSnapshot = await service.getSettings();
+        assert.deepEqual(legacyOverview.settings, settingsSnapshot);
+        assert.equal(legacyOverview.withdrawalGate.period.startDay, settingsSnapshot.startDay);
+        assert.equal(legacyOverview.withdrawalGate.period.endDay, settingsSnapshot.endDay);
+
+        await run(db, "UPDATE users SET bank_account='' WHERE id='user-d'");
+        const missingAccountOverview = await service.getEmployeePayoutOverview({ userId: 'user-d', studioId: 1, date: testDate });
+        assert.equal(missingAccountOverview.withdrawalGate.allowed, false);
+        assert.ok(missingAccountOverview.withdrawalGate.reasons.some(reason => reason.code === 'ACCOUNT_MISSING'));
+        await run(db, "UPDATE users SET bank_account=? WHERE id='user-d'", [encryptSensitiveFields({ bank_account: '222333444' }, ['bank_account']).bank_account]);
+
+        await run(db, `INSERT INTO orders (id,boss_id,talent_id,studio_id,status,total_amount,discount,unit_price,duration,talent_earning,commission_rate_snapshot,platform_commission,category,created_at,end_time,order_no)
+            VALUES (10,'customer','user-d',1,'completed',500,0,500,1,500,1,0,'有獎','2026-09-03 10:00:00','2026-09-03 10:30:00','D-010'),
+                   (11,'customer','user-d',1,'completed',600,0,600,1,600,1,0,'有獎單','2026-09-03 11:00:00','2026-09-03 11:30:00','D-011'),
+                   (12,'customer','user-d',1,'completed',400,0,400,1,400,1,0,'活動單','2026-09-04 11:00:00','2026-09-04 11:30:00','D-012'),
+                   (13,'customer','user-d',1,'completed',300,0,300,1,300,1,0,'其他單','2026-09-05 12:00:00','2026-09-05 12:30:00','D-013'),
+                   (14,'customer','user-d',1,'completed',200,0,200,1,200,1,0,'陪玩單','2026-10-02 12:00:00','2026-10-02 12:30:00','D-014')`);
+        await run(db, `INSERT INTO salary_adjustments (user_id,studio_id,available_delta,earned_delta,history_delta,adjustment_month,adjustment_type,reason,created_at)
+            VALUES ('user-d',1,120,300,-20,'2026-09','distribution','September salary','2026-09-04 15:00:00'),
+                   ('user-d',1,-50,0,0,'2026-09','manual_adjustment','Penalty','2026-09-05 15:00:00')`);
+
+        const incomeDetail = await service.listSalaryCommissionDetails({ userId: 'user-d', studioId: 1, month: '2026-09', page: 1, pageSize: 4, date: testDate });
+        assert.equal(incomeDetail.month, '2026-09');
+        assert.equal(incomeDetail.rows.length, 5);
+        assert.equal(incomeDetail.totalPages >= 2, true);
+        assert.equal(incomeDetail.categories.filter(category => category === '有獎單').length, 1);
+        assert.equal(incomeDetail.categories.filter(category => category === '活動單').length, 1);
+        assert.equal(incomeDetail.categories.filter(category => category === '其他單').length, 1);
+        assert.equal((incomeDetail.categoryTotals.find(item => item.category === '有獎單') || {}).amount, 1100);
+        assert.equal((incomeDetail.categoryTotals.find(item => item.category === '活動單') || {}).amount, 400);
+        assert.equal((incomeDetail.categoryTotals.find(item => item.category === '其他單') || {}).amount, 300);
+        assert.equal(incomeDetail.summary.commissionIncome, 3800);
+        assert.equal(incomeDetail.summary.fixedSalaryIncome, 300);
+        assert.equal(incomeDetail.summary.allowanceIncome, 120);
+        assert.equal(incomeDetail.summary.deductionAmount, 50);
+        assert.equal(incomeDetail.summary.historyAdjustment, -20);
+        assert.equal(incomeDetail.summary.netSalary, 4150);
+
+        await run(db, "UPDATE roles SET permissions='[]' WHERE role_key='member'");
+        await assert.rejects(service.requestWithdrawal({ userId: 'user-d', amount: 100, date: testDate, requiredPermission: 'view_income' }), /權限已變更/);
+        await run(db, "UPDATE roles SET permissions='[\"view_income\"]' WHERE role_key='member'");
+
         await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 99, date: testDate }), /不得低於/);
         await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 10001, date: testDate }), /超過/);
         await assert.rejects(service.requestWithdrawal({ userId: 'user-a', amount: 100, date: new Date('2026-09-08T12:00:00.000Z') }), /申請期間/);

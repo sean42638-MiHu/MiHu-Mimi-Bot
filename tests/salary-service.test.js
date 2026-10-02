@@ -63,6 +63,12 @@ test('salary service supports preview/execute, studio isolation, and one-time mo
         await run("INSERT INTO roles VALUES ('manager','Manager','management',20,'[\"action_salary_adjust\",\"action_salary_import\",\"action_salary_rule_manage\",\"action_salary_distribute\"]')");
         await run("INSERT INTO system_settings VALUES ('withdrawal_start_day','1'),('withdrawal_end_day','31'),('withdrawal_min_amount','100'),('business_timezone','Asia/Taipei')");
         await run("INSERT INTO users VALUES ('manager-a','manager-a','Manager A','ManagerA','manager',1),('staff-a','staff-a','Staff A','StaffA','staff',1),('staff-b','staff-b','Staff B','StaffB','staff',2),('member-a','member-a','MemberA','MemberA','member',1)");
+        const bulkUsers = [];
+        for (let index = 1; index <= 26; index += 1) {
+            const key = `staff-p${String(index).padStart(2, '0')}`;
+            bulkUsers.push(`('${key}','${key}','Page Staff ${index}','PageStaff${index}','staff',1)`);
+        }
+        await run(`INSERT INTO users (id, username, global_name, custom_nickname, role, studio_id) VALUES ${bulkUsers.join(',')}`);
         await run("INSERT INTO commission_settings VALUES ('其他單',0.8),('陪玩單',0.8)");
         await run("INSERT INTO orders (talent_id,studio_id,status,talent_earning,category) VALUES ('staff-a',1,'completed',1000,'陪玩單')");
 
@@ -122,6 +128,12 @@ test('salary service supports preview/execute, studio isolation, and one-time mo
         await assert.rejects(salaryService.previewManualAdjustment({
             studioId: 1, userId: 'staff-a', amount: -2000, reason: '不可負值'
         }), /不可為負數/);
+        await assert.rejects(salaryService.previewManualAdjustment({
+            studioId: 1, userId: 'staff-a', amount: '', reason: '空白金額'
+        }), /不可空白/);
+        await assert.rejects(salaryService.previewManualAdjustment({
+            studioId: 1, userId: 'staff-a', amount: '12.345', reason: '精度錯誤'
+        }), /最多 2 位小數/);
 
         await assert.rejects(() => salaryService.previewManualAdjustment({
             studioId: 1,
@@ -129,6 +141,31 @@ test('salary service supports preview/execute, studio isolation, and one-time mo
             amount: 100,
             reason: '跨工作室'
         }), /找不到該工作室成員/);
+
+        const firstPage = await salaryService.listSalarySettings({ studioId: 1, month: '2026-10', page: 1, search: '' });
+        assert.equal(firstPage.pageSize, 15);
+        assert.equal(firstPage.salaryRows.length, 15);
+        assert.equal(firstPage.totalPages >= 2, true);
+        const overflowPage = await salaryService.listSalarySettings({ studioId: 1, month: '2026-10', page: 999, search: '' });
+        assert.equal(overflowPage.page, overflowPage.totalPages);
+        const zeroPage = await salaryService.listSalarySettings({ studioId: 1, month: '2026-10', page: 0, search: '' });
+        assert.equal(zeroPage.page, 1);
+
+        const searchCandidates = await salaryService.searchSalaryAdjustmentStaff({ studioId: 1, query: 'staff-p', limit: 99 });
+        assert.equal(searchCandidates.length, 15);
+        assert.equal(searchCandidates.every(item => item.id.startsWith('staff-p')), true);
+        const snapshot = await salaryService.getSalaryAdjustmentStaffSnapshot({ studioId: 1, userId: 'staff-a' });
+        assert.equal(snapshot.userId, 'staff-a');
+        await assert.rejects(salaryService.getSalaryAdjustmentStaffSnapshot({ studioId: 1, userId: 'staff-b' }), /找不到該工作室成員/);
+
+        await assert.rejects(salaryService.upsertSalaryRule({
+            studioId: 1,
+            operatorId: 'manager-a',
+            userId: 'staff-a',
+            amount: -1,
+            effectiveMonth: '2026-10',
+            note: '不合法'
+        }), /不可為負數/);
 
         await salaryService.upsertSalaryRule({
             studioId: 1,
@@ -142,6 +179,10 @@ test('salary service supports preview/execute, studio isolation, and one-time mo
         assert.equal(salaryList.totalStaff, 1);
         assert.equal(salaryList.salaryRows.length, 1);
         assert.equal(salaryList.salaryRows[0].fixedSalaryRules[0].itemName, '固定月薪');
+        assert.equal(salaryList.distributionStatus.locked, false);
+
+        const beforeDistribution = await salaryService.getMonthlyDistributionStatus({ studioId: 1, month: '2026-10' });
+        assert.equal(beforeDistribution.locked, false);
 
         const distribution = await salaryService.distributeMonthlyFixedSalary({
             studioId: 1,
@@ -152,6 +193,10 @@ test('salary service supports preview/execute, studio isolation, and one-time mo
         assert.equal(distribution.adjustmentCount, 1);
         assert.equal(distribution.totalAmount, 3000);
         assert.equal((await get("SELECT COUNT(*) AS count FROM salary_batches WHERE studio_id = 1 AND status='committed' AND batch_month='2026-10'" )).count, 1);
+
+        const afterDistribution = await salaryService.getMonthlyDistributionStatus({ studioId: 1, month: '2026-10' });
+        assert.equal(afterDistribution.locked, true);
+        assert.match(afterDistribution.message, /已完成派發/);
 
         await assert.rejects(() => salaryService.distributeMonthlyFixedSalary({
             studioId: 1,

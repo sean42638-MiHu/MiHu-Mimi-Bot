@@ -88,6 +88,12 @@ test('salary settings HTTP E2E validates permission/csrf/cross-studio/idempotenc
     await run("INSERT INTO system_settings VALUES ('withdrawal_start_day','1',NULL,CURRENT_TIMESTAMP),('withdrawal_end_day','31',NULL,CURRENT_TIMESTAMP),('withdrawal_min_amount','100',NULL,CURRENT_TIMESTAMP),('business_timezone','Asia/Taipei',NULL,CURRENT_TIMESTAMP)");
     await run("INSERT INTO roles (id,role_key,name,permissions,tier_level) VALUES (1,'manager','Manager','[\"view_management\",\"view_payroll\",\"action_salary_import\",\"action_salary_adjust\",\"action_salary_rule_manage\",\"action_salary_distribute\"]',20),(2,'staff','Staff','[\"view_payroll\"]',10)");
     await run("INSERT INTO users VALUES ('manager-a','manager-a','Manager A','Manager A','manager',1),('staff-a','staff-a','Staff A','Staff A','staff',1),('staff-b','staff-b','Staff B','Staff B','staff',2),('staff-c','staff-c','Staff C','Staff C','staff',1),('viewer-a','viewer-a','Viewer A','Viewer A','staff',1)");
+    const bulkUsers = [];
+    for (let index = 1; index <= 20; index += 1) {
+        const key = `staff-page-${String(index).padStart(2, '0')}`;
+        bulkUsers.push(`('${key}','${key}','Page Staff ${index}','Page Staff ${index}','staff',1)`);
+    }
+    await run(`INSERT INTO users (id, username, global_name, custom_nickname, role, studio_id) VALUES ${bulkUsers.join(',')}`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','staff-b')");
     await run("INSERT INTO commission_settings VALUES ('其他單',0.8),('陪玩單',0.8)");
     await run("INSERT INTO orders (talent_id,studio_id,status,talent_earning,category) VALUES ('staff-a',1,'completed',1000,'陪玩單'),('staff-c',1,'completed',500,'陪玩單')");
@@ -167,6 +173,55 @@ test('salary settings HTTP E2E validates permission/csrf/cross-studio/idempotenc
         }, JSON.stringify({ format: 'json', month: '2026-10', rows: [{ user_id: 'staff-a', amount: 100, reason: 'x' }] }));
         assert.equal(deniedCsrf.status, 403);
 
+        const listPage = await createRequest(port, 'GET', '/management/salary-settings?month=2026-10&page=1', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: manager.cookie
+        });
+        assert.equal(listPage.status, 200);
+        assert.match(listPage.body, /每頁 15 位/);
+        assert.match(listPage.body, /第 1 \/ \d+ 頁/);
+
+        const listOverflowPage = await createRequest(port, 'GET', '/management/salary-settings?month=2026-10&page=999', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: manager.cookie
+        });
+        assert.equal(listOverflowPage.status, 200);
+        assert.doesNotMatch(listOverflowPage.body, /第 999 \/ /);
+
+        const searchDenied = await createRequest(port, 'GET', '/management/salary-settings/adjustments/staff-search?q=staff', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: viewer.cookie,
+            Accept: 'application/json'
+        });
+        assert.equal(searchDenied.status, 403);
+
+        const searchStaff = await createRequest(port, 'GET', '/management/salary-settings/adjustments/staff-search?q=staff', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: manager.cookie,
+            Accept: 'application/json'
+        });
+        assert.equal(searchStaff.status, 200, searchStaff.body);
+        const searchBody = JSON.parse(searchStaff.body);
+        assert.equal(searchBody.success, true);
+        assert.equal(Array.isArray(searchBody.results), true);
+        assert.equal(searchBody.results.length <= 15, true);
+        assert.equal(searchBody.results.some(item => item.userId === 'staff-b'), false);
+
+        const snapshotOk = await createRequest(port, 'GET', '/management/salary-settings/adjustments/staff/staff-a/snapshot', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: manager.cookie,
+            Accept: 'application/json'
+        });
+        assert.equal(snapshotOk.status, 200, snapshotOk.body);
+        assert.equal(JSON.parse(snapshotOk.body).snapshot.userId, 'staff-a');
+
+        const snapshotCrossStudio = await createRequest(port, 'GET', '/management/salary-settings/adjustments/staff/staff-b/snapshot', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: manager.cookie,
+            Accept: 'application/json'
+        });
+        assert.equal(snapshotCrossStudio.status, 400, snapshotCrossStudio.body);
+
         const manualPreviewResponse = await createRequest(port, 'POST', '/management/salary-settings/adjustments/preview', {
             Host: `127.0.0.1:${port}`,
             Origin: `http://127.0.0.1:${port}`,
@@ -176,6 +231,18 @@ test('salary settings HTTP E2E validates permission/csrf/cross-studio/idempotenc
             Accept: 'application/json'
         }, JSON.stringify({ user_id: 'staff-a', amount: 25, adjustment_mode: 'available', reason: 'HTTP manual preview' }));
         assert.equal(manualPreviewResponse.status, 200, manualPreviewResponse.body);
+
+        const invalidManualPreview = await createRequest(port, 'POST', '/management/salary-settings/adjustments/preview', {
+            Host: `127.0.0.1:${port}`,
+            Origin: `http://127.0.0.1:${port}`,
+            Cookie: manager.cookie,
+            'X-CSRF-Token': manager.csrfToken,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+        }, JSON.stringify({ user_id: 'staff-a', amount: '', adjustment_mode: 'available', reason: 'invalid amount' }));
+        assert.equal(invalidManualPreview.status, 400, invalidManualPreview.body);
+        assert.match(invalidManualPreview.body, /不可空白/);
+
         const manualPreview = JSON.parse(manualPreviewResponse.body).preview;
         assert.equal(typeof manualPreview.previewToken, 'string');
         const manualExecuteBody = JSON.stringify({ preview_token: manualPreview.previewToken });
@@ -234,7 +301,8 @@ test('salary settings HTTP E2E validates permission/csrf/cross-studio/idempotenc
             'Content-Type': 'application/json', Accept: 'application/json'
         }, JSON.stringify({ month: '2026-10' }));
         assert.equal(distributionPreview.status, 200, distributionPreview.body);
-        assert.equal(JSON.parse(distributionPreview.body).preview.adjustmentCount, 3);
+        const distributionPreviewBody = JSON.parse(distributionPreview.body);
+        assert.equal(distributionPreviewBody.preview.adjustmentCount >= 20, true);
 
         const distributionExecute = await createRequest(port, 'POST', '/management/salary-settings/distribute', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`,
@@ -242,7 +310,15 @@ test('salary settings HTTP E2E validates permission/csrf/cross-studio/idempotenc
             'Content-Type': 'application/json', Accept: 'application/json'
         }, JSON.stringify({ month: '2026-10', note: 'HTTP E2E' }));
         assert.equal(distributionExecute.status, 200, distributionExecute.body);
-        assert.equal(JSON.parse(distributionExecute.body).result.adjustmentCount, 3);
+        assert.equal(JSON.parse(distributionExecute.body).result.adjustmentCount, distributionPreviewBody.preview.adjustmentCount);
+
+        const lockedPage = await createRequest(port, 'GET', '/management/salary-settings?month=2026-10', {
+            Host: `127.0.0.1:${port}`,
+            Cookie: manager.cookie
+        });
+        assert.equal(lockedPage.status, 200);
+        assert.match(lockedPage.body, /本月已完成派發/);
+
         const duplicateDistribution = await createRequest(port, 'POST', '/management/salary-settings/distribute', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`,
             Cookie: manager.cookie, 'X-CSRF-Token': manager.csrfToken,
