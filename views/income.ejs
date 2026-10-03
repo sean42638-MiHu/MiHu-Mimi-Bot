@@ -820,6 +820,8 @@
         <% const minimumWithdrawalAmount = Number(payoutOverview.settings.minimumAmount); %>
         <% const withdrawalGate = payoutOverview.withdrawalGate || { allowed: false, reasons: [] }; %>
         <% const withdrawalReasons = Array.isArray(withdrawalGate.reasons) ? withdrawalGate.reasons : []; %>
+        <% const hasAccountMissingReason = withdrawalReasons.some(reason => String(reason && reason.code || '') === 'ACCOUNT_MISSING'); %>
+        <% const visibleWithdrawalReasons = withdrawalReasons.filter(reason => String(reason && reason.code || '') !== 'ACCOUNT_MISSING'); %>
         <% const withdrawalStatus = payoutOverview.windowOpen ? '開放中' : '未開放'; %>
         <% const processingAmount = Number(payoutOverview.pendingAmount || 0).toLocaleString(); %>
         <% const periodStartDay = Number(payoutOverview.settings && payoutOverview.settings.startDay || 1); %>
@@ -841,7 +843,7 @@
                         data-available="<%= Number(payoutOverview.availableAmount) %>"
                         data-minimum="<%= minimumWithdrawalAmount %>"
                         data-gate-allowed="<%= withdrawalGate.allowed ? 'true' : 'false' %>"
-                        data-gate-reasons="<%- JSON.stringify(withdrawalReasons) %>"
+                        data-gate-reasons="<%= encodeURIComponent(JSON.stringify(withdrawalReasons)) %>"
                         data-refresh-url="/api/withdrawals"
                         data-profile-url="/profile"
                         data-timezone="<%= payoutOverview.settings.timeZone %>"
@@ -874,16 +876,20 @@
                 <p class="withdrawal-card-note">• 非玉山銀行 (808) 帳戶設為薪轉，可能會需要負擔跨行轉帳手續費。</p>
             </div>
             <div class="withdrawal-card-notes mt-2" id="withdrawalGateNotice" aria-live="polite">
-                <% if (withdrawalReasons.length) { %>
-                    <% withdrawalReasons.forEach(reason => { %>
+                <% if (visibleWithdrawalReasons.length) { %>
+                    <% visibleWithdrawalReasons.forEach(reason => { %>
                         <p class="withdrawal-card-note" data-gate-item="true">• <%= reason.message %>
                             <% if (reason.actionUrl) { %>
                                 <a href="<%= reason.actionUrl %>" class="ms-1 text-info text-decoration-underline"><%= reason.actionText || '前往設定' %></a>
                             <% } %>
                         </p>
                     <% }) %>
-                <% } else { %>
+                <% } else if (hasAccountMissingReason) { %>
+                    <p class="withdrawal-card-note" data-gate-item="true">• 需先完成帳戶設定，點擊「申請提款」查看提醒。</p>
+                <% } else if (withdrawalGate.allowed) { %>
                     <p class="withdrawal-card-note" data-gate-item="true">• 目前符合提款申請條件，可繼續下一步確認金額。</p>
+                <% } else { %>
+                    <p class="withdrawal-card-note" data-gate-item="true">• 目前不符合提款申請條件，請依提示調整後再試。</p>
                 <% } %>
                 <p class="withdrawal-card-note text-danger" id="withdrawalFrontendError" hidden></p>
             </div>
@@ -953,6 +959,34 @@
 
 <%- include('partials/income_withdrawal_modal', { payoutOverview: payoutOverview }) %>
 <%- include('modals/withdrawal_terms_modal', { settings: payoutOverview.settings }) %>
+<div class="modal fade" id="incompleteProfileModal" tabindex="-1" aria-hidden="true" style="z-index: 10050 !important;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: rgba(15, 23, 42, 0.95) !important; backdrop-filter: blur(16px); border: 1px solid rgba(255, 70, 85, 0.5) !important; border-radius: 14px; box-shadow: 0 0 30px rgba(255, 70, 85, 0.3); color: #f8fafc;">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255, 70, 85, 0.2); padding: 16px 20px;">
+                <h5 class="modal-title" style="font-size: 16px; font-weight: 700; color: #ff4655; display: flex; align-items: center; gap: 8px;">
+                    <span>⚠️️</span> 薪轉帳戶資料尚未完成
+                </h5>
+                <button type="button" class="btn-close btn-close-white" id="incompleteProfileModalClose" data-bs-dismiss="modal" onclick="window.__mihuHideIncompleteProfileModal && window.__mihuHideIncompleteProfileModal()" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="padding: 20px; font-size: 14px; color: #cbd5e1; line-height: 1.6;">
+                <p style="margin-bottom: 12px;">系統檢測到您的個人帳戶尚未完成設定。為確保撥款安全，請先補齊以下資訊：</p>
+                <ul style="color: #fde047; font-size: 13px; margin-bottom: 0; padding-left: 20px;">
+                    <li>真實姓名 (戶籍本名)</li>
+                    <li>銀行名稱、代碼與分行</li>
+                    <li>薪轉銀行帳號</li>
+                </ul>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn btn-sm" id="incompleteProfileModalDismiss" data-bs-dismiss="modal" onclick="window.__mihuHideIncompleteProfileModal && window.__mihuHideIncompleteProfileModal()" style="background: rgba(107, 114, 128, 0.3); color: #d1d5db; border: none; border-radius: 50px; padding: 6px 16px;">
+                    稍後再說
+                </button>
+                <a href="/profile" class="btn btn-sm" style="background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; border: none; border-radius: 50px; padding: 6px 20px; font-weight: 600; text-decoration: none; box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);">
+                    前往帳戶設定 ➔
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
 <%- include('partials/income_salary_detail_modal', {
     incomeDetail: incomeDetail || null,
     incomeMonthlySummary: incomeMonthlySummary || null,
@@ -988,6 +1022,9 @@
         const nextOpenValue = document.getElementById('withdrawalNextOpenValue');
         const pendingAmountValue = document.getElementById('withdrawalPendingAmountValue');
         const amountInput = document.getElementById('withdrawalAmount');
+        const incompleteProfileModalEl = document.getElementById('incompleteProfileModal');
+        const incompleteProfileModalClose = document.getElementById('incompleteProfileModalClose');
+        const incompleteProfileModalDismiss = document.getElementById('incompleteProfileModalDismiss');
 
         function showFrontendError(message) {
             if (!frontendError) return;
@@ -1008,25 +1045,116 @@
 
         const termsModal = bootstrap.Modal.getOrCreateInstance(termsModalEl);
         const amountModal = bootstrap.Modal.getOrCreateInstance(amountModalEl);
+        const incompleteProfileModal = incompleteProfileModalEl
+            ? bootstrap.Modal.getOrCreateInstance(incompleteProfileModalEl)
+            : null;
+        const accountMissingCode = ['ACCOUNT', 'MISSING'].join('_');
         let flowContext = 'READ_ONLY';
         let transitionPending = false;
         let continueToAmount = false;
 
-        function parseGateReasons() {
-            try {
-                const reasons = JSON.parse(applyButton.dataset.gateReasons || '[]');
-                return Array.isArray(reasons) ? reasons : [];
-            } catch {
-                return [];
+        function showIncompleteProfileBarrier() {
+            if (incompleteProfileModal) {
+                incompleteProfileModal.show();
+                return;
             }
+            showFrontendError('薪轉帳戶資料尚未完成，請先到個人檔案補齊本名與銀行資訊。');
+        }
+
+        function hideIncompleteProfileBarrier() {
+            if (incompleteProfileModal) incompleteProfileModal.hide();
+        }
+
+        window.__mihuHideIncompleteProfileModal = hideIncompleteProfileBarrier;
+
+        function parseGateReasonsWithMeta() {
+            try {
+                const raw = String(applyButton.dataset.gateReasons || '');
+                const decoded = raw ? decodeURIComponent(raw) : '[]';
+                const reasons = JSON.parse(decoded || '[]');
+                return {
+                    reasons: Array.isArray(reasons) ? reasons : [],
+                    parseOk: Array.isArray(reasons)
+                };
+            } catch {
+                return { reasons: [], parseOk: false };
+            }
+        }
+
+        function parseBooleanDataset(raw) {
+            if (raw === 'true') return true;
+            if (raw === 'false') return false;
+            return null;
+        }
+
+        function getGateSnapshot() {
+            const gateReasonsResult = parseGateReasonsWithMeta();
+            const reasons = gateReasonsResult.reasons;
+            const windowOpen = parseBooleanDataset(applyButton.dataset.windowOpen);
+            const bankReady = parseBooleanDataset(applyButton.dataset.bankReady);
+            const gateAllowed = parseBooleanDataset(applyButton.dataset.gateAllowed);
+            const available = Number(applyButton.dataset.available);
+            const minimum = Number(applyButton.dataset.minimum);
+            const hasAccountMissing = reasons.some(item => String(item && item.code || '') === accountMissingCode);
+            const otherReasons = reasons.filter(item => String(item && item.code || '') !== accountMissingCode);
+
+            const unknown = !gateReasonsResult.parseOk
+                || windowOpen === null
+                || bankReady === null
+                || gateAllowed === null
+                || !Number.isFinite(available)
+                || !Number.isFinite(minimum);
+
+            return {
+                unknown,
+                reasons,
+                otherReasons,
+                windowOpen,
+                bankReady,
+                gateAllowed,
+                available,
+                minimum,
+                hasAccountMissing
+            };
         }
 
         function renderGateReasons(reasons) {
             if (!gateNotice) return;
             gateNotice.querySelectorAll('[data-gate-item="true"]').forEach(node => node.remove());
 
-            const items = Array.isArray(reasons) ? reasons : [];
-            if (!items.length) {
+            const allReasons = Array.isArray(reasons) ? reasons : [];
+            const hasAccountMissing = allReasons.some(reason => String(reason && reason.code || '') === accountMissingCode);
+            const items = allReasons
+                .filter(reason => String(reason && reason.code || '') !== accountMissingCode);
+
+            if (items.length) {
+                for (const reason of items) {
+                    const line = document.createElement('p');
+                    line.className = 'withdrawal-card-note';
+                    line.dataset.gateItem = 'true';
+                    line.textContent = `• ${reason && reason.message ? reason.message : '目前不符合提款條件'}`;
+                    if (reason && reason.actionUrl) {
+                        const link = document.createElement('a');
+                        link.href = reason.actionUrl;
+                        link.className = 'ms-1 text-info text-decoration-underline';
+                        link.textContent = reason.actionText || '前往設定';
+                        line.appendChild(link);
+                    }
+                    gateNotice.insertBefore(line, frontendError || null);
+                }
+                return;
+            }
+
+            if (hasAccountMissing) {
+                const line = document.createElement('p');
+                line.className = 'withdrawal-card-note';
+                line.dataset.gateItem = 'true';
+                line.textContent = '• 需先完成帳戶設定，點擊「申請提款」查看提醒。';
+                gateNotice.insertBefore(line, frontendError || null);
+                return;
+            }
+
+            if (applyButton.dataset.gateAllowed === 'true') {
                 const ok = document.createElement('p');
                 ok.className = 'withdrawal-card-note';
                 ok.dataset.gateItem = 'true';
@@ -1035,20 +1163,11 @@
                 return;
             }
 
-            for (const reason of items) {
-                const line = document.createElement('p');
-                line.className = 'withdrawal-card-note';
-                line.dataset.gateItem = 'true';
-                line.textContent = `• ${reason && reason.message ? reason.message : '目前不符合提款條件'}`;
-                if (reason && reason.actionUrl) {
-                    const link = document.createElement('a');
-                    link.href = reason.actionUrl;
-                    link.className = 'ms-1 text-info text-decoration-underline';
-                    link.textContent = reason.actionText || '前往設定';
-                    line.appendChild(link);
-                }
-                gateNotice.insertBefore(line, frontendError || null);
-            }
+            const blocked = document.createElement('p');
+            blocked.className = 'withdrawal-card-note';
+            blocked.dataset.gateItem = 'true';
+            blocked.textContent = '• 目前不符合提款申請條件，請依提示調整後再試。';
+            gateNotice.insertBefore(blocked, frontendError || null);
         }
 
         function syncApplyStateFromOverview(overview) {
@@ -1060,7 +1179,7 @@
             applyButton.dataset.available = String(Number(overview.availableAmount || 0));
             applyButton.dataset.minimum = String(Number(overview.settings && overview.settings.minimumAmount || 0));
             applyButton.dataset.gateAllowed = allowed ? 'true' : 'false';
-            applyButton.dataset.gateReasons = JSON.stringify(Array.isArray(gate.reasons) ? gate.reasons : []);
+            applyButton.dataset.gateReasons = encodeURIComponent(JSON.stringify(Array.isArray(gate.reasons) ? gate.reasons : []));
             applyButton.setAttribute('aria-disabled', allowed ? 'false' : 'true');
             if (amountInput) {
                 amountInput.max = String(Number(overview.availableAmount || 0));
@@ -1100,8 +1219,11 @@
         }
 
         function renderGateReasonFallback() {
-            const reasons = parseGateReasons();
-            if (!reasons.length) return;
+            const reasons = getGateSnapshot().otherReasons;
+            if (!reasons.length) {
+                showFrontendError('目前不符合提款申請條件，請稍後重新整理後再試。');
+                return;
+            }
             showFrontendError(reasons.map(item => `• ${item.message}`).join(' '));
         }
 
@@ -1117,15 +1239,40 @@
         applyButton.addEventListener('click', () => {
             clearFrontendError();
             if (transitionPending) return;
-            const canRequest = applyButton.dataset.windowOpen === 'true'
-                && applyButton.dataset.bankReady === 'true'
-                && Number(applyButton.dataset.available) >= Number(applyButton.dataset.minimum);
-            if (!canRequest || applyButton.dataset.gateAllowed !== 'true') {
+
+            const gateSnapshot = getGateSnapshot();
+            if (gateSnapshot.unknown) {
+                showFrontendError('提款條件載入中或資料異常，請重新整理後再試。');
+                return;
+            }
+
+            if (!gateSnapshot.bankReady || gateSnapshot.hasAccountMissing) {
+                showIncompleteProfileBarrier();
+                return;
+            }
+
+            const canRequest = gateSnapshot.windowOpen
+                && gateSnapshot.available >= gateSnapshot.minimum;
+            if (!canRequest || !gateSnapshot.gateAllowed) {
                 renderGateReasonFallback();
                 return;
             }
             openTerms('WITHDRAWAL_GATE');
         });
+
+        if (incompleteProfileModalEl) {
+            if (incompleteProfileModalClose) {
+                incompleteProfileModalClose.addEventListener('click', hideIncompleteProfileBarrier);
+            }
+            if (incompleteProfileModalDismiss) {
+                incompleteProfileModalDismiss.addEventListener('click', hideIncompleteProfileBarrier);
+            }
+            incompleteProfileModalEl.addEventListener('hidden.bs.modal', () => {
+                window.setTimeout(() => {
+                    if (typeof applyButton.focus === 'function') applyButton.focus();
+                }, 0);
+            });
+        }
 
         termsModalEl.addEventListener('hidden.bs.modal', () => {
             transitionPending = false;
