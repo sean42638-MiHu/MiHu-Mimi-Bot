@@ -5,26 +5,30 @@
     </div>
 
     <div class="salary-overview-controls">
-        <form method="get" action="/management/salary-settings" class="salary-filter-form">
-            <div class="salary-filter-field salary-filter-month">
-                <label for="monthFilter">月份</label>
-                <input id="monthFilter" class="salary-filter-input" type="month" name="month" value="<%= month %>">
+        <form method="get" action="/management/salary-settings" class="salary-filter-form" style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; background: rgba(15, 23, 42, 0.4); padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(168, 85, 247, 0.15);">
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; flex: 1; min-width: 0;">
+                <div class="salary-filter-field salary-filter-month" style="min-width: 180px;">
+                    <label for="monthFilter" style="display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">查詢月份</label>
+                    <input id="monthFilter" class="salary-filter-input" type="month" name="month" value="<%= month %>" style="background: rgba(11, 9, 20, 0.7) !important; color: #f8fafc !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; border-radius: 8px !important; padding: 6px 12px !important; font-size: 13px !important; height: 38px;">
+                </div>
+                <div class="salary-filter-field salary-filter-search" style="min-width: 240px; flex: 1;">
+                    <label for="salarySearch" style="display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">搜尋員工 (暱稱 / ID)</label>
+                    <input id="salarySearch" class="salary-filter-input" type="text" name="q" value="<%= search || '' %>" placeholder="名稱、暱稱或 Discord ID..." style="background: rgba(11, 9, 20, 0.7) !important; color: #f8fafc !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; border-radius: 8px !important; padding: 6px 12px !important; font-size: 13px !important; height: 38px;">
+                </div>
             </div>
-            <div class="salary-filter-field salary-filter-search">
-                <label for="salarySearch">搜尋員工</label>
-                <input id="salarySearch" class="salary-filter-input" type="search" name="q" value="<%= search %>" placeholder="名稱、暱稱或 Discord ID">
-            </div>
-            <div class="salary-filter-actions">
-                <button class="btn salary-filter-submit" type="submit">套用篩選</button>
+            <div class="salary-filter-actions" style="align-self: flex-end; margin-top: 4px;">
+                <button class="btn salary-filter-submit" type="submit" style="background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #ffffff !important; border: none !important; border-radius: 8px !important; padding: 0 20px !important; height: 38px !important; font-size: 13px !important; font-weight: 600 !important; cursor: pointer; white-space: nowrap !important; box-shadow: 0 0 10px rgba(168, 85, 247, 0.3) !important;">
+                    套用篩選
+                </button>
             </div>
         </form>
 
-        <div class="salary-distribute-status <%= distStatus.locked ? 'is-locked' : 'is-open' %>">
-            <div class="salary-distribute-title">
-                <span class="salary-distribute-title-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+        <div class="salary-distribute-status <%= distStatus.locked ? 'is-locked' : 'is-open' %>" style="margin-top: 16px; margin-bottom: 20px; background: rgba(30, 41, 59, 0.5) !important; border-left: 4px solid #a855f7 !important; border-radius: 8px !important; padding: 12px 16px !important; box-shadow: 0 2px 10px rgba(0,0,0,0.2);">
+            <div class="salary-distribute-title" style="font-size: 14px; font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 8px;">
+                <span class="salary-distribute-title-icon" aria-hidden="true" style="color: #c084fc;">ℹ️</span>
                 <span><%= distStatus.message %></span>
             </div>
-            <div class="salary-distribute-description">規則：<%= distStatus.totalRules %>，已完成：<%= distStatus.committedRules %>，待派發：<%= distStatus.pendingRules %></div>
+            <div class="salary-distribute-description" style="font-size: 12px; color: #94a3b8; margin-top: 4px;">規則：<%= distStatus.totalRules %> ｜ 已完成：<%= distStatus.committedRules %> ｜ 待派發：<%= distStatus.pendingRules %></div>
         </div>
     </div>
 
