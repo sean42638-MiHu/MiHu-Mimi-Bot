@@ -697,8 +697,6 @@
         <% const minimumWithdrawalAmount = Number(payoutOverview.settings.minimumAmount); %>
         <% const withdrawalGate = payoutOverview.withdrawalGate || { allowed: false, reasons: [] }; %>
         <% const withdrawalReasons = Array.isArray(withdrawalGate.reasons) ? withdrawalGate.reasons : []; %>
-        <% const summaryRows = (incomeMonthlySummary && Array.isArray(incomeMonthlySummary.rows)) ? incomeMonthlySummary.rows : []; %>
-        <% const monthlyTotals = (incomeMonthlySummary && incomeMonthlySummary.totals) ? incomeMonthlySummary.totals : { monthlyNetAmount: 0, paidAmount: 0, pendingAmount: 0, availableAmount: 0 }; %>
         <section class="withdrawal-card-shell" aria-labelledby="withdrawalCardTitle">
             <div class="withdrawal-card-header">
                 <div class="withdrawal-card-heading">
@@ -772,64 +770,16 @@
         <section class="income-summary-shell" aria-labelledby="incomeSummaryTitle">
             <div class="income-summary-header">
                 <div>
-                    <h5 class="text-white mb-1" id="incomeSummaryTitle"><i class="fa-solid fa-chart-column text-warning me-2"></i>薪資與分潤明細（按項目類別歸納）</h5>
-                    <p class="income-summary-sub">本表顯示當月收入與扣減分類；「本月薪資淨額」為 signed 加總，並不等於已撥款實領。</p>
+                    <h5 class="text-white mb-1" id="incomeSummaryTitle"><i class="fa-solid fa-chart-column text-warning me-2"></i>薪資與分潤明細</h5>
+                    <p class="income-summary-sub">明細、分類統計與分頁已整合到同一個薪資明細視窗。</p>
                 </div>
                 <div class="income-summary-actions">
-                    <label for="incomeSummaryMonthInput" class="income-summary-month-label">月份</label>
-                    <input id="incomeSummaryMonthInput" class="form-control form-control-sm" type="month" value="<%= incomeSummaryMonth %>" max="2099-12" min="2020-01">
+                    <button type="button" class="btn btn-outline-warning rounded-pill px-3 py-2 small fw-semibold" data-bs-toggle="modal" data-bs-target="#incomeLedgerModal" id="openIncomeLedgerButton">
+                        <i class="fa-solid fa-file-invoice-dollar me-1"></i>
+                        <span>薪資與分潤明細</span>
+                    </button>
                 </div>
             </div>
-            <div class="income-summary-kpis">
-                <span class="income-summary-kpi">本月薪資淨額：<strong id="incomeMonthlyNetAmount">$<%= Number(monthlyTotals.monthlyNetAmount || 0).toLocaleString() %></strong></span>
-                <span class="income-summary-kpi">已實領：<strong id="incomePaidAmount">$<%= Number(monthlyTotals.paidAmount || 0).toLocaleString() %></strong></span>
-                <span class="income-summary-kpi">可提領：<strong id="incomeAvailableAmount">$<%= Number(monthlyTotals.availableAmount || 0).toLocaleString() %></strong></span>
-            </div>
-            <div class="income-summary-contract small" id="incomeSummaryContractNotice">
-                <% if (incomeMonthlySummary && Array.isArray(incomeMonthlySummary.limitations)) { %>
-                    <% incomeMonthlySummary.limitations.forEach(item => { %>
-                        <p class="mb-1">• <%= item %></p>
-                    <% }) %>
-                <% } %>
-            </div>
-            <div class="table-responsive income-summary-table-wrap">
-                <table class="table table-dark table-sm align-middle mb-0 income-summary-table" id="incomeSummaryTable">
-                    <thead>
-                        <tr>
-                            <th>收入／扣款類別</th>
-                            <th class="text-center">筆數／單數</th>
-                            <th class="text-end">總金額</th>
-                            <th>說明</th>
-                            <th class="text-center">查看明細</th>
-                        </tr>
-                    </thead>
-                    <tbody id="incomeSummaryTableBody">
-                        <% if (!summaryRows.length) { %>
-                            <tr><td colspan="5" class="text-center py-3 text-secondary">本月沒有可顯示的薪資與分潤項目</td></tr>
-                        <% } %>
-                        <% summaryRows.forEach(item => { %>
-                            <% const signedAmount = Number(item.totalAmount || 0); %>
-                            <% const signedClass = signedAmount > 0 ? 'income-amount-positive' : (signedAmount < 0 ? 'income-amount-negative' : 'income-amount-zero'); %>
-                            <tr>
-                                <td><span class="income-category-chip"><%= item.category %></span></td>
-                                <td class="text-center"><%= item.countLabel %></td>
-                                <td class="text-end <%= signedClass %>"><%= signedAmount > 0 ? '+' : '' %>$<%= Math.abs(signedAmount).toLocaleString() %></td>
-                                <td><%= (item.descriptions || []).join('、') || '-' %></td>
-                                <td class="text-center">
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-warning income-open-detail"
-                                        data-source-type="<%= item.sourceType %>"
-                                        data-category="<%= item.category %>">
-                                        查看明細
-                                    </button>
-                                </td>
-                            </tr>
-                        <% }) %>
-                    </tbody>
-                </table>
-            </div>
-            <p class="text-danger small mt-2 mb-0" id="incomeSummaryError" hidden></p>
         </section>
 
         <!-- 🚀 2. 我的接單管理中心 -->
@@ -843,10 +793,6 @@
 
             <!-- 右側操作按鈕群 (支援主動點擊相容性) -->
             <div class="d-flex align-items-center gap-3">
-                <button type="button" class="btn btn-outline-warning rounded-pill px-3 py-2 small fw-semibold" data-bs-toggle="modal" data-bs-target="#incomeLedgerModal" id="openIncomeLedgerButton">
-                    <i class="fa-solid fa-file-invoice-dollar me-1"></i>
-                    <span>薪資與分潤明細</span>
-                </button>
                 <button type="button" class="btn btn-income-info" data-bs-toggle="modal" data-bs-target="#commissionRatesModal">
                     <i class="fa-solid fa-circle-info text-info"></i>
                     <span>當前分潤成數表</span>
@@ -864,7 +810,12 @@
 
 <%- include('partials/income_withdrawal_modal', { payoutOverview: payoutOverview }) %>
 <%- include('modals/withdrawal_terms_modal', { settings: payoutOverview.settings }) %>
-<%- include('partials/income_salary_detail_modal', { incomeDetail: incomeDetail || null, openIncomeDetailModal: openIncomeDetailModal === true }) %>
+<%- include('partials/income_salary_detail_modal', {
+    incomeDetail: incomeDetail || null,
+    incomeMonthlySummary: incomeMonthlySummary || null,
+    incomeSummaryMonth: incomeSummaryMonth || '',
+    openIncomeDetailModal: openIncomeDetailModal === true
+}) %>
 <%- include('modals/income_category_detail_modal') %>
 
 <!-- 🚀 3. 載入獨立模組：分潤成數彈窗 -->
@@ -1254,6 +1205,9 @@
                     event.preventDefault();
                     return;
                 }
+                if (ledgerSummaryMonthHidden && summaryMonthInput) {
+                    ledgerSummaryMonthHidden.value = summaryMonthInput.value || '';
+                }
                 incomeLedgerSubmitting = true;
                 if (incomeLedgerLoadingState) incomeLedgerLoadingState.hidden = false;
                 incomeLedgerUpdateButton.disabled = true;
@@ -1270,6 +1224,11 @@
         if (shouldOpenIncomeDetailModal) safeShowModal('incomeLedgerModal');
 
         const summaryMonthInput = document.getElementById('incomeSummaryMonthInput');
+        const ledgerModalEl = document.getElementById('incomeLedgerModal');
+        const ledgerModal = ledgerModalEl && window.bootstrap?.Modal
+            ? bootstrap.Modal.getOrCreateInstance(ledgerModalEl)
+            : null;
+        const ledgerSummaryMonthHidden = document.querySelector('#incomeLedgerModal input[name="summary_month"]');
         const summaryTableBody = document.getElementById('incomeSummaryTableBody');
         const summaryError = document.getElementById('incomeSummaryError');
         const summaryContract = document.getElementById('incomeSummaryContractNotice');
@@ -1297,6 +1256,10 @@
             requestSeq: 0
         };
         let categoryDetailTriggerButton = null;
+        const categoryDetailFlowState = {
+            returnToLedger: false,
+            triggerEl: null
+        };
         let summaryRequestSeq = 0;
 
         function setSummaryError(message) {
@@ -1509,15 +1472,46 @@
             detailState.category = String(trigger.getAttribute('data-category') || '').trim();
             detailState.month = summaryMonthInput ? summaryMonthInput.value : detailState.month;
             detailState.page = 1;
-            if (categoryModal) {
-                categoryModal.show();
-            } else {
-                safeShowModal('incomeCategoryDetailModal');
+
+            const openCategoryModal = () => {
+                if (categoryModal) {
+                    categoryModal.show();
+                } else {
+                    safeShowModal('incomeCategoryDetailModal');
+                }
+                loadCategoryDetails();
+            };
+
+            const ledgerIsOpen = Boolean(ledgerModalEl && ledgerModalEl.classList.contains('show'));
+            if (ledgerIsOpen && ledgerModal) {
+                categoryDetailFlowState.returnToLedger = true;
+                categoryDetailFlowState.triggerEl = trigger;
+                ledgerModalEl.addEventListener('hidden.bs.modal', openCategoryModal, { once: true });
+                ledgerModal.hide();
+                return;
             }
-            loadCategoryDetails();
+
+            categoryDetailFlowState.returnToLedger = false;
+            categoryDetailFlowState.triggerEl = trigger;
+            openCategoryModal();
         });
 
         categoryModalEl?.addEventListener('hidden.bs.modal', () => {
+            if (categoryDetailFlowState.returnToLedger && ledgerModal && ledgerModalEl) {
+                const focusTarget = categoryDetailFlowState.triggerEl;
+                categoryDetailFlowState.returnToLedger = false;
+                categoryDetailFlowState.triggerEl = null;
+                ledgerModalEl.addEventListener('shown.bs.modal', () => {
+                    window.setTimeout(() => {
+                        if (focusTarget && typeof focusTarget.focus === 'function') {
+                            focusTarget.focus();
+                        }
+                    }, 120);
+                }, { once: true });
+                ledgerModal.show();
+                return;
+            }
+
             if (categoryDetailTriggerButton && typeof categoryDetailTriggerButton.focus === 'function') {
                 categoryDetailTriggerButton.focus();
             }
@@ -1541,6 +1535,7 @@
                 setSummaryError('月份格式無效，請使用 YYYY-MM');
                 return;
             }
+            if (ledgerSummaryMonthHidden) ledgerSummaryMonthHidden.value = selectedMonth;
             refreshIncomeSummary(selectedMonth);
         });
 
