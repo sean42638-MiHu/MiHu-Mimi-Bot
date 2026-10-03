@@ -10,6 +10,7 @@ const { withTransactionGate } = require('../../utils/transactionGate');
 const { hasResolvedPermission } = require('../../utils/permissionResolver');
 const { listRoles, listStaffDirectory } = require('../../services/staffDirectoryService');
 const { authorizeRoleAssignment, canAssignRole, isRoleDelegationError, loadActorContext } = require('../../services/roleDelegationService');
+const { consumeStaffSensitiveStepUp } = require('../../utils/staffSensitiveVerification');
 
 const payrollSensitiveFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 
@@ -102,6 +103,15 @@ router.post('/:id/sensitive-data', ensureAuth, async (req, res) => {
                 kind: 'action',
                 feature: '員工敏感資料'
             });
+        }
+
+        if (!consumeStaffSensitiveStepUp(req, {
+            userId: actor.id,
+            actorStudioId,
+            targetStaffId: targetStaff.id,
+            targetStudioId
+        })) {
+            return res.status(401).json({ success: false, message: '敏感資料驗證未完成或已逾時，請重新驗證' });
         }
 
         const decrypted = decryptSensitiveFields(targetStaff, payrollSensitiveFields);

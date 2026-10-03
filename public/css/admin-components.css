@@ -404,6 +404,18 @@
 .admin-confirm-modal__icon--warning { color: #fde047; }
 .admin-confirm-modal__icon--danger { color: #f87171; }
 .admin-confirm-modal__message { margin: 0; color: #cbd5e1; font-size: .86rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+#sensitiveDataVerifyModal {
+	z-index: 10050;
+}
+
+#sensitiveDataVerifyModal .modal-dialog {
+	z-index: 10051;
+}
+
+body.sensitive-verify-open .modal-backdrop.sensitive-verify-backdrop {
+	z-index: 10040;
+}
 .admin-access-denied-modal__content { color: #f8fafc; background: rgba(24, 10, 20, .98); border: 1px solid rgba(248, 113, 113, .55); border-radius: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.7), 0 0 28px rgba(239,68,68,.2); }
 .admin-access-denied-modal__content .modal-header { border-bottom-color: rgba(248,113,113,.18); }
 .admin-access-denied-modal__content .modal-footer { gap: 8px; border-top-color: rgba(248,113,113,.18); }

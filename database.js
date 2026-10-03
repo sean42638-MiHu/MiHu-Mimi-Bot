@@ -1085,6 +1085,22 @@ function initializeDatabase({ explicitMigration = false } = {}) {
     `);
 
     db.run(`
+        CREATE TABLE IF NOT EXISTS staff_sensitive_email_verifications (
+            user_id TEXT NOT NULL,
+            target_staff_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            expires_at DATETIME NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            used_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, target_staff_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_staff_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    db.run(`
         CREATE TABLE IF NOT EXISTS audit_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             operator_id TEXT,

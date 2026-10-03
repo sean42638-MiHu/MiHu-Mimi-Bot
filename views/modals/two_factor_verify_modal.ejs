@@ -1,0 +1,28 @@
+<div class="modal fade admin-modal" id="sensitiveDataVerifyModal" tabindex="-1" aria-labelledby="sensitiveDataVerifyTitle" aria-describedby="sensitiveDataVerifyMessage" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered admin-modal-dialog admin-modal-dialog--sm">
+        <div class="modal-content modal-content-glass admin-modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="sensitiveDataVerifyTitle">
+                    <i class="fa-solid fa-shield-halved text-warning"></i>
+                    <span>查看敏感資料確認</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body admin-modal-body py-3">
+                <p class="text-secondary small mb-3" id="sensitiveDataVerifyMessage">請先完成 Email 驗證碼確認後，再查看敏感資料。</p>
+                <div class="mb-2">
+                    <label for="sensitiveVerifyCode" class="small text-secondary fw-semibold mb-1">Email 驗證碼</label>
+                    <div class="d-flex gap-2 align-items-center">
+                        <input type="text" id="sensitiveVerifyCode" class="form-control form-control-glass admin-form-control" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" placeholder="請輸入 6 位數驗證碼" maxlength="6">
+                        <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-3 text-nowrap" id="sendSensitiveVerifyCodeBtn">寄送驗證碼</button>
+                    </div>
+                </div>
+                <div id="sensitiveVerifyError" class="small text-danger mt-2" hidden></div>
+            </div>
+            <div class="modal-footer admin-modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal" id="cancelSensitiveVerifyBtn">取消</button>
+                <button type="button" class="btn btn-sm btn-warning rounded-pill px-4 fw-semibold" id="confirmVerifyBtn">確認查看</button>
+            </div>
+        </div>
+    </div>
+</div>
