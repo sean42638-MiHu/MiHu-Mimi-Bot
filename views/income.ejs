@@ -255,6 +255,24 @@
         .withdrawal-card-period { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(125, 211, 252, 0.28); border-radius: 8px; color: #bae6fd; background: rgba(56, 189, 248, 0.07); font-size: 0.9rem; }
         .withdrawal-card-notes { display: grid; gap: 5px; margin-top: 15px; }
         .withdrawal-card-note { margin: 0; color: #94a3b8; font-size: 0.8rem; line-height: 1.5; }
+        .withdrawal-history-wrap {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+        .withdrawal-history-wrap .withdrawal-history-table {
+            width: max-content;
+            min-width: 720px;
+            table-layout: auto;
+            margin-bottom: 0;
+        }
+        .withdrawal-history-wrap .withdrawal-history-table thead th {
+            white-space: nowrap;
+            word-break: keep-all;
+            overflow-wrap: normal;
+        }
 
         .income-summary-shell {
             margin-bottom: 24px;
