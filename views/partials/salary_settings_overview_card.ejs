@@ -1,14 +1,8 @@
-<section class="admin-panel salary-section salary-overview-panel mb-4 p-3 p-lg-4 rounded-3">
+<section class="admin-panel salary-section salary-overview-panel mb-4 p-3 p-lg-4 rounded-3" style="background:linear-gradient(160deg, rgba(30, 20, 52, 0.9), rgba(11, 9, 24, 0.95));border:1px solid rgba(196, 129, 255, 0.34);box-shadow:0 24px 44px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.04);backdrop-filter:blur(12px);">
     <div class="salary-overview-head mb-3">
         <div>
             <h2 class="h5 mb-1">本月薪資總覽 <span class="text-secondary">(<%= month %>)</span></h2>
             <p class="small text-secondary mb-0">共 <%= totalStaff %> 位員工，每頁 <%= pageSize || 15 %> 位</p>
-        </div>
-        <div class="salary-toolbar-actions" role="group" aria-label="薪資設定工具列">
-            <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#adjustSalaryModal" <%= canSalaryAdjust ? '' : 'disabled aria-disabled="true" title="缺少手動調整權限"' %>>新增薪資調整</button>
-            <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#monthlySalaryRulesModal" <%= canSalaryRuleManage ? '' : 'disabled aria-disabled="true" title="缺少固定月薪規則權限"' %>>固定月薪規則</button>
-            <button type="button" class="btn salary-tool-btn salary-tool-btn-warning" data-bs-toggle="modal" data-bs-target="#distributeBaseSalaryModal" <%= canSalaryDistribute ? '' : 'disabled aria-disabled="true" title="缺少派發權限"' %>>派發本月底薪</button>
-            <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#batchImportSalaryModal" <%= canSalaryImport ? '' : 'disabled aria-disabled="true" title="缺少匯入權限"' %>>CSV / XLSX 匯入</button>
         </div>
     </div>
 
@@ -118,7 +112,7 @@
 <section class="admin-panel salary-section p-3 p-lg-4 rounded-3">
     <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
         <h2 class="h6 mb-0">最近調整摘要</h2>
-        <button type="button" class="btn btn-sm salary-tool-btn" id="openFullSalaryHistoryButton">開啟完整調整紀錄</button>
+        <span class="small text-secondary">完整明細可由頁面頂部操作列開啟</span>
     </div>
     <div class="small text-secondary mb-2">顯示最近 <%= Math.min(5, recentAdjustments.length) %> 筆，完整資料可在「調整紀錄」查詢與分頁。</div>
     <div class="salary-latest-feed">
