@@ -404,17 +404,29 @@
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-content {
-            background: rgba(10, 7, 22, 0.95);
+            background: #120a1f;
             border: 1px solid rgba(168, 85, 247, 0.4);
             box-shadow: 0 0 25px rgba(168, 85, 247, 0.3);
             color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-header,
         #incomeLedgerModal.income-ledger-modal .modal-body,
         #incomeLedgerModal.income-ledger-modal .modal-footer {
-            background: rgba(10, 7, 22, 0.95);
+            background: #120a1f;
             border-color: rgba(168, 85, 247, 0.24);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .modal-body {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-header {
@@ -591,6 +603,13 @@
             overflow-x: auto;
         }
 
+        #incomeLedgerModal.income-ledger-modal .income-ledger-table-scroller {
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
+
         #incomeLedgerModal.income-ledger-modal .income-ledger-table {
             min-width: 640px;
             color: #e2e8f0;
@@ -739,6 +758,11 @@
         }
 
         @media (max-width: 390px) {
+            #incomeLedgerModal.income-ledger-modal .modal-body {
+                max-height: calc(100vh - 150px);
+                padding: 16px;
+            }
+
             #incomeLedgerModal.income-ledger-modal .income-ledger-filter-summary {
                 text-align: left;
                 width: 100%;
@@ -1310,7 +1334,7 @@
             ? bootstrap.Modal.getOrCreateInstance(ledgerModalEl)
             : null;
         const ledgerSummaryMonthHidden = document.querySelector('#incomeLedgerModal input[name="summary_month"]');
-        const summaryTableBody = document.getElementById('incomeSummaryTableBody');
+        const ledgerRowsBody = document.getElementById('incomeLedgerRowsBody');
         const summaryError = document.getElementById('incomeSummaryError');
         const summaryContract = document.getElementById('incomeSummaryContractNotice');
         const monthlyNetAmountEl = document.getElementById('incomeMonthlyNetAmount');
@@ -1337,12 +1361,59 @@
             loading: false,
             requestSeq: 0
         };
-        let categoryDetailTriggerButton = null;
         const categoryDetailFlowState = {
             returnToLedger: false,
-            triggerEl: null
+            triggerEl: null,
+            triggerSourceType: '',
+            triggerCategory: '',
+            triggerFocusToken: '',
+            pendingOpenCategory: false,
+            pendingFocusRestore: false
         };
-        let summaryRequestSeq = 0;
+        let triggerFocusTokenSeq = 0;
+        const cssEscape = (window.CSS && typeof window.CSS.escape === 'function')
+            ? value => window.CSS.escape(String(value || ''))
+            : value => String(value || '').replace(/["\\]/g, '\\$&');
+
+        function tagTriggerForRestore(trigger) {
+            if (!trigger || typeof trigger.setAttribute !== 'function') return;
+            triggerFocusTokenSeq += 1;
+            const token = `income-trigger-${triggerFocusTokenSeq}`;
+            trigger.setAttribute('data-income-focus-token', token);
+            categoryDetailFlowState.triggerFocusToken = token;
+        }
+
+        function resolveTriggerForRestore() {
+            if (ledgerRowsBody && categoryDetailFlowState.triggerFocusToken) {
+                const byToken = ledgerRowsBody.querySelector(`.income-open-detail[data-income-focus-token="${cssEscape(categoryDetailFlowState.triggerFocusToken)}"]`);
+                if (byToken) return byToken;
+            }
+
+            if (ledgerRowsBody && (categoryDetailFlowState.triggerSourceType || categoryDetailFlowState.triggerCategory)) {
+                const byData = ledgerRowsBody.querySelector(
+                    `.income-open-detail[data-source-type="${cssEscape(categoryDetailFlowState.triggerSourceType)}"][data-category="${cssEscape(categoryDetailFlowState.triggerCategory)}"]`
+                );
+                if (byData) return byData;
+            }
+
+            return categoryDetailFlowState.triggerEl;
+        }
+
+        function restoreTriggerFocus() {
+            const target = resolveTriggerForRestore();
+            if (!target || typeof target.focus !== 'function') return false;
+            target.focus({ preventScroll: true });
+            return document.activeElement === target;
+        }
+
+        function openCategoryModal() {
+            if (categoryModal) {
+                categoryModal.show();
+            } else {
+                safeShowModal('incomeCategoryDetailModal');
+            }
+            loadCategoryDetails();
+        }
 
         function setSummaryError(message) {
             if (!summaryError) return;
@@ -1361,53 +1432,6 @@
             if (amount > 0) return { text: `+$${absText}`, cls: 'income-amount-positive' };
             if (amount < 0) return { text: `-$${absText}`, cls: 'income-amount-negative' };
             return { text: `$${absText}`, cls: 'income-amount-zero' };
-        }
-
-        function renderSummaryRows(rows) {
-            if (!summaryTableBody) return;
-            summaryTableBody.innerHTML = '';
-            if (!Array.isArray(rows) || rows.length === 0) {
-                const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="5" class="text-center py-3 text-secondary">本月沒有可顯示的薪資與分潤項目</td>';
-                summaryTableBody.appendChild(tr);
-                return;
-            }
-
-            rows.forEach(item => {
-                const signed = formatSignedAmount(item.totalAmount);
-                const tr = document.createElement('tr');
-                const desc = Array.isArray(item.descriptions) && item.descriptions.length ? item.descriptions.join('、') : '-';
-                const categoryTd = document.createElement('td');
-                const categoryChip = document.createElement('span');
-                categoryChip.className = 'income-category-chip';
-                categoryChip.textContent = item.category || '未分類收入';
-                categoryTd.appendChild(categoryChip);
-
-                const countTd = document.createElement('td');
-                countTd.className = 'text-center';
-                countTd.textContent = item.countLabel || `${Number(item.count || 0)} 筆`;
-
-                const amountTd = document.createElement('td');
-                amountTd.className = `text-end ${signed.cls}`;
-                amountTd.textContent = signed.text;
-
-                const descTd = document.createElement('td');
-                descTd.className = 'income-summary-col-desc';
-                descTd.textContent = desc;
-
-                const actionTd = document.createElement('td');
-                actionTd.className = 'income-summary-col-action';
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn btn-sm income-neon-detail-btn income-open-detail';
-                btn.setAttribute('data-source-type', item.sourceType || '');
-                btn.setAttribute('data-category', item.category || '');
-                btn.textContent = '查看明細';
-                actionTd.appendChild(btn);
-
-                tr.append(categoryTd, countTd, amountTd, descTd, actionTd);
-                summaryTableBody.appendChild(tr);
-            });
         }
 
         function renderLimitations(limitations) {
@@ -1429,28 +1453,7 @@
             if (paidAmountEl) paidAmountEl.textContent = `$${Number(totals.paidAmount || 0).toLocaleString()}`;
             if (pendingAmountEl) pendingAmountEl.textContent = `$${Number(totals.pendingAmount || 0).toLocaleString()}`;
             if (availableAmountEl) availableAmountEl.textContent = `$${Number(totals.availableAmount || 0).toLocaleString()}`;
-            renderSummaryRows(snapshot && Array.isArray(snapshot.rows) ? snapshot.rows : []);
             renderLimitations(snapshot && snapshot.limitations ? snapshot.limitations : []);
-        }
-
-        async function refreshIncomeSummary(month) {
-            const currentSeq = ++summaryRequestSeq;
-            setSummaryError('');
-            try {
-                const response = await fetch(`/api/income/monthly-summary?month=${encodeURIComponent(month)}`, {
-                    headers: { Accept: 'application/json' },
-                    credentials: 'same-origin'
-                });
-                const payload = await response.json();
-                if (currentSeq !== summaryRequestSeq) return;
-                if (!response.ok || payload.success !== true || !payload.summary) {
-                    throw new Error(payload && payload.message ? payload.message : '無法更新收入摘要');
-                }
-                renderSummary(payload.summary);
-            } catch (error) {
-                if (currentSeq !== summaryRequestSeq) return;
-                setSummaryError(error.message || '無法更新收入摘要');
-            }
         }
 
         function setDetailLoading(loading) {
@@ -1549,57 +1552,65 @@
             }
         }
 
-        summaryTableBody?.addEventListener('click', event => {
+        ledgerRowsBody?.addEventListener('click', event => {
             const trigger = event.target && event.target.closest ? event.target.closest('.income-open-detail') : null;
             if (!trigger) return;
-            categoryDetailTriggerButton = trigger;
-            detailState.sourceType = String(trigger.getAttribute('data-source-type') || '').trim();
-            detailState.category = String(trigger.getAttribute('data-category') || '').trim();
+            const sourceType = String(trigger.getAttribute('data-source-type') || '').trim();
+            const category = String(trigger.getAttribute('data-category') || '').trim();
+            tagTriggerForRestore(trigger);
+            detailState.sourceType = sourceType;
+            detailState.category = category;
             detailState.month = summaryMonthInput ? summaryMonthInput.value : detailState.month;
             detailState.page = 1;
-
-            const openCategoryModal = () => {
-                if (categoryModal) {
-                    categoryModal.show();
-                } else {
-                    safeShowModal('incomeCategoryDetailModal');
-                }
-                loadCategoryDetails();
-            };
 
             const ledgerIsOpen = Boolean(ledgerModalEl && ledgerModalEl.classList.contains('show'));
             if (ledgerIsOpen && ledgerModal) {
                 categoryDetailFlowState.returnToLedger = true;
+                categoryDetailFlowState.pendingOpenCategory = true;
                 categoryDetailFlowState.triggerEl = trigger;
-                ledgerModalEl.addEventListener('hidden.bs.modal', openCategoryModal, { once: true });
+                categoryDetailFlowState.triggerSourceType = sourceType;
+                categoryDetailFlowState.triggerCategory = category;
                 ledgerModal.hide();
                 return;
             }
 
             categoryDetailFlowState.returnToLedger = false;
+            categoryDetailFlowState.pendingOpenCategory = false;
+            categoryDetailFlowState.pendingFocusRestore = false;
             categoryDetailFlowState.triggerEl = trigger;
+            categoryDetailFlowState.triggerSourceType = sourceType;
+            categoryDetailFlowState.triggerCategory = category;
             openCategoryModal();
+        });
+
+        ledgerModalEl?.addEventListener('hidden.bs.modal', () => {
+            if (!categoryDetailFlowState.pendingOpenCategory) return;
+            categoryDetailFlowState.pendingOpenCategory = false;
+            openCategoryModal();
+        });
+
+        ledgerModalEl?.addEventListener('shown.bs.modal', () => {
+            if (!categoryDetailFlowState.pendingFocusRestore) return;
+            categoryDetailFlowState.pendingFocusRestore = false;
+            const focused = restoreTriggerFocus();
+            if (focused) return;
+            window.requestAnimationFrame(() => {
+                if (restoreTriggerFocus()) return;
+                window.setTimeout(() => {
+                    restoreTriggerFocus();
+                }, 80);
+            });
         });
 
         categoryModalEl?.addEventListener('hidden.bs.modal', () => {
             if (categoryDetailFlowState.returnToLedger && ledgerModal && ledgerModalEl) {
-                const focusTarget = categoryDetailFlowState.triggerEl;
                 categoryDetailFlowState.returnToLedger = false;
-                categoryDetailFlowState.triggerEl = null;
-                ledgerModalEl.addEventListener('shown.bs.modal', () => {
-                    window.setTimeout(() => {
-                        if (focusTarget && typeof focusTarget.focus === 'function') {
-                            focusTarget.focus();
-                        }
-                    }, 120);
-                }, { once: true });
+                categoryDetailFlowState.pendingFocusRestore = true;
                 ledgerModal.show();
                 return;
             }
 
-            if (categoryDetailTriggerButton && typeof categoryDetailTriggerButton.focus === 'function') {
-                categoryDetailTriggerButton.focus();
-            }
+            restoreTriggerFocus();
         });
 
         detailPrevButton?.addEventListener('click', () => {
@@ -1621,7 +1632,14 @@
                 return;
             }
             if (ledgerSummaryMonthHidden) ledgerSummaryMonthHidden.value = selectedMonth;
-            refreshIncomeSummary(selectedMonth);
+            setSummaryError('');
+            if (incomeLedgerFilterForm) {
+                if (typeof incomeLedgerFilterForm.requestSubmit === 'function') {
+                    incomeLedgerFilterForm.requestSubmit();
+                } else {
+                    incomeLedgerFilterForm.submit();
+                }
+            }
         });
 
         // 🚀 2. 訂單篩選與明細綁定

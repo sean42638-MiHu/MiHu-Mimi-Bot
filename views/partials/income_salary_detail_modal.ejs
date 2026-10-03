@@ -1,10 +1,7 @@
 <%
     const detail = incomeDetail || {};
-    const summary = detail.summary || {};
     const rows = Array.isArray(detail.rows) ? detail.rows : [];
-    const categoryTotals = Array.isArray(detail.categoryTotals) ? detail.categoryTotals : [];
     const monthlySummary = incomeMonthlySummary || {};
-    const summaryRows = Array.isArray(monthlySummary.rows) ? monthlySummary.rows : [];
     const summaryTotals = monthlySummary.totals || { monthlyNetAmount: 0, paidAmount: 0, pendingAmount: 0, availableAmount: 0 };
     const summaryLimitations = Array.isArray(monthlySummary.limitations) && monthlySummary.limitations.length
         ? monthlySummary.limitations
@@ -66,26 +63,43 @@
 %>
 
 <div class="modal fade income-ledger-modal" id="incomeLedgerModal" tabindex="-1" aria-labelledby="incomeLedgerModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width: 820px;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="incomeLedgerModalLabel"><i class="fa-solid fa-file-invoice-dollar text-warning me-2"></i>薪資與分潤明細</h5>
+    <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width: 860px;">
+        <div class="modal-content" style="background: #120a1f !important; border: 1px solid rgba(168, 85, 247, 0.4) !important; border-radius: 16px; color: #f8fafc; box-shadow: 0 0 35px rgba(168, 85, 247, 0.25);">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(168, 85, 247, 0.2); padding: 16px 24px;">
+                <h5 class="modal-title" id="incomeLedgerModalLabel" style="font-size: 18px; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 10px;">
+                    <span style="color: #a855f7;">📊</span>
+                    <span>薪資與分潤明細</span>
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
             </div>
-            <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
-                <form method="GET" action="/income" class="income-ledger-filter-bar" data-income-ledger-filter-form="true">
+
+            <div class="modal-body" style="padding: 24px; max-height: 82vh; overflow-y: auto; overflow-x: hidden;">
+                <form method="GET" action="/income" class="income-ledger-filter-bar" data-income-ledger-filter-form="true" style="background: rgba(11, 9, 20, 0.6); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                     <input type="hidden" name="income_modal" value="1">
                     <input type="hidden" name="income_page" value="1">
                     <input type="hidden" name="summary_month" value="<%= currentMonth %>">
-                    <div class="income-ledger-filter-month">
-                        <label for="incomeSummaryMonthInput" class="form-label small text-secondary mb-1">查詢月份</label>
-                        <input type="month" id="incomeSummaryMonthInput" name="income_month" value="<%= currentMonth %>" class="form-control form-control-sm" required>
+
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <label for="incomeSummaryMonthInput" style="font-size: 13px; color: #94a3b8; font-weight: 500; margin: 0;">查詢月份：</label>
+                        <input type="month" id="incomeSummaryMonthInput" name="income_month" value="<%= currentMonth %>" class="form-control form-control-sm" required style="background: rgba(15, 23, 42, 0.9) !important; color: #f8fafc !important; border: 1px solid rgba(168, 85, 247, 0.4) !important; border-radius: 8px; font-size: 13px; width: auto; height: 36px; color-scheme: dark;">
+                        <button type="submit" data-income-ledger-update-button="true" style="background: linear-gradient(135deg, #a855f7, #6366f1); color: #fff; border: none; border-radius: 8px; padding: 0 16px; height: 36px; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);">
+                            更新明細
+                        </button>
                     </div>
-                    <div class="income-ledger-filter-submit">
-                        <button type="submit" class="btn btn-sm w-100 fw-semibold" data-income-ledger-update-button="true">更新明細</button>
-                    </div>
-                    <div class="income-ledger-filter-summary text-secondary small">
-                        <span>共 <%= Number(detail.totalRows || 0).toLocaleString() %> 筆 · 第 <%= currentPage %> / <%= totalPages %> 頁</span>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #cbd5e1;">
+                            本月薪資淨額：<strong style="color: #ffffff; font-size: 15px; margin-left: 4px;" id="incomeMonthlyNetAmount">$<%= Number(summaryTotals.monthlyNetAmount || summaryTotals.netSalary || 0).toLocaleString() %></strong>
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #cbd5e1;">
+                            已實領：<strong style="color: #34d399; font-size: 15px; margin-left: 4px;" id="incomePaidAmount">$<%= Number(summaryTotals.paidAmount || 0).toLocaleString() %></strong>
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #cbd5e1;">
+                            申請中：<strong style="color: #f59e0b; font-size: 15px; margin-left: 4px;" id="incomePendingAmount">$<%= Number(summaryTotals.pendingAmount || 0).toLocaleString() %></strong>
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #cbd5e1;">
+                            可提領：<strong style="color: #38bdf8; font-size: 15px; margin-left: 4px;" id="incomeAvailableAmount">$<%= Number(summaryTotals.availableAmount || 0).toLocaleString() %></strong>
+                        </div>
                     </div>
                 </form>
 
@@ -93,118 +107,52 @@
                     <i class="fa-solid fa-rotate fa-spin me-2"></i>讀取明細中...
                 </div>
 
-                <div class="d-flex justify-content-end mb-2">
-                    <button
-                        type="button"
-                        class="btn btn-sm income-neon-badge-btn"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#incomeLedgerNoticeCollapse"
-                        aria-expanded="false"
-                        aria-controls="incomeLedgerNoticeCollapse">
-                        注意事項
-                    </button>
+                <div class="income-ledger-note mb-3" role="note" id="incomeSummaryContractNotice" style="background: rgba(11, 9, 20, 0.55); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 12px; padding: 12px 14px;">
+                    <% summaryLimitations.forEach(item => { %>
+                        <p class="mb-1">• <%= item %></p>
+                    <% }) %>
                 </div>
 
-                <div class="collapse mb-3" id="incomeLedgerNoticeCollapse">
-                    <div class="income-ledger-note" role="note">
-                        <% summaryLimitations.forEach(item => { %>
-                            <p class="mb-1">• <%= item %></p>
-                        <% }) %>
-                    </div>
+                <p class="text-danger small mt-2 mb-3" id="incomeSummaryError" hidden></p>
+
+                <div class="income-ledger-filter-summary text-secondary small mb-2">
+                    共 <%= Number(detail.totalRows || 0).toLocaleString() %> 筆 · 第 <%= currentPage %> / <%= totalPages %> 頁
                 </div>
 
-                <section class="income-summary-shell mb-3" aria-labelledby="incomeSummaryModalTitle">
-                    <div class="income-summary-header">
-                        <div>
-                            <h6 class="text-white mb-1" id="incomeSummaryModalTitle"><i class="fa-solid fa-chart-column text-warning me-2"></i>薪資摘要（按分類統計）</h6>
-                            <p class="income-summary-sub">本表顯示當月收入與扣減分類；淨薪資採用 總收入 - 總扣減，並不等於已撥款實領。</p>
-                        </div>
-                    </div>
-                    <div class="income-summary-kpis">
-                        <span class="income-summary-kpi">本月薪資淨額：<strong id="incomeMonthlyNetAmount">$<%= Number(summaryTotals.monthlyNetAmount || 0).toLocaleString() %></strong></span>
-                        <span class="income-summary-kpi">已實領：<strong id="incomePaidAmount">$<%= Number(summaryTotals.paidAmount || 0).toLocaleString() %></strong></span>
-                        <span class="income-summary-kpi">申請中：<strong id="incomePendingAmount">$<%= Number(summaryTotals.pendingAmount || 0).toLocaleString() %></strong></span>
-                        <span class="income-summary-kpi">可提領：<strong id="incomeAvailableAmount">$<%= Number(summaryTotals.availableAmount || 0).toLocaleString() %></strong></span>
-                    </div>
-                    <div class="table-responsive income-summary-table-wrap">
-                        <table class="table table-dark table-sm align-middle mb-0 income-summary-table" id="incomeSummaryTable">
-                            <thead>
-                                <tr>
-                                    <th>收入／扣款類別</th>
-                                    <th class="text-center">筆數／單數</th>
-                                    <th class="text-end">總金額</th>
-                                    <th class="income-summary-col-desc">說明</th>
-                                    <th class="income-summary-col-action">查看明細</th>
-                                </tr>
-                            </thead>
-                            <tbody id="incomeSummaryTableBody">
-                                <% if (!summaryRows.length) { %>
-                                    <tr><td colspan="5" class="text-center py-3 text-secondary">本月沒有可顯示的薪資與分潤項目</td></tr>
-                                <% } %>
-                                <% summaryRows.forEach(item => { %>
-                                    <% const signedAmount = Number(item.totalAmount || 0); %>
-                                    <% const signedClass = signedAmount > 0 ? 'income-amount-positive' : (signedAmount < 0 ? 'income-amount-negative' : 'income-amount-zero'); %>
-                                    <tr>
-                                        <td><span class="income-category-chip"><%= item.category %></span></td>
-                                        <td class="text-center"><%= item.countLabel %></td>
-                                        <td class="text-end <%= signedClass %>"><%= signedAmount > 0 ? '+' : (signedAmount < 0 ? '-' : '') %>$<%= Math.abs(signedAmount).toLocaleString() %></td>
-                                        <td class="income-summary-col-desc"><%= (item.descriptions || []).join('、') || '-' %></td>
-                                        <td class="income-summary-col-action">
-                                            <button
-                                                type="button"
-                                                class="btn btn-sm income-neon-detail-btn income-open-detail"
-                                                data-source-type="<%= item.sourceType %>"
-                                                data-category="<%= item.category %>">
-                                                查看明細
-                                            </button>
-                                        </td>
-                                    </tr>
-                                <% }) %>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p class="text-danger small mt-2 mb-0" id="incomeSummaryError" hidden></p>
-                </section>
-
-                <div class="small text-secondary mb-2">薪資流水明細（含分潤、固定月薪、津貼與扣減分錄）</div>
-
-                <% if (categoryTotals.length) { %>
-                    <div class="mb-3 d-flex flex-wrap gap-2 income-ledger-category-totals">
-                        <% categoryTotals.forEach(item => { %>
-                            <span class="badge">
-                                <%= item.category %>：$<%= Number(item.amount || 0).toLocaleString() %>
-                            </span>
-                        <% }) %>
-                    </div>
-                <% } %>
-
-                <div class="table-responsive income-ledger-table-wrap">
-                    <table class="table table-sm align-middle mb-2 income-ledger-table">
+                <div class="income-ledger-table-scroller" style="background: #0d0917; border-radius: 12px; border: 1px solid rgba(168, 85, 247, 0.2); overflow-x: auto; overflow-y: hidden; max-width: 100%;">
+                    <table class="table table-sm align-middle mb-2 income-ledger-table" style="margin: 0; min-width: 640px; width: 100%; color: #f8fafc; vertical-align: middle;">
                         <thead>
-                            <tr>
-                                <th>時間</th>
-                                <th>分類</th>
-                                <th>來源</th>
+                            <tr style="color: #94a3b8; font-size: 13px; border-bottom: 1px solid rgba(168, 85, 247, 0.2);">
+                                <th style="padding: 12px 18px;">時間</th>
+                                <th style="padding: 12px 18px;">分類</th>
+                                <th style="padding: 12px 18px;">來源與說明</th>
                                 <th class="text-end">金額 (NTD)</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="incomeLedgerRowsBody">
                             <% if (!rows.length) { %>
                                 <tr class="income-ledger-empty-row">
                                     <td colspan="4" class="text-center py-4">本月尚無薪資或分潤明細</td>
                                 </tr>
                             <% } %>
                             <% rows.forEach(row => { %>
+                                <% const sourceTypeKey = String(row.sourceType || '').trim(); %>
+                                <% const categoryKey = String(row.category || '').trim(); %>
                                 <tr>
-                                    <td><%= (row.occurredAt || '').replace('T', ' ').slice(0, 16) || '-' %></td>
-                                    <td>
+                                    <td style="padding: 14px 18px; color: #cbd5e1; font-size: 13px;"><%= (row.occurredAt || '').replace('T', ' ').slice(0, 16) || '-' %></td>
+                                    <td style="padding: 14px 18px;">
                                         <span class="income-ledger-category-pill <%= categoryTone(row) %>"><%= row.category || '-' %></span>
                                     </td>
-                                    <td class="income-ledger-source-cell">
+                                    <td class="income-ledger-source-cell" style="padding: 14px 18px;">
                                         <div class="income-ledger-source-title"><%= typeLabels[row.entryType] || row.entryType || '收入' %></div>
                                         <div class="income-ledger-source-desc"><%= row.description || '-' %></div>
+                                        <% if (sourceTypeKey && categoryKey) { %>
+                                            <div class="mt-2">
+                                                <button type="button" class="btn btn-sm income-neon-detail-btn income-open-detail" data-source-type="<%= sourceTypeKey %>" data-category="<%= categoryKey %>">查看分類明細</button>
+                                            </div>
+                                        <% } %>
                                     </td>
-                                    <td class="text-end <%= amountClass(row.amount) %>">
+                                    <td class="text-end <%= amountClass(row.amount) %>" style="padding: 14px 18px; font-weight: 700; font-size: 14px;">
                                         <%= formatSignedAmount(row.amount) %>
                                     </td>
                                 </tr>
@@ -213,14 +161,14 @@
                     </table>
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center mt-2 income-ledger-pagination">
+                <div class="d-flex justify-content-between align-items-center mt-3 income-ledger-pagination">
                     <a class="btn btn-sm income-ledger-page-btn <%= hasPrev ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&summary_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.max(1, currentPage - 1) %>" aria-disabled="<%= hasPrev ? 'false' : 'true' %>" <%= hasPrev ? '' : 'tabindex="-1"' %>>上一頁</a>
                     <span class="small text-secondary">第 <%= currentPage %> / <%= totalPages %> 頁</span>
                     <a class="btn btn-sm income-ledger-page-btn <%= hasNext ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&summary_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.min(totalPages, currentPage + 1) %>" aria-disabled="<%= hasNext ? 'false' : 'true' %>" <%= hasNext ? '' : 'tabindex="-1"' %>>下一頁</a>
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer" style="border-top: 1px solid rgba(168, 85, 247, 0.2);">
                 <button type="button" class="btn btn-sm income-ledger-close-btn" data-bs-dismiss="modal">關閉</button>
             </div>
         </div>
