@@ -16,76 +16,117 @@
         deduction: '合法薪資扣減',
         history_adjustment: '歷史收入校正'
     };
+
+    const parseAmount = value => {
+        const amount = Number(value || 0);
+        return Number.isFinite(amount) ? amount : 0;
+    };
+
+    const normalizeZero = value => {
+        const amount = parseAmount(value);
+        return Math.abs(amount) < 0.000001 ? 0 : amount;
+    };
+
+    const formatSignedAmount = value => {
+        const amount = normalizeZero(value);
+        const absText = Math.abs(amount).toLocaleString();
+        if (amount > 0) return `+$${absText}`;
+        if (amount < 0) return `-$${absText}`;
+        return `$${absText}`;
+    };
+
+    const amountClass = value => {
+        const amount = normalizeZero(value);
+        if (amount > 0) return 'amount-positive';
+        if (amount < 0) return 'amount-negative';
+        return 'amount-zero';
+    };
+
+    const categoryTone = row => {
+        const entryType = String(row && row.entryType || '').trim();
+        const category = String(row && row.category || '').trim();
+        if (entryType === 'commission') {
+            const knownCommissionCategories = new Set(['陪玩單', '禮物單', '有獎單', '冠名單', '其他單', '獎金單']);
+            return knownCommissionCategories.has(category) ? 'tone-commission' : 'tone-fallback';
+        }
+        if (entryType === 'allowance' || category.includes('獎金')) return 'tone-allowance';
+        if (entryType === 'deduction') return 'tone-deduction';
+        return 'tone-fallback';
+    };
 %>
 
-<div class="modal fade" id="incomeLedgerModal" tabindex="-1" aria-labelledby="incomeLedgerModalLabel" aria-hidden="true">
+<div class="modal fade income-ledger-modal" id="incomeLedgerModal" tabindex="-1" aria-labelledby="incomeLedgerModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
-        <div class="modal-content bg-dark text-light border border-warning-subtle shadow-lg">
-            <div class="modal-header border-secondary">
+        <div class="modal-content">
+            <div class="modal-header">
                 <h5 class="modal-title" id="incomeLedgerModalLabel"><i class="fa-solid fa-file-invoice-dollar text-warning me-2"></i>薪資與分潤明細</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
-                <form method="GET" action="/income" class="row g-2 align-items-end mb-3">
+                <form method="GET" action="/income" class="income-ledger-filter-bar" data-income-ledger-filter-form="true">
                     <input type="hidden" name="income_modal" value="1">
                     <input type="hidden" name="income_page" value="1">
-                    <div class="col-md-4">
+                    <div class="income-ledger-filter-month">
                         <label for="incomeMonthFilter" class="form-label small text-secondary mb-1">查詢月份</label>
-                        <input type="month" id="incomeMonthFilter" name="income_month" value="<%= currentMonth %>" class="form-control form-control-sm bg-dark text-light border-secondary" required>
+                        <input type="month" id="incomeMonthFilter" name="income_month" value="<%= currentMonth %>" class="form-control form-control-sm" required>
                     </div>
-                    <div class="col-md-3">
-                        <button type="submit" class="btn btn-warning btn-sm w-100 fw-semibold">更新明細</button>
+                    <div class="income-ledger-filter-submit">
+                        <button type="submit" class="btn btn-sm w-100 fw-semibold" data-income-ledger-update-button="true">更新明細</button>
                     </div>
-                    <div class="col-md-5 text-md-end text-secondary small">
+                    <div class="income-ledger-filter-summary text-secondary small">
                         <span>共 <%= Number(detail.totalRows || 0).toLocaleString() %> 筆 · 第 <%= currentPage %> / <%= totalPages %> 頁</span>
                     </div>
                 </form>
 
-                <div class="row g-2 mb-3">
-                    <div class="col-md-3">
-                        <div class="border border-secondary rounded-3 p-2 h-100">
+                <div class="income-ledger-state income-ledger-state-loading" id="incomeLedgerLoadingState" hidden>
+                    <i class="fa-solid fa-rotate fa-spin me-2"></i>讀取明細中...
+                </div>
+
+                <div class="row g-2 mb-3 income-ledger-kpi-grid">
+                    <div class="col-6 col-lg-3">
+                        <div class="income-ledger-kpi-card">
                             <div class="small text-secondary">淨薪資</div>
-                            <div class="fw-bold text-warning">$<%= Number(summary.netSalary || 0).toLocaleString() %></div>
+                            <div class="fw-bold income-ledger-kpi-net">$<%= Number(summary.netSalary || 0).toLocaleString() %></div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="border border-secondary rounded-3 p-2 h-100">
+                    <div class="col-6 col-lg-3">
+                        <div class="income-ledger-kpi-card">
                             <div class="small text-secondary">已實領</div>
-                            <div class="fw-bold text-success">$<%= Number(summary.paidAmount || 0).toLocaleString() %></div>
+                            <div class="fw-bold income-ledger-kpi-paid">$<%= Number(summary.paidAmount || 0).toLocaleString() %></div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="border border-secondary rounded-3 p-2 h-100">
+                    <div class="col-6 col-lg-3">
+                        <div class="income-ledger-kpi-card">
                             <div class="small text-secondary">申請中</div>
-                            <div class="fw-bold text-info">$<%= Number(summary.pendingAmount || 0).toLocaleString() %></div>
+                            <div class="fw-bold income-ledger-kpi-pending">$<%= Number(summary.pendingAmount || 0).toLocaleString() %></div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="border border-secondary rounded-3 p-2 h-100">
+                    <div class="col-6 col-lg-3">
+                        <div class="income-ledger-kpi-card">
                             <div class="small text-secondary">可提領</div>
-                            <div class="fw-bold text-primary">$<%= Number(summary.availableAmount || 0).toLocaleString() %></div>
+                            <div class="fw-bold income-ledger-kpi-available">$<%= Number(summary.availableAmount || 0).toLocaleString() %></div>
                         </div>
                     </div>
                 </div>
 
-                <div class="alert alert-secondary py-2 px-3 small border-secondary mb-3" role="note">
+                <div class="income-ledger-note mb-3" role="note">
                     明細目前以「訂單結束時間月份」與「薪資調整 adjustment_month」歸屬。跨月調價／退款若尚未產生對應歷史校正事件，系統不會自動回沖前月明細。
                 </div>
 
                 <% if (categoryTotals.length) { %>
-                    <div class="mb-3 d-flex flex-wrap gap-2">
+                    <div class="mb-3 d-flex flex-wrap gap-2 income-ledger-category-totals">
                         <% categoryTotals.forEach(item => { %>
-                            <span class="badge rounded-pill text-bg-secondary">
+                            <span class="badge">
                                 <%= item.category %>：$<%= Number(item.amount || 0).toLocaleString() %>
                             </span>
                         <% }) %>
                     </div>
                 <% } %>
 
-                <div class="table-responsive">
-                    <table class="table table-dark table-sm align-middle mb-2">
+                <div class="table-responsive income-ledger-table-wrap">
+                    <table class="table table-sm align-middle mb-2 income-ledger-table">
                         <thead>
-                            <tr class="text-secondary">
+                            <tr>
                                 <th>時間</th>
                                 <th>分類</th>
                                 <th>來源</th>
@@ -94,20 +135,22 @@
                         </thead>
                         <tbody>
                             <% if (!rows.length) { %>
-                                <tr>
-                                    <td colspan="4" class="text-center text-secondary py-4">本月尚無薪資或分潤明細</td>
+                                <tr class="income-ledger-empty-row">
+                                    <td colspan="4" class="text-center py-4">本月尚無薪資或分潤明細</td>
                                 </tr>
                             <% } %>
                             <% rows.forEach(row => { %>
                                 <tr>
                                     <td><%= (row.occurredAt || '').replace('T', ' ').slice(0, 16) || '-' %></td>
-                                    <td><%= row.category || '-' %></td>
                                     <td>
-                                        <div><%= typeLabels[row.entryType] || row.entryType || '收入' %></div>
-                                        <div class="small text-secondary"><%= row.description || '-' %></div>
+                                        <span class="income-ledger-category-pill <%= categoryTone(row) %>"><%= row.category || '-' %></span>
                                     </td>
-                                    <td class="text-end <%= Number(row.amount || 0) >= 0 ? 'text-success' : 'text-danger' %>">
-                                        <%= Number(row.amount || 0) >= 0 ? '+' : '' %>$<%= Number(row.amount || 0).toLocaleString() %>
+                                    <td class="income-ledger-source-cell">
+                                        <div class="income-ledger-source-title"><%= typeLabels[row.entryType] || row.entryType || '收入' %></div>
+                                        <div class="income-ledger-source-desc"><%= row.description || '-' %></div>
+                                    </td>
+                                    <td class="text-end <%= amountClass(row.amount) %>">
+                                        <%= formatSignedAmount(row.amount) %>
                                     </td>
                                 </tr>
                             <% }) %>
@@ -115,11 +158,15 @@
                     </table>
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center mt-2">
-                    <a class="btn btn-outline-light btn-sm <%= hasPrev ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.max(1, currentPage - 1) %>" aria-disabled="<%= hasPrev ? 'false' : 'true' %>">上一頁</a>
+                <div class="d-flex justify-content-between align-items-center mt-2 income-ledger-pagination">
+                    <a class="btn btn-sm income-ledger-page-btn <%= hasPrev ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.max(1, currentPage - 1) %>" aria-disabled="<%= hasPrev ? 'false' : 'true' %>" <%= hasPrev ? '' : 'tabindex="-1"' %>>上一頁</a>
                     <span class="small text-secondary">第 <%= currentPage %> / <%= totalPages %> 頁</span>
-                    <a class="btn btn-outline-light btn-sm <%= hasNext ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.min(totalPages, currentPage + 1) %>" aria-disabled="<%= hasNext ? 'false' : 'true' %>">下一頁</a>
+                    <a class="btn btn-sm income-ledger-page-btn <%= hasNext ? '' : 'disabled' %>" href="/income?income_modal=1&income_month=<%= encodeURIComponent(currentMonth) %>&income_page=<%= Math.min(totalPages, currentPage + 1) %>" aria-disabled="<%= hasNext ? 'false' : 'true' %>" <%= hasNext ? '' : 'tabindex="-1"' %>>下一頁</a>
                 </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm income-ledger-close-btn" data-bs-dismiss="modal">關閉</button>
             </div>
         </div>
     </div>
