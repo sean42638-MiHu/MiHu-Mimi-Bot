@@ -1,0 +1,78 @@
+/* Salary settings performance-focused scroll table styles */
+.salary-settings-page .salary-scroll-container {
+    max-height: 485px;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.4) rgba(11, 9, 20, 0.8);
+    -webkit-overflow-scrolling: touch;
+}
+
+.salary-settings-page .salary-scroll-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #f8fafc;
+    vertical-align: middle;
+}
+
+.salary-settings-page .salary-scroll-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(8px);
+}
+
+.salary-settings-page .salary-scroll-head th {
+    position: sticky;
+    top: 0;
+    z-index: 11;
+    padding: 12px 16px;
+    background: rgba(15, 23, 42, 0.98);
+    background-clip: padding-box;
+    border-bottom: 2px solid rgba(168, 85, 247, 0.3);
+    color: #94a3b8;
+    font-size: 13px;
+    text-align: left;
+}
+
+.salary-settings-page .salary-scroll-container .salary-table-body td {
+    padding: 10px 16px;
+}
+
+.salary-settings-page .salary-scroll-container .salary-row {
+    min-height: 62px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.15s ease;
+}
+
+.salary-settings-page .salary-scroll-container .salary-row:hover {
+    background: rgba(168, 85, 247, 0.08) !important;
+}
+
+.salary-settings-page .salary-scroll-container::-webkit-scrollbar {
+    width: 5px !important;
+}
+
+.salary-settings-page .salary-scroll-container::-webkit-scrollbar-track {
+    background: rgba(11, 9, 20, 0.8) !important;
+    border-radius: 4px !important;
+}
+
+.salary-settings-page .salary-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(168, 85, 247, 0.5) !important;
+    border-radius: 4px !important;
+    box-shadow: 0 0 6px rgba(168, 85, 247, 0.6) !important;
+}
+
+.salary-settings-page .salary-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 85, 247, 0.9) !important;
+}
+
+@media (max-width: 767.98px) {
+    .salary-settings-page .salary-scroll-table {
+        min-width: 960px;
+    }
+}

@@ -33,8 +33,9 @@
     </div>
 
     <div class="table-responsive salary-overview-table-wrap">
-        <table class="table table-sm align-middle mb-0 mihu-table admin-table salary-table">
-            <thead>
+        <div class="salary-scroll-container">
+        <table class="table table-sm align-middle mb-0 mihu-table admin-table salary-table salary-scroll-table">
+            <thead class="salary-scroll-head">
                 <tr>
                     <th>員工</th>
                     <th class="text-end">歷史收入</th>
@@ -46,7 +47,7 @@
                     <th class="text-end">操作</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="salary-table-body">
                 <% if (!salaryRows.length) { %>
                     <tr><td colspan="8" class="text-center text-secondary py-4">目前沒有可顯示的薪資資料</td></tr>
                 <% } %>
@@ -54,7 +55,7 @@
                     <% const roleKey = String(row.role || 'staff').toLowerCase(); %>
                     <% const roleBadgeClass = roleBadgeMap[roleKey] || 'role-badge role-badge-member'; %>
                     <% const roleLabel = roleNameMap[roleKey] || roleKey; %>
-                    <tr>
+                    <tr class="salary-row">
                         <td>
                             <div class="salary-staff-cell">
                                 <div class="salary-staff-title"><%= row.displayName %></div>
@@ -103,6 +104,7 @@
                 <% }) %>
             </tbody>
         </table>
+        </div>
     </div>
 
     <% if (totalPages > 1) { %>
