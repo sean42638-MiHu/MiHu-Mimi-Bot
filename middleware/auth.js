@@ -32,7 +32,8 @@ const permissionNames = Object.freeze({
     'action_salary_adjust': '手動薪資調整',
     'action_salary_import': '薪資匯入預覽',
     'action_salary_rule_manage': '固定月薪規則管理',
-    'action_salary_distribute': '固定月薪派發'
+    'action_salary_distribute': '固定月薪派發',
+    'action_edit_privacy_data': '編輯個人隱私資料'
 });
 
 function permissionName(permission) {

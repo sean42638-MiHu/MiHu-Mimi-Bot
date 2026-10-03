@@ -124,6 +124,13 @@ const supplementalDefinitions = [
         "high"
     ],
     [
+        "profile_privacy_data",
+        "編輯個人隱私資料",
+        "既有功能",
+        "manage",
+        "high"
+    ],
+    [
         "my_wallet",
         "我的錢包",
         "既有功能",
