@@ -37,12 +37,18 @@ body.salary-settings-page {
 }
 
 .salary-settings-page .salary-main-card {
-    background: var(--salary-surface);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--salary-border);
-    border-radius: 12px;
-    padding: 24px;
+    background: rgba(15, 23, 42, 0.6) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(168, 85, 247, 0.2) !important;
+    border-radius: 12px !important;
+    padding: 24px !important;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+.salary-settings-page .page-header-action {
+    display: flex;
+    gap: 10px;
+    align-items: center;
 }
 
 .salary-settings-page .salary-overview-head {
@@ -89,40 +95,45 @@ body.salary-settings-page {
     letter-spacing: 0.01em;
 }
 
-.salary-settings-page .salary-tool-btn-primary {
-    padding: 8px 20px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #ffffff;
-    border: 0;
-    background: linear-gradient(135deg, var(--salary-primary-a), var(--salary-primary-b));
-    box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+.salary-settings-page .btn-cyber-primary {
+    background: linear-gradient(135deg, #a855f7, #7c3aed) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 8px 20px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.4) !important;
 }
 
-.salary-settings-page .salary-tool-btn-rule,
-.salary-settings-page .salary-tool-btn-distribute,
-.salary-settings-page .salary-tool-btn-import {
-    padding: 8px 18px;
-    font-size: 13px;
-    font-weight: 600;
+.salary-settings-page .btn-cyber-secondary {
+    background: rgba(30, 41, 59, 0.8) !important;
+    color: #38bdf8 !important;
+    border: 1px solid #38bdf8 !important;
+    border-radius: 50px !important;
+    padding: 8px 18px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
 }
 
-.salary-settings-page .salary-tool-btn-rule {
-    background: rgba(30, 41, 59, 0.8);
-    color: #38bdf8;
-    border-color: #38bdf8;
+.salary-settings-page .btn-cyber-success {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #34d399 !important;
+    border: 1px solid #10b981 !important;
+    border-radius: 50px !important;
+    padding: 8px 18px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
 }
 
-.salary-settings-page .salary-tool-btn-distribute {
-    background: rgba(16, 185, 129, 0.15);
-    color: #34d399;
-    border-color: #10b981;
-}
-
-.salary-settings-page .salary-tool-btn-import {
-    background: rgba(234, 179, 8, 0.15);
-    color: #fde047;
-    border-color: #eab308;
+.salary-settings-page .btn-cyber-warning {
+    background: rgba(234, 179, 8, 0.15) !important;
+    color: #fde047 !important;
+    border: 1px solid #eab308 !important;
+    border-radius: 50px !important;
+    padding: 8px 18px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
 }
 
 .salary-settings-page .salary-tool-btn:hover,
@@ -134,9 +145,9 @@ body.salary-settings-page {
     filter: brightness(1.1);
 }
 
-.salary-settings-page .salary-tool-btn-primary:hover {
-    color: #ffffff;
-    box-shadow: 0 0 18px rgba(168, 85, 247, 0.56);
+.salary-settings-page .btn-cyber-primary:hover {
+    color: #ffffff !important;
+    box-shadow: 0 0 18px rgba(168, 85, 247, 0.7) !important;
 }
 
 .salary-settings-page .salary-tool-btn[disabled],
