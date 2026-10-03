@@ -27,6 +27,7 @@ const REQUIRED_COLUMNS = Object.freeze({
     bot_commands: ['id', 'command_key', 'min_role'],
     role_permissions: ['role_key', 'permissions'],
     email_verifications: ['user_id', 'email', 'code_hash'],
+    staff_sensitive_email_verifications: ['user_id', 'target_staff_id', 'email', 'code_hash', 'attempts', 'used_at'],
     audit_logs: ['id', 'action', 'target_type', 'studio_id'],
     commission_settings_migrations: ['migration_key'],
     sensitive_data_migrations: ['migration_key']

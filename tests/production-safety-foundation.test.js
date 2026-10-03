@@ -406,12 +406,17 @@ test('explicit migration and restore contracts round-trip only an isolated tempo
             "SELECT name FROM pragma_table_info('wallet_transactions') WHERE name='bonus_amount'",
             (error, row) => error ? reject(error) : resolve(row || null)
         ));
+        const staffSensitiveOtpTable = await new Promise((resolve, reject) => migratedWalletLedger.get(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='staff_sensitive_email_verifications'",
+            (error, row) => error ? reject(error) : resolve(row || null)
+        ));
         const legacyComposition = await new Promise((resolve, reject) => migratedWalletLedger.get(
             "SELECT amount, bonus_amount FROM wallet_transactions WHERE reference_id='legacy-1'",
             (error, row) => error ? reject(error) : resolve(row || null)
         ));
         await new Promise(resolve => migratedWalletLedger.close(resolve));
         assert.ok(compositionColumn);
+        assert.ok(staffSensitiveOtpTable);
         assert.equal(legacyComposition.amount, -500);
         assert.equal(legacyComposition.bonus_amount, 0);
 

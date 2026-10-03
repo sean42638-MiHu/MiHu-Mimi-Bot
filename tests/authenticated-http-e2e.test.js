@@ -1267,6 +1267,43 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(limitedPayrollPage.status, 200, limitedPayrollPage.body);
         assert.match(limitedPayrollPage.body, /payrollExportModal/);
         assert.doesNotMatch(limitedPayrollPage.body, /class="btn-excel-export"/);
+
+        const generalVerifyEmail = 'manager-limited@mihu.test';
+        const generalSendBefore = testEmailOutbox.length;
+        const generalSendCode = await createRequest(port, 'POST', '/api/email/send-code', {
+            Host: `127.0.0.1:${port}`,
+            Origin: `http://127.0.0.1:${port}`,
+            Cookie: limitedStaffManager.cookie,
+            'X-CSRF-Token': limitedStaffManager.csrfToken,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+        }, JSON.stringify({ email: generalVerifyEmail }));
+        assert.equal(generalSendCode.status, 200, generalSendCode.body);
+        assert.equal(parseJsonBody(generalSendCode, 'general send code response').success, true, generalSendCode.body);
+        assert.equal(testEmailOutbox.length, generalSendBefore + 1);
+        const generalOtpMail = testEmailOutbox.at(-1);
+        assert.equal(generalOtpMail.toEmail, generalVerifyEmail);
+
+        const generalVerifyCode = await createRequest(port, 'POST', '/api/email/verify-code', {
+            Host: `127.0.0.1:${port}`,
+            Origin: `http://127.0.0.1:${port}`,
+            Cookie: limitedStaffManager.cookie,
+            'X-CSRF-Token': limitedStaffManager.csrfToken,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+        }, JSON.stringify({
+            email: generalVerifyEmail,
+            code: generalOtpMail.code
+        }));
+        assert.equal(generalVerifyCode.status, 200, generalVerifyCode.body);
+        assert.equal(parseJsonBody(generalVerifyCode, 'general verify code response').success, true, generalVerifyCode.body);
+        const limitedEmailState = await new Promise((resolve, reject) => db.get(
+            "SELECT email, email_verified FROM users WHERE id = 'manager-limited'",
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.equal(String(limitedEmailState.email || '').toLowerCase(), generalVerifyEmail);
+        assert.equal(Number(limitedEmailState.email_verified), 1);
+
         const sensitiveStaffPage = await createRequest(port, 'GET', '/management/staff', {
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
         });
