@@ -134,10 +134,38 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-03-31T12:00:00.000Z') })).windowOpen, true);
         await run(db, "UPDATE system_settings SET setting_value='2' WHERE setting_key='withdrawal_start_day'");
         await run(db, "UPDATE system_settings SET setting_value='6' WHERE setting_key='withdrawal_end_day'");
-        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T15:59:59.000Z') })).windowOpen, false);
-        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T16:00:00.000Z') })).windowOpen, true);
-        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T15:59:59.000Z') })).windowOpen, true);
-        assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T16:00:00.000Z') })).windowOpen, false);
+        const beforeOpenSummary = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T15:59:59.000Z') });
+        const openedAtBoundarySummary = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T16:00:00.000Z') });
+        const lastSecondOpenSummary = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T15:59:59.000Z') });
+        const closedAtBoundarySummary = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T16:00:00.000Z') });
+        const crossMonthSummary = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-10-31T16:00:00.000Z') });
+        const crossYearSummary = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-12-31T16:00:00.000Z') });
+
+        assert.equal(beforeOpenSummary.windowOpen, false);
+        assert.equal(openedAtBoundarySummary.windowOpen, true);
+        assert.equal(lastSecondOpenSummary.windowOpen, true);
+        assert.equal(closedAtBoundarySummary.windowOpen, false);
+        assert.match(beforeOpenSummary.nextOpenAtText, /^2026\/09\/02\s+00:00:00$/);
+        assert.match(closedAtBoundarySummary.nextOpenAtText, /^2026\/10\/02\s+00:00:00$/);
+        assert.match(crossMonthSummary.nextOpenAtText, /^2026\/11\/02\s+00:00:00$/);
+        assert.match(crossYearSummary.nextOpenAtText, /^2027\/01\/02\s+00:00:00$/);
+
+        assert.equal(beforeOpenSummary.windowOpen ? '本期開放中' : beforeOpenSummary.nextOpenAtText, beforeOpenSummary.nextOpenAtText);
+        assert.equal(openedAtBoundarySummary.windowOpen ? '本期開放中' : openedAtBoundarySummary.nextOpenAtText, '本期開放中');
+        assert.equal(lastSecondOpenSummary.windowOpen ? '本期開放中' : lastSecondOpenSummary.nextOpenAtText, '本期開放中');
+        assert.equal(closedAtBoundarySummary.windowOpen ? '本期開放中' : closedAtBoundarySummary.nextOpenAtText, closedAtBoundarySummary.nextOpenAtText);
+
+        await assert.rejects(
+            service.requestWithdrawal({ userId: 'user-a', amount: 100, date: new Date('2026-09-01T15:59:59.000Z') }),
+            /申請期間/
+        );
+        assert.equal((await service.getEmployeePayoutOverview({ userId: 'user-d', studioId: 1, date: new Date('2026-09-01T16:00:00.000Z') })).withdrawalGate.allowed, true);
+        assert.equal((await service.getEmployeePayoutOverview({ userId: 'user-d', studioId: 1, date: new Date('2026-09-06T15:59:59.000Z') })).withdrawalGate.allowed, true);
+        await assert.rejects(
+            service.requestWithdrawal({ userId: 'user-a', amount: 100, date: new Date('2026-09-06T16:00:00.000Z') }),
+            /申請期間/
+        );
+
         const closedTimeline = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-08T12:00:00.000Z') });
         assert.equal(typeof closedTimeline.nextOpenAtText, 'string');
         assert.equal(typeof closedTimeline.nowInBusinessTz, 'string');

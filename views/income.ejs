@@ -255,6 +255,24 @@
         .withdrawal-card-period { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(125, 211, 252, 0.28); border-radius: 8px; color: #bae6fd; background: rgba(56, 189, 248, 0.07); font-size: 0.9rem; }
         .withdrawal-card-notes { display: grid; gap: 5px; margin-top: 15px; }
         .withdrawal-card-note { margin: 0; color: #94a3b8; font-size: 0.8rem; line-height: 1.5; }
+        .withdrawal-history-wrap {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+        .withdrawal-history-wrap .withdrawal-history-table {
+            width: max-content;
+            min-width: 720px;
+            table-layout: auto;
+            margin-bottom: 0;
+        }
+        .withdrawal-history-wrap .withdrawal-history-table thead th {
+            white-space: nowrap;
+            word-break: keep-all;
+            overflow-wrap: normal;
+        }
 
         .income-summary-shell {
             margin-bottom: 24px;
@@ -802,6 +820,14 @@
         <% const minimumWithdrawalAmount = Number(payoutOverview.settings.minimumAmount); %>
         <% const withdrawalGate = payoutOverview.withdrawalGate || { allowed: false, reasons: [] }; %>
         <% const withdrawalReasons = Array.isArray(withdrawalGate.reasons) ? withdrawalGate.reasons : []; %>
+        <% const withdrawalStatus = payoutOverview.windowOpen ? '開放中' : '未開放'; %>
+        <% const processingAmount = Number(payoutOverview.pendingAmount || 0).toLocaleString(); %>
+        <% const periodStartDay = Number(payoutOverview.settings && payoutOverview.settings.startDay || 1); %>
+        <% const periodEndDay = Number(payoutOverview.settings && payoutOverview.settings.endDay || 1); %>
+        <% const periodTimeZone = String(payoutOverview.settings && payoutOverview.settings.timeZone || 'Asia/Taipei'); %>
+        <% const nextOpenDateFromGate = String(payoutOverview.timeline && payoutOverview.timeline.nextOpenAt || '-'); %>
+        <% const nextOpenPrefixText = payoutOverview.windowOpen ? '' : '下次開放：'; %>
+        <% const nextOpenBadgeText = payoutOverview.windowOpen ? '本期開放中' : nextOpenDateFromGate; %>
         <section class="withdrawal-card-shell" aria-labelledby="withdrawalCardTitle">
             <div class="withdrawal-card-header">
                 <div class="withdrawal-card-heading">
@@ -824,12 +850,24 @@
                     </button>
                 </div>
             </div>
-            <div class="withdrawal-card-metrics">
-                <span class="withdrawal-card-status" id="withdrawalWindowStatusBadge"><i class="fa-solid <%= payoutOverview.windowOpen ? 'fa-circle-check' : 'fa-circle-xmark' %>" aria-hidden="true"></i>提領狀態：<%= payoutOverview.windowOpen ? '開放中' : '未開放' %></span>
-                <span class="withdrawal-pending-badge"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>撥款中：$<%= Number(payoutOverview.pendingAmount).toLocaleString() %> NTD</span>
-                <span class="withdrawal-card-period"><i class="fa-regular fa-calendar" aria-hidden="true"></i>申請期間：每月 <%= payoutOverview.settings.startDay %> 日 ~ <%= payoutOverview.settings.endDay %> 日（<%= payoutOverview.settings.timeZone %>）</span>
-                <span class="withdrawal-card-period" id="withdrawalNowLabel"><i class="fa-regular fa-clock" aria-hidden="true"></i>台北現在：<%= payoutOverview.timeline && payoutOverview.timeline.now ? payoutOverview.timeline.now : '-' %></span>
-                <span class="withdrawal-card-period" id="withdrawalNextOpenLabel"><i class="fa-solid fa-door-open" aria-hidden="true"></i>下次開放：<%= payoutOverview.timeline && payoutOverview.timeline.nextOpenAt ? payoutOverview.timeline.nextOpenAt : '-' %></span>
+            <div class="withdrawal-card-metrics" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;">
+                <div id="withdrawalWindowStatusBadge" style="background: rgba(16, 185, 129, 0.15) !important; color: #34d399 !important; border: 1px solid #10b981 !important; border-radius: 50px; padding: 6px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>●</span> 提領狀態：<span id="withdrawalWindowStatusText"><%= withdrawalStatus %></span>
+                </div>
+
+                <div id="withdrawalPendingBadge" style="background: rgba(234, 179, 8, 0.15) !important; color: #fde047 !important; border: 1px solid #eab308 !important; border-radius: 50px; padding: 6px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>⏳</span> 撥款中：$<span id="withdrawalPendingAmountValue"><%= processingAmount %></span> NTD
+                </div>
+
+                <div id="withdrawalPeriodLabel" style="background: rgba(30, 41, 59, 0.8) !important; color: #cbd5e1 !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; border-radius: 50px; padding: 6px 14px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>📅</span> 申請期間：每月 <%= periodStartDay %> 日 ~ <%= periodEndDay %> 日 (<%= periodTimeZone %>)
+                </div>
+
+                <div id="withdrawalNextOpenLabel" data-window-open="<%= payoutOverview.windowOpen ? 'true' : 'false' %>" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(124, 58, 237, 0.25)) !important; color: #c084fc !important; border: 1px solid #a855f7 !important; border-radius: 50px; padding: 6px 16px; font-size: 12px; font-weight: 700; box-shadow: 0 0 12px rgba(168, 85, 247, 0.35); display: inline-flex; align-items: center; gap: 6px;">
+                    <span>🚪</span>
+                    <span id="withdrawalNextOpenPrefix"><%= nextOpenPrefixText %></span>
+                    <span id="withdrawalNextOpenValue" style="color: #fde047;"><%= nextOpenBadgeText %></span>
+                </div>
             </div>
             <div class="withdrawal-card-notes">
                 <p class="withdrawal-card-note">• 最低申請金額 $<%= minimumWithdrawalAmount.toLocaleString() %> · <%= payoutOverview.bankDetailsReady ? '薪轉帳戶已設定' : '薪轉帳戶尚未設定' %></p>
@@ -850,8 +888,8 @@
                 <p class="withdrawal-card-note text-danger" id="withdrawalFrontendError" hidden></p>
             </div>
             <% if (payoutOverview.payouts.length) { %>
-                <div class="table-responsive mt-3">
-                    <table class="table table-dark table-sm align-middle mb-0">
+                <div class="table-responsive mt-3 withdrawal-history-wrap">
+                    <table class="table table-dark table-sm align-middle mb-0 withdrawal-history-table">
                         <thead><tr><th>申請編號</th><th>申請時間</th><th class="text-end">金額</th><th>狀態</th><th>薪轉帳戶</th><th>退回原因</th></tr></thead>
                         <tbody>
                             <% payoutOverview.payouts.forEach(payout => { %>
@@ -944,8 +982,11 @@
         const frontendError = document.getElementById('withdrawalFrontendError');
         const gateNotice = document.getElementById('withdrawalGateNotice');
         const statusBadge = document.getElementById('withdrawalWindowStatusBadge');
-        const nowLabel = document.getElementById('withdrawalNowLabel');
+        const periodLabel = document.getElementById('withdrawalPeriodLabel');
         const nextOpenLabel = document.getElementById('withdrawalNextOpenLabel');
+        const nextOpenPrefix = document.getElementById('withdrawalNextOpenPrefix');
+        const nextOpenValue = document.getElementById('withdrawalNextOpenValue');
+        const pendingAmountValue = document.getElementById('withdrawalPendingAmountValue');
         const amountInput = document.getElementById('withdrawalAmount');
 
         function showFrontendError(message) {
@@ -1027,13 +1068,33 @@
             }
 
             if (statusBadge) {
-                statusBadge.innerHTML = `<i class="fa-solid ${overview.windowOpen ? 'fa-circle-check' : 'fa-circle-xmark'}" aria-hidden="true"></i>提領狀態：${overview.windowOpen ? '開放中' : '未開放'}`;
+                statusBadge.innerHTML = `<span>●</span> 提領狀態：<span id="withdrawalWindowStatusText">${overview.windowOpen ? '開放中' : '未開放'}</span>`;
             }
-            if (nowLabel) {
-                nowLabel.innerHTML = `<i class="fa-regular fa-clock" aria-hidden="true"></i>台北現在：${overview.timeline && overview.timeline.now ? overview.timeline.now : '-'}`;
+
+            if (pendingAmountValue) {
+                pendingAmountValue.textContent = Number(overview.pendingAmount || 0).toLocaleString();
             }
+
+            const startDay = Number(overview.settings && overview.settings.startDay || nextOpenLabel?.dataset.withdrawalStartDay || 1);
+            const endDay = Number(overview.settings && overview.settings.endDay || 1);
+            const timeZone = String(overview.timeline && overview.timeline.timeZone || overview.settings && overview.settings.timeZone || applyButton.dataset.timezone || 'Asia/Taipei');
+            if (periodLabel) {
+                periodLabel.innerHTML = `<span>📅</span> 申請期間：每月 ${startDay} 日 ~ ${endDay} 日 (${timeZone})`;
+            }
+
             if (nextOpenLabel) {
-                nextOpenLabel.innerHTML = `<i class="fa-solid fa-door-open" aria-hidden="true"></i>下次開放：${overview.timeline && overview.timeline.nextOpenAt ? overview.timeline.nextOpenAt : '-'}`;
+                const nextOpenText = String(overview.timeline && overview.timeline.nextOpenAt || '-');
+                const nextOpen = overview.windowOpen ? '本期開放中' : nextOpenText;
+                nextOpenLabel.dataset.windowOpen = overview.windowOpen ? 'true' : 'false';
+                if (nextOpenPrefix) {
+                    nextOpenPrefix.textContent = overview.windowOpen ? '' : '下次開放：';
+                }
+                if (nextOpenValue) {
+                    nextOpenValue.textContent = nextOpen;
+                } else {
+                    const prefixMarkup = overview.windowOpen ? '' : '<span>下次開放：</span>';
+                    nextOpenLabel.innerHTML = `<span>🚪</span>${prefixMarkup}<span style="color: #fde047;">${nextOpen}</span>`;
+                }
             }
             renderGateReasons(gate.reasons || []);
         }
