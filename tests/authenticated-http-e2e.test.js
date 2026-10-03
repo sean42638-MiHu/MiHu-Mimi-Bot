@@ -131,6 +131,26 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id TEXT, studio_id INTEGER, action TEXT,
         target_type TEXT, target_id TEXT, before_data TEXT, after_data TEXT, metadata TEXT, ip_address TEXT, created_at TEXT
     )`);
+    await run(`CREATE TABLE email_verifications (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        used_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await run(`CREATE TABLE staff_sensitive_email_verifications (
+        user_id TEXT NOT NULL,
+        target_staff_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        used_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, target_staff_id)
+    )`);
     await run('CREATE TABLE vip_tiers (level INTEGER PRIMARY KEY, name TEXT, spent_threshold REAL, deposit_threshold REAL, rewards TEXT, color TEXT, updated_at TEXT)');
     await run('CREATE TABLE commission_settings (category TEXT PRIMARY KEY, rate REAL, updated_at TEXT)');
     await run('CREATE TABLE studio_commissions (studio_id INTEGER, category TEXT, talent_share_rate REAL, updated_at TEXT, PRIMARY KEY(studio_id,category))');
@@ -152,6 +172,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         ('assignment-manager','assignment-manager','assignment_manager',1),('assignment-target','assignment-target','staff',1),
         ('ledger-viewer','ledger-viewer','ledger_viewer',1),('payroll-viewer','payroll-viewer','payroll_viewer',1),
         ('star-actor','star-actor','star_actor',1)`);
+    await run("UPDATE users SET email='manager-a@mihu.test', email_verified=1, email_verified_at=CURRENT_TIMESTAMP WHERE id='manager-a'");
     await run(`INSERT INTO roles (id,role_key,name,permissions) VALUES
         (1,'member','Member','["view_income","view_profile"]'),(2,'staff','Staff','["view_payout"]'),
         (3,'manager','Manager','["view_management","action_order_management","action_order_create","action_member_management","action_member_balance","action_member_role_vip","action_staff_payroll_details","action_staff_management","action_system_management","action_role_management","view_payout","action_payout_sensitive","action_payout_export","action_payout_mark_paid","action_payout_reject"]'),
@@ -235,8 +256,13 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
 
     let db;
     let server;
+    const testEmailOutbox = [];
     try {
         const app = require('../app');
+        app.locals.emailSender = async (toEmail, code) => {
+            testEmailOutbox.push({ toEmail: String(toEmail || ''), code: String(code || '') });
+            return { accepted: [toEmail], rejected: [] };
+        };
         db = require('../database');
         const { ensureSalarySchema } = require('../utils/salarySchema');
         await new Promise((resolve, reject) => ensureSalarySchema(db, error => error ? reject(error) : resolve()));
@@ -1250,6 +1276,37 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(sensitiveStaffPage.body, /解鎖查看敏感資料/);
         assert.doesNotMatch(sensitiveStaffPage.body, /7777888899990000/);
 
+        const requestSensitiveStepUpCode = async (targetStaffId, options = {}) => {
+            const email = options.email || 'manager-a@mihu.test';
+            const response = await createRequest(port, 'POST', '/api/email/send-code', {
+                Host: `127.0.0.1:${port}`,
+                Origin: `http://127.0.0.1:${port}`,
+                Cookie: managerA.cookie,
+                'X-CSRF-Token': managerA.csrfToken,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            }, JSON.stringify({
+                email,
+                purpose: 'staff_sensitive_view',
+                targetStaffId
+            }));
+            return response;
+        };
+
+        const verifySensitiveStepUp = async (targetStaffId, code) => {
+            const response = await createRequest(port, 'POST', '/api/email/verify-code', {
+                Host: `127.0.0.1:${port}`,
+                Origin: `http://127.0.0.1:${port}`,
+                Cookie: managerA.cookie,
+                'X-CSRF-Token': managerA.csrfToken,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            }, JSON.stringify({ email: 'manager-a@mihu.test', code, purpose: 'staff_sensitive_view', targetStaffId }));
+            assert.equal(response.status, 200, response.body);
+            const payload = parseJsonBody(response, 'sensitive step-up verify response');
+            assert.equal(payload.success, true, response.body);
+        };
+
         const sensitiveAuditCountBefore = await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count)));
         const deniedWithoutConfirmation = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
@@ -1257,6 +1314,39 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         }, JSON.stringify({ confirmSensitiveView: false }));
         assert.equal(deniedWithoutConfirmation.status, 400, deniedWithoutConfirmation.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count))), sensitiveAuditCountBefore);
+
+        const deniedWithoutVerification = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(deniedWithoutVerification.status, 401, deniedWithoutVerification.body);
+
+        const crossStudioSendCodeDenied = await requestSensitiveStepUpCode('member-b');
+        assert.equal(crossStudioSendCodeDenied.status, 403, crossStudioSendCodeDenied.body);
+
+        const sendCodeWithForgedEmail = await requestSensitiveStepUpCode('staff-a', { email: 'attacker@example.com' });
+        assert.equal(sendCodeWithForgedEmail.status, 200, sendCodeWithForgedEmail.body);
+        const latestOtpMail = testEmailOutbox.at(-1);
+        assert.ok(latestOtpMail, 'staff sensitive otp should be captured by stub');
+        assert.equal(latestOtpMail.toEmail, 'manager-a@mihu.test');
+
+        const rejectedWrongVerification = await createRequest(port, 'POST', '/api/email/verify-code', {
+            Host: `127.0.0.1:${port}`,
+            Origin: `http://127.0.0.1:${port}`,
+            Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+        }, JSON.stringify({ email: 'manager-a@mihu.test', code: '000000', purpose: 'staff_sensitive_view', targetStaffId: 'staff-a' }));
+        assert.equal(rejectedWrongVerification.status, 200, rejectedWrongVerification.body);
+        assert.equal(parseJsonBody(rejectedWrongVerification, 'wrong sensitive step-up verify response').success, false);
+        const deniedAfterWrongVerification = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(deniedAfterWrongVerification.status, 401, deniedAfterWrongVerification.body);
+
+        await verifySensitiveStepUp('staff-a', latestOtpMail.code);
 
         const unlockedSensitive = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
@@ -1269,7 +1359,40 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(unlockedPayload.data.staffId, 'staff-a');
         assert.equal(unlockedPayload.data.bankAccount, '7777888899990000');
         assert.equal(unlockedPayload.data.bankCode, '808');
-        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count))), sensitiveAuditCountBefore + 1);
+
+        const replayDeniedAfterConsume = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(replayDeniedAfterConsume.status, 401, replayDeniedAfterConsume.body);
+
+        const parallelSendCode = await requestSensitiveStepUpCode('staff-a');
+        assert.equal(parallelSendCode.status, 200, parallelSendCode.body);
+        const parallelCode = testEmailOutbox.at(-1).code;
+        await verifySensitiveStepUp('staff-a', parallelCode);
+        const [parallelOne, parallelTwo] = await Promise.all([
+            createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+                Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+                'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+            }, JSON.stringify({ confirmSensitiveView: true })),
+            createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
+                Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+                'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+            }, JSON.stringify({ confirmSensitiveView: true }))
+        ]);
+        const parallelStatuses = [parallelOne.status, parallelTwo.status].sort((a, b) => a - b);
+        assert.deepEqual(parallelStatuses, [200, 401], `${parallelOne.status}/${parallelTwo.status}`);
+
+        const switchTargetSendCode = await requestSensitiveStepUpCode('staff-a');
+        assert.equal(switchTargetSendCode.status, 200, switchTargetSendCode.body);
+        await verifySensitiveStepUp('staff-a', testEmailOutbox.at(-1).code);
+        const switchedTargetDenied = await createRequest(port, 'POST', '/management/staff/member-a/sensitive-data', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
+            'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
+        }, JSON.stringify({ confirmSensitiveView: true }));
+        assert.equal(switchedTargetDenied.status, 401, switchedTargetDenied.body);
+
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT COUNT(*) AS count FROM audit_logs WHERE action='sensitive_data_view'", (error, row) => error ? reject(error) : resolve(row.count))), sensitiveAuditCountBefore + 2);
         const latestSensitiveAudit = await new Promise((resolve, reject) => db.get("SELECT operator_id, target_id, studio_id, before_data, after_data, metadata FROM audit_logs WHERE action='sensitive_data_view' ORDER BY id DESC LIMIT 1", (error, row) => error ? reject(error) : resolve(row)));
         assert.equal(latestSensitiveAudit.operator_id, 'manager-a');
         assert.equal(latestSensitiveAudit.target_id, 'staff-a');
@@ -1282,6 +1405,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'action_member_role_vip', 'action_staff_management', 'action_system_management',
             'action_role_management', 'view_payout', 'action_payout_export', 'action_payout_mark_paid', 'action_payout_reject'
         ]), 'manager'], error => error ? reject(error) : resolve()));
+        const stepUpDeniedAfterRevocation = await requestSensitiveStepUpCode('staff-a');
+        assert.equal(stepUpDeniedAfterRevocation.status, 403, stepUpDeniedAfterRevocation.body);
         const deniedAfterRevocation = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
@@ -1289,6 +1414,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(deniedAfterRevocation.status, 403, deniedAfterRevocation.body);
         await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [managerPermissionSnapshot, 'manager'], error => error ? reject(error) : resolve()));
 
+        assert.equal((await requestSensitiveStepUpCode('staff-a')).status, 200);
+        await verifySensitiveStepUp('staff-a', testEmailOutbox.at(-1).code);
         const crossStudioSensitive = await createRequest(port, 'POST', '/management/staff/member-b/sensitive-data', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
@@ -1302,6 +1429,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             'action_role_management', 'view_payout', 'action_payout_sensitive', 'action_payout_export',
             'action_payout_mark_paid', 'action_payout_reject', 'action_commission_config'
         ]), 'manager'], error => error ? reject(error) : resolve()));
+        assert.equal((await requestSensitiveStepUpCode('staff-a')).status, 200);
+        await verifySensitiveStepUp('staff-a', testEmailOutbox.at(-1).code);
         const crossStudioWithCommissionScope = await createRequest(port, 'POST', '/management/staff/member-b/sensitive-data', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,
             'X-CSRF-Token': managerA.csrfToken, 'Content-Type': 'application/json', Accept: 'application/json'
@@ -1323,6 +1452,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(invalidCsrfSensitive.status, 403, invalidCsrfSensitive.body);
         assert.match(invalidCsrfSensitive.body, /Invalid CSRF token/);
 
+        assert.equal((await requestSensitiveStepUpCode('staff-a')).status, 200);
+        await verifySensitiveStepUp('staff-a', testEmailOutbox.at(-1).code);
         await new Promise((resolve, reject) => db.run('ALTER TABLE audit_logs RENAME TO audit_logs_backup', error => error ? reject(error) : resolve()));
         const deniedWhenAuditFails = await createRequest(port, 'POST', '/management/staff/staff-a/sensitive-data', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: managerA.cookie,

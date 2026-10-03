@@ -236,13 +236,27 @@
         const staffDetailModal = new bootstrap.Modal(document.getElementById('staffDetailModal'));
         const staffEditModal = new bootstrap.Modal(document.getElementById('staffEditModal'));
         const staffDetailModalElement = document.getElementById('staffDetailModal');
+        const sensitiveVerifyModalElement = document.getElementById('sensitiveDataVerifyModal');
+        const sensitiveVerifyModal = sensitiveVerifyModalElement
+            ? bootstrap.Modal.getOrCreateInstance(sensitiveVerifyModalElement)
+            : null;
+        const sensitiveVerifyCodeInput = document.getElementById('sensitiveVerifyCode');
+        const sensitiveVerifyMessage = document.getElementById('sensitiveDataVerifyMessage');
+        const sensitiveVerifyError = document.getElementById('sensitiveVerifyError');
+        const sendSensitiveVerifyCodeBtn = document.getElementById('sendSensitiveVerifyCodeBtn');
+        const confirmVerifyBtn = document.getElementById('confirmVerifyBtn');
+        const cancelSensitiveVerifyBtn = document.getElementById('cancelSensitiveVerifyBtn');
         const unlockSensitiveDataBtn = document.getElementById('unlockSensitiveDataBtn');
         const sensitiveUnlockStatus = document.getElementById('sensitiveUnlockStatus');
+        const sensitiveVerificationEmail = <%- JSON.stringify(currentUser && currentUser.email_verified ? String(currentUser.email || '') : '').replace(/</g, "\\u003c") %>;
+        const hasSensitiveVerificationEmail = String(sensitiveVerificationEmail || '').includes('@');
         let currentDetailStaff = null;
         let sensitiveRequestController = null;
         let sensitiveRequestId = 0;
         let detailViewGeneration = 0;
         let detailViewActive = false;
+        let sensitiveUnlocked = false;
+        let pendingSensitiveVerification = null;
 
         function getCsrfTokenFromCookie() {
             const cookie = String(document.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith('csrf_token='));
@@ -270,52 +284,245 @@
             );
         }
 
+        function setUnlockButtonLockedState() {
+            if (!unlockSensitiveDataBtn) return;
+            unlockSensitiveDataBtn.hidden = false;
+            unlockSensitiveDataBtn.disabled = false;
+            unlockSensitiveDataBtn.classList.remove('btn-success');
+            unlockSensitiveDataBtn.classList.add('btn-outline-warning');
+            unlockSensitiveDataBtn.innerHTML = '<i class="fa-solid fa-eye me-1"></i>解鎖查看敏感資料';
+        }
+
+        function setUnlockButtonUnlockedState() {
+            if (!unlockSensitiveDataBtn) return;
+            unlockSensitiveDataBtn.hidden = false;
+            unlockSensitiveDataBtn.disabled = true;
+            unlockSensitiveDataBtn.classList.remove('btn-outline-warning');
+            unlockSensitiveDataBtn.classList.add('btn-success');
+            unlockSensitiveDataBtn.textContent = '🔒 敏感資料已解鎖';
+        }
+
+        function setSensitiveVerifyError(message) {
+            if (!sensitiveVerifyError) return;
+            const text = String(message || '').trim();
+            sensitiveVerifyError.textContent = text;
+            sensitiveVerifyError.hidden = !text;
+        }
+
+        function maskEmail(email) {
+            const value = String(email || '').trim();
+            const at = value.indexOf('@');
+            if (at <= 1) return value;
+            const local = value.slice(0, at);
+            const domain = value.slice(at + 1);
+            const maskedLocal = `${local.slice(0, 1)}${'*'.repeat(Math.max(local.length - 2, 1))}${local.slice(-1)}`;
+            return `${maskedLocal}@${domain}`;
+        }
+
+        function clearSensitiveVerifyState() {
+            if (sensitiveVerifyCodeInput) sensitiveVerifyCodeInput.value = '';
+            setSensitiveVerifyError('');
+            if (sendSensitiveVerifyCodeBtn) sendSensitiveVerifyCodeBtn.disabled = false;
+            if (confirmVerifyBtn) confirmVerifyBtn.disabled = false;
+            if (cancelSensitiveVerifyBtn) cancelSensitiveVerifyBtn.disabled = false;
+        }
+
+        function markSensitiveVerifyBackdrop() {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            const latest = backdrops[backdrops.length - 1];
+            if (!latest) return;
+            latest.classList.add('sensitive-verify-backdrop');
+            document.body.classList.add('sensitive-verify-open');
+        }
+
+        function clearSensitiveVerifyBackdrop() {
+            document.querySelectorAll('.modal-backdrop.sensitive-verify-backdrop').forEach(backdrop => {
+                backdrop.classList.remove('sensitive-verify-backdrop');
+            });
+            document.body.classList.remove('sensitive-verify-open');
+        }
+
+        function trapSensitiveVerifyTabFocus(event) {
+            if (!sensitiveVerifyModalElement || event.key !== 'Tab') return;
+            const focusableSelector = [
+                'button:not([disabled])',
+                'input:not([disabled])',
+                'select:not([disabled])',
+                'textarea:not([disabled])',
+                '[href]',
+                '[tabindex]:not([tabindex="-1"])'
+            ].join(',');
+            const focusable = [...sensitiveVerifyModalElement.querySelectorAll(focusableSelector)]
+                .filter(node => !node.hasAttribute('hidden') && node.tabIndex !== -1);
+            if (focusable.length < 1) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+
+            if (event.shiftKey) {
+                if (document.activeElement === first || !sensitiveVerifyModalElement.contains(document.activeElement)) {
+                    event.preventDefault();
+                    last.focus();
+                }
+                return;
+            }
+
+            if (document.activeElement === last || !sensitiveVerifyModalElement.contains(document.activeElement)) {
+                event.preventDefault();
+                first.focus();
+            }
+        }
+
         function resetSensitiveView(options = {}) {
             const { invalidate = false, clearTarget = false } = options;
             if (invalidate) detailViewGeneration += 1;
+            sensitiveUnlocked = false;
+            pendingSensitiveVerification = null;
             if (sensitiveRequestController) {
                 sensitiveRequestController.abort();
                 sensitiveRequestController = null;
             }
             sensitiveRequestId += 1;
             maskSensitiveFields();
-            if (unlockSensitiveDataBtn) {
-                unlockSensitiveDataBtn.disabled = false;
-                unlockSensitiveDataBtn.hidden = false;
-            }
+            setUnlockButtonLockedState();
             if (sensitiveUnlockStatus) {
                 sensitiveUnlockStatus.textContent = '尚未解鎖';
                 sensitiveUnlockStatus.classList.remove('text-success');
                 sensitiveUnlockStatus.classList.add('text-secondary');
+            }
+            clearSensitiveVerifyState();
+            clearSensitiveVerifyBackdrop();
+            if (sensitiveVerifyModalElement && sensitiveVerifyModalElement.classList.contains('show') && sensitiveVerifyModal) {
+                sensitiveVerifyModal.hide();
             }
             if (clearTarget) currentDetailStaff = null;
         }
 
         async function unlockSensitiveData() {
             if (!currentDetailStaff || !unlockSensitiveDataBtn) return;
+            if (sensitiveUnlocked) return;
             const staffId = currentDetailStaff.id;
             const generation = detailViewGeneration;
             const displayName = currentDetailStaff.displayName || currentDetailStaff.username || String(staffId);
-            const confirmMessage = `即將查看員工${displayName}的本名與薪轉帳戶資料。本次查看將記錄於系統日誌。`;
-            const confirmed = await (window.MiHuFeedback && typeof window.MiHuFeedback.confirm === 'function'
-                ? window.MiHuFeedback.confirm({
-                    title: '查看敏感資料確認',
-                    message: confirmMessage,
-                    confirmText: '確認查看',
-                    cancelText: '取消',
-                    variant: 'warning'
-                })
-                : Promise.resolve(window.confirm(confirmMessage)));
             if (!isCurrentDetailView(staffId, generation)) return;
-            if (!confirmed) return;
+
+            pendingSensitiveVerification = { staffId, generation, displayName };
+            clearSensitiveVerifyState();
+            if (sensitiveVerifyMessage) {
+                const targetEmailText = hasSensitiveVerificationEmail
+                    ? `驗證碼將寄送至 ${maskEmail(sensitiveVerificationEmail)}。`
+                    : '尚未設定或驗證 Email，無法進行敏感資料驗證。';
+                sensitiveVerifyMessage.textContent = `即將查看員工${displayName}的本名與薪轉帳戶資料。本次查看將記錄於系統日誌。${targetEmailText}`;
+            }
+            if (sensitiveUnlockStatus) {
+                sensitiveUnlockStatus.textContent = '等待驗證...';
+                sensitiveUnlockStatus.classList.remove('text-success');
+                sensitiveUnlockStatus.classList.add('text-secondary');
+            }
+            if (confirmVerifyBtn) confirmVerifyBtn.disabled = !hasSensitiveVerificationEmail;
+            if (sendSensitiveVerifyCodeBtn) sendSensitiveVerifyCodeBtn.disabled = !hasSensitiveVerificationEmail;
+            if (!hasSensitiveVerificationEmail) {
+                setSensitiveVerifyError('請先在個人檔案完成 Email 驗證後，再查看敏感資料。');
+            }
+            if (sensitiveVerifyModal) {
+                sensitiveVerifyModal.show();
+            }
+        }
+
+        async function sendSensitiveVerifyCode() {
+            if (!pendingSensitiveVerification || !hasSensitiveVerificationEmail) {
+                setSensitiveVerifyError('請先在個人檔案完成 Email 驗證後，再查看敏感資料。');
+                return;
+            }
+            if (sendSensitiveVerifyCodeBtn) sendSensitiveVerifyCodeBtn.disabled = true;
+            setSensitiveVerifyError('');
+            try {
+                const response = await fetch('/api/email/send-code', {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': getCsrfTokenFromCookie()
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        email: sensitiveVerificationEmail,
+                        purpose: 'staff_sensitive_view',
+                        targetStaffId: pendingSensitiveVerification.staffId
+                    })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || '驗證碼寄送失敗');
+                }
+                if (sensitiveUnlockStatus && pendingSensitiveVerification) {
+                    sensitiveUnlockStatus.textContent = '驗證碼已寄送，請完成輸入';
+                    sensitiveUnlockStatus.classList.remove('text-success');
+                    sensitiveUnlockStatus.classList.add('text-secondary');
+                }
+                if (sensitiveVerifyCodeInput) sensitiveVerifyCodeInput.focus();
+            } catch (error) {
+                const failureMessage = error && error.message ? String(error.message) : '驗證碼寄送失敗，請稍後再試';
+                setSensitiveVerifyError(failureMessage);
+            } finally {
+                if (sendSensitiveVerifyCodeBtn && pendingSensitiveVerification) {
+                    sendSensitiveVerifyCodeBtn.disabled = false;
+                }
+            }
+        }
+
+        async function confirmSensitiveDataVerification() {
+            if (!pendingSensitiveVerification || !unlockSensitiveDataBtn) return;
+            const { staffId, generation } = pendingSensitiveVerification;
+            if (!isCurrentDetailView(staffId, generation)) return;
+
+            const verifyCode = String(sensitiveVerifyCodeInput && sensitiveVerifyCodeInput.value || '').trim();
+            if (!/^\d{6}$/.test(verifyCode)) {
+                setSensitiveVerifyError('請輸入 6 位數 Email 驗證碼。');
+                if (sensitiveVerifyCodeInput) sensitiveVerifyCodeInput.focus();
+                return;
+            }
+            if (!hasSensitiveVerificationEmail) {
+                setSensitiveVerifyError('請先在個人檔案完成 Email 驗證後，再查看敏感資料。');
+                return;
+            }
 
             const requestId = ++sensitiveRequestId;
             if (sensitiveRequestController) sensitiveRequestController.abort();
             sensitiveRequestController = new AbortController();
             unlockSensitiveDataBtn.disabled = true;
-            if (sensitiveUnlockStatus) sensitiveUnlockStatus.textContent = '資料解鎖中...';
+            if (sendSensitiveVerifyCodeBtn) sendSensitiveVerifyCodeBtn.disabled = true;
+            if (confirmVerifyBtn) confirmVerifyBtn.disabled = true;
+            if (cancelSensitiveVerifyBtn) cancelSensitiveVerifyBtn.disabled = true;
+            setSensitiveVerifyError('');
+            if (sensitiveUnlockStatus) {
+                sensitiveUnlockStatus.textContent = '資料解鎖中...';
+                sensitiveUnlockStatus.classList.remove('text-success');
+                sensitiveUnlockStatus.classList.add('text-secondary');
+            }
 
             try {
+                const verificationResponse = await fetch('/api/email/verify-code', {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': getCsrfTokenFromCookie()
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        email: sensitiveVerificationEmail,
+                        code: verifyCode,
+                        purpose: 'staff_sensitive_view',
+                        targetStaffId: staffId
+                    }),
+                    signal: sensitiveRequestController.signal
+                });
+                const verificationResult = await verificationResponse.json().catch(() => ({}));
+                if (requestId !== sensitiveRequestId || !isCurrentDetailView(staffId, generation)) return;
+                if (!verificationResponse.ok || !verificationResult.success) {
+                    throw new Error(verificationResult.message || '驗證碼錯誤，請重新輸入');
+                }
+
                 const response = await fetch(`/management/staff/${encodeURIComponent(String(staffId))}/sensitive-data`, {
                     method: 'POST',
                     headers: {
@@ -339,20 +546,37 @@
                 document.getElementById('detailBankCode').textContent = result.data.bankCode || '未填寫';
                 document.getElementById('detailBankBranch').textContent = result.data.bankBranch || '未填寫';
                 document.getElementById('detailBankAccount').textContent = result.data.bankAccount || '未填寫';
-                if (unlockSensitiveDataBtn) unlockSensitiveDataBtn.hidden = true;
+                sensitiveUnlocked = true;
+                pendingSensitiveVerification = null;
+                setUnlockButtonUnlockedState();
                 if (sensitiveUnlockStatus) {
                     sensitiveUnlockStatus.textContent = '已解鎖（僅限本次檢視）';
                     sensitiveUnlockStatus.classList.remove('text-secondary');
                     sensitiveUnlockStatus.classList.add('text-success');
                 }
+                if (sensitiveVerifyModal) sensitiveVerifyModal.hide();
             } catch (error) {
                 if (error && error.name === 'AbortError') return;
                 if (!isCurrentDetailView(staffId, generation)) return;
                 maskSensitiveFields();
-                if (sensitiveUnlockStatus) sensitiveUnlockStatus.textContent = '解鎖失敗，請稍後再試';
+                setUnlockButtonLockedState();
+                const failureMessage = error && error.message ? String(error.message) : '解鎖失敗，請稍後再試';
+                setSensitiveVerifyError(failureMessage);
+                if (sensitiveUnlockStatus) {
+                    sensitiveUnlockStatus.textContent = '驗證失敗，仍維持遮蔽';
+                    sensitiveUnlockStatus.classList.remove('text-success');
+                    sensitiveUnlockStatus.classList.add('text-secondary');
+                }
             } finally {
                 if (requestId === sensitiveRequestId && isCurrentDetailView(staffId, generation) && unlockSensitiveDataBtn) {
-                    unlockSensitiveDataBtn.disabled = false;
+                    unlockSensitiveDataBtn.disabled = sensitiveUnlocked;
+                }
+                if (requestId === sensitiveRequestId && pendingSensitiveVerification && isCurrentDetailView(staffId, generation) && sendSensitiveVerifyCodeBtn) {
+                    sendSensitiveVerifyCodeBtn.disabled = false;
+                }
+                if (requestId === sensitiveRequestId && pendingSensitiveVerification && isCurrentDetailView(staffId, generation)) {
+                    if (confirmVerifyBtn) confirmVerifyBtn.disabled = false;
+                    if (cancelSensitiveVerifyBtn) cancelSensitiveVerifyBtn.disabled = false;
                 }
             }
         }
@@ -452,6 +676,68 @@
             });
         }
 
+        if (confirmVerifyBtn) {
+            confirmVerifyBtn.addEventListener('click', event => {
+                event.preventDefault();
+                confirmSensitiveDataVerification();
+            });
+        }
+
+        if (sendSensitiveVerifyCodeBtn) {
+            sendSensitiveVerifyCodeBtn.addEventListener('click', event => {
+                event.preventDefault();
+                sendSensitiveVerifyCode();
+            });
+        }
+
+        if (sensitiveVerifyCodeInput) {
+            sensitiveVerifyCodeInput.addEventListener('input', () => {
+                if (!sensitiveVerifyCodeInput) return;
+                const normalized = String(sensitiveVerifyCodeInput.value || '').replace(/[^0-9]/g, '').slice(0, 6);
+                if (sensitiveVerifyCodeInput.value !== normalized) sensitiveVerifyCodeInput.value = normalized;
+            });
+            sensitiveVerifyCodeInput.addEventListener('keydown', event => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    confirmSensitiveDataVerification();
+                }
+            });
+        }
+
+        if (sensitiveVerifyModalElement) {
+            sensitiveVerifyModalElement.addEventListener('keydown', trapSensitiveVerifyTabFocus);
+            sensitiveVerifyModalElement.addEventListener('shown.bs.modal', () => {
+                markSensitiveVerifyBackdrop();
+                if (staffDetailModalElement) staffDetailModalElement.setAttribute('inert', '');
+                setTimeout(() => {
+                    if (sensitiveVerifyCodeInput) sensitiveVerifyCodeInput.focus();
+                }, 0);
+            });
+
+            sensitiveVerifyModalElement.addEventListener('hidden.bs.modal', () => {
+                clearSensitiveVerifyState();
+                clearSensitiveVerifyBackdrop();
+                if (staffDetailModalElement) staffDetailModalElement.removeAttribute('inert');
+                if (detailViewActive && staffDetailModalElement && staffDetailModalElement.classList.contains('show')) {
+                    document.body.classList.add('modal-open');
+                }
+                if (!sensitiveUnlocked) pendingSensitiveVerification = null;
+                if (!sensitiveUnlocked && sensitiveUnlockStatus && detailViewActive && staffDetailModalElement && staffDetailModalElement.classList.contains('show')) {
+                    sensitiveUnlockStatus.textContent = '尚未解鎖';
+                    sensitiveUnlockStatus.classList.remove('text-success');
+                    sensitiveUnlockStatus.classList.add('text-secondary');
+                }
+                if (detailViewActive && staffDetailModalElement && staffDetailModalElement.classList.contains('show') && unlockSensitiveDataBtn) {
+                    setTimeout(() => {
+                        unlockSensitiveDataBtn.focus();
+                        if (typeof requestAnimationFrame === 'function') {
+                            requestAnimationFrame(() => unlockSensitiveDataBtn.focus());
+                        }
+                    }, 0);
+                }
+            });
+        }
+
         if (staffDetailModalElement) {
             staffDetailModalElement.addEventListener('hide.bs.modal', () => {
                 detailViewActive = false;
@@ -459,6 +745,10 @@
             });
             staffDetailModalElement.addEventListener('hidden.bs.modal', () => {
                 resetSensitiveView({ clearTarget: true });
+                if (!document.querySelector('.modal.show')) {
+                    document.body.classList.remove('modal-open');
+                    document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+                }
             });
         }
 
