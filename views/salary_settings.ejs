@@ -8,14 +8,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/salary-settings.css">
 </head>
-<body class="salary-settings-page">
+<body class="mihu-admin-page text-light salary-settings-page">
 <div class="app-layout">
 <%- include('partials/sidebar', { activePage: 'salary_settings' }) %>
 
 <div class="main-wrapper">
     <%- include('partials/navbar', { activePage: 'salary_settings' }) %>
 
-    <div class="content-body admin-page-content salary-settings-container" style="background:#080612;background-image:radial-gradient(55% 42% at 8% 12%, rgba(109, 40, 217, 0.28), transparent 72%),radial-gradient(48% 38% at 92% 10%, rgba(37, 99, 235, 0.2), transparent 74%),linear-gradient(180deg, rgba(17, 11, 31, 0.96), rgba(9, 7, 19, 0.98));color:#f8fafc;">
+    <div class="content-body admin-page-content salary-settings-container">
         <% const canSalaryAdjust = typeof hasPerm === 'function' ? hasPerm('action_salary_adjust') : userPerms.includes('*') || userPerms.includes('action_salary_adjust'); %>
         <% const canSalaryRuleManage = typeof hasPerm === 'function' ? hasPerm('action_salary_rule_manage') : userPerms.includes('*') || userPerms.includes('action_salary_rule_manage'); %>
         <% const canSalaryDistribute = typeof hasPerm === 'function' ? hasPerm('action_salary_distribute') : userPerms.includes('*') || userPerms.includes('action_salary_distribute'); %>
@@ -29,11 +29,10 @@
         <% const roleBadgeMap = { admin: 'role-badge role-badge-admin', owner: 'role-badge role-badge-owner', cfo: 'role-badge role-badge-cfo', aftersales: 'role-badge role-badge-aftersales', after_sales: 'role-badge role-badge-aftersales', manager: 'role-badge role-badge-manager', cs_director: 'role-badge role-badge-manager', cs: 'role-badge role-badge-cs', reviewer: 'role-badge role-badge-reviewer', talent: 'role-badge role-badge-talent', staff: 'role-badge role-badge-talent', member: 'role-badge role-badge-member' }; %>
         <% const salaryHeaderActions = `
             <div class="salary-toolbar-actions salary-top-toolbar" role="group" aria-label="薪資設定工具列">
-                <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#adjustSalaryModal" ${canSalaryAdjust ? '' : 'disabled aria-disabled="true" title="缺少手動調整權限"'}>新增薪資調整</button>
-                <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#monthlySalaryRulesModal" ${canSalaryRuleManage ? '' : 'disabled aria-disabled="true" title="缺少固定月薪規則權限"'}>固定月薪規則</button>
-                <button type="button" class="btn salary-tool-btn salary-tool-btn-warning" data-bs-toggle="modal" data-bs-target="#distributeBaseSalaryModal" ${canSalaryDistribute ? '' : 'disabled aria-disabled="true" title="缺少派發權限"'}>派發本月底薪</button>
-                <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#batchImportSalaryModal" ${canSalaryImport ? '' : 'disabled aria-disabled="true" title="缺少匯入權限"'}>CSV / XLSX 匯入</button>
-                <button type="button" class="btn salary-tool-btn salary-tool-btn-muted" id="openFullSalaryHistoryButton">完整調整紀錄</button>
+                <button type="button" class="btn btn-sm py-2 rounded-pill text-white fw-semibold salary-tool-btn salary-tool-btn-primary" data-bs-toggle="modal" data-bs-target="#adjustSalaryModal" ${canSalaryAdjust ? '' : 'disabled aria-disabled="true" title="缺少手動調整權限"'}>新增薪資調整</button>
+                <button type="button" class="btn btn-sm rounded-pill fw-semibold salary-tool-btn salary-tool-btn-rule" data-bs-toggle="modal" data-bs-target="#monthlySalaryRulesModal" ${canSalaryRuleManage ? '' : 'disabled aria-disabled="true" title="缺少固定月薪規則權限"'}>固定月薪設定</button>
+                <button type="button" class="btn btn-sm rounded-pill fw-semibold salary-tool-btn salary-tool-btn-distribute" data-bs-toggle="modal" data-bs-target="#distributeBaseSalaryModal" ${canSalaryDistribute ? '' : 'disabled aria-disabled="true" title="缺少派發權限"'}>派發本月底薪</button>
+                <button type="button" class="btn btn-sm rounded-pill fw-semibold salary-tool-btn salary-tool-btn-import" data-bs-toggle="modal" data-bs-target="#batchImportSalaryModal" ${canSalaryImport ? '' : 'disabled aria-disabled="true" title="缺少匯入權限"'}>CSV / XLSX 匯入</button>
             </div>
         `; %>
         <%- include('partials/admin_page_header', {
@@ -616,6 +615,15 @@
         if (historyNextButton) historyNextButton.disabled = historyState.page >= historyState.totalPages;
     }
 
+    function openAllHistoryFromSummary() {
+        historyState.userId = '';
+        historyState.displayName = '';
+        historyState.query = '';
+        if (historySearchInput) historySearchInput.value = '';
+        openModal('salaryHistoryModal');
+        loadHistory(1);
+    }
+
     async function loadHistory(page) {
         if (!historyBody) return;
         const targetPage = Math.max(1, Number(page || 1));
@@ -688,12 +696,7 @@
 
     if (openFullHistoryButton) {
         openFullHistoryButton.addEventListener('click', () => {
-            historyState.userId = '';
-            historyState.displayName = '';
-            historyState.query = '';
-            if (historySearchInput) historySearchInput.value = '';
-            openModal('salaryHistoryModal');
-            loadHistory(1);
+            openAllHistoryFromSummary();
         });
     }
 
