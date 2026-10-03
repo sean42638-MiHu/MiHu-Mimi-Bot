@@ -125,11 +125,6 @@
                         <span class="income-summary-kpi">已實領：<strong id="incomePaidAmount">$<%= Number(summaryTotals.paidAmount || 0).toLocaleString() %></strong></span>
                         <span class="income-summary-kpi">可提領：<strong id="incomeAvailableAmount">$<%= Number(summaryTotals.availableAmount || 0).toLocaleString() %></strong></span>
                     </div>
-                    <div class="income-summary-contract small" id="incomeSummaryContractNotice">
-                        <% summaryLimitations.forEach(item => { %>
-                            <p class="mb-1">• <%= item %></p>
-                        <% }) %>
-                    </div>
                     <div class="table-responsive income-summary-table-wrap">
                         <table class="table table-dark table-sm align-middle mb-0 income-summary-table" id="incomeSummaryTable">
                             <thead>
