@@ -320,6 +320,9 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(incomePage.status, 200, incomePage.body);
         assert.match(incomePage.body, /薪資與分潤明細/);
         assert.match(incomePage.body, /id="withdrawalGateNotice"/);
+        assert.match(incomePage.body, /id="incomePendingAmount"/);
+        assert.equal((incomePage.body.match(/id="incomeMonthlyNetAmount"/g) || []).length, 1);
+        assert.doesNotMatch(incomePage.body, /income-ledger-kpi-grid/);
         assert.doesNotMatch(incomePage.body, /ORDER-B/);
 
         const incomeSummaryApi = await createRequest(port, 'GET', '/api/income/monthly-summary?month=2026-09', {
@@ -329,6 +332,11 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         const incomeSummaryPayload = JSON.parse(incomeSummaryApi.body);
         assert.equal(incomeSummaryPayload.success, true);
         assert.equal(incomeSummaryPayload.summary.month, '2026-09');
+        assert.equal(typeof incomeSummaryPayload.netSalary, 'number');
+        assert.equal(typeof incomeSummaryPayload.totalIncome, 'number');
+        assert.equal(typeof incomeSummaryPayload.totalDeduction, 'number');
+        assert.equal(Array.isArray(incomeSummaryPayload.categories), true);
+        assert.equal(incomeSummaryPayload.netSalary, Number((incomeSummaryPayload.totalIncome - incomeSummaryPayload.totalDeduction).toFixed(2)));
 
         const incomeSummaryInvalidMonth = await createRequest(port, 'GET', '/api/income/monthly-summary?month=2026-13', {
             Host: `127.0.0.1:${port}`, Cookie: member.cookie, Accept: 'application/json'

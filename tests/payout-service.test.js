@@ -73,11 +73,27 @@ async function setupFixture(databasePath) {
         target_type TEXT, target_id TEXT, before_data TEXT, after_data TEXT, metadata TEXT,
         ip_address TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`);
+    await run(db, `CREATE TABLE wallet_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        type TEXT,
+        amount REAL,
+        balance_before REAL,
+        balance_after REAL,
+        bonus_amount REAL NOT NULL DEFAULT 0,
+        reference_type TEXT,
+        reference_id TEXT,
+        description TEXT,
+        operator_id TEXT,
+        created_at TEXT
+    )`);
     for (const [id, username, name, branch, account, balance, studioId] of [
         ['user-a', 'alice', 'Alice Example', 'Main', '123456789', 100, 1],
         ['user-b', 'bob', 'Bob Example', 'Main', '987654321', 200, 1],
         ['user-c', 'carol', 'Carol Example', 'Other', '111222333', 300, 2],
-        ['user-d', 'dylan', 'Dylan Example', 'Main', '222333444', 150, 1]
+        ['user-d', 'dylan', 'Dylan Example', 'Main', '222333444', 150, 1],
+        ['user-e', 'ellen', 'Ellen Example', 'Main', '555666777', 120, 1],
+        ['user-f', 'frank', 'Frank Example', 'Other', '333444555', 180, 2]
     ]) {
         const sensitive = encryptSensitiveFields({
             real_name: name, bank_name: 'Bank', bank_code: '808', bank_branch: branch, bank_account: account
@@ -87,7 +103,7 @@ async function setupFixture(databasePath) {
             sensitive.real_name, sensitive.bank_name, sensitive.bank_code, sensitive.bank_branch, sensitive.bank_account, balance]);
     }
     await run(db, "INSERT INTO roles (role_key, permissions) VALUES ('member', '[\"view_income\"]')");
-    await run(db, "INSERT INTO user_wallets VALUES ('user-a',100),('user-b',200),('user-c',300),('user-d',150)");
+    await run(db, "INSERT INTO user_wallets VALUES ('user-a',100),('user-b',200),('user-c',300),('user-d',150),('user-e',120),('user-f',180)");
     await run(db, `INSERT INTO orders (id,boss_id,talent_id,studio_id,status,total_amount,discount,unit_price,duration,talent_earning,commission_rate_snapshot,platform_commission,category,created_at,end_time,order_no)
         VALUES (1,'customer','user-a',1,'completed',10000,0,10000,1,10000,1,0,'陪玩單','2026-09-02 10:00:00','2026-09-02 11:00:00','A-001'),
                (2,'customer','user-b',1,'completed',8000,0,8000,1,8000,1,0,'陪玩單','2026-09-03 10:00:00','2026-09-03 11:00:00','B-001'),
@@ -177,6 +193,105 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         assert.equal(monthlySummary.rows.some(item => item.category === '有獎單' && item.sourceType === 'order'), true);
         assert.equal(monthlySummary.rows.some(item => item.category === '薪資扣減' && item.sourceType === 'salary_adjustment'), true);
         assert.equal(monthlySummary.totals.monthlyNetAmount, 4150);
+        assert.equal(monthlySummary.totals.totalIncome, 4220);
+        assert.equal(monthlySummary.totals.totalDeduction, 70);
+        assert.equal(monthlySummary.totals.netSalary, 4150);
+
+         await run(db, `INSERT INTO orders (id,boss_id,talent_id,studio_id,status,total_amount,discount,unit_price,duration,talent_earning,commission_rate_snapshot,platform_commission,category,created_at,end_time,order_no)
+             VALUES (30,'customer','user-e',1,'completed',400,0,400,1,400,1,0,'陪玩單','2026-10-02 09:00:00','2026-10-02 09:30:00','E-030'),
+                   (31,'customer','user-b',1,'completed',9999,0,9999,1,9999,1,0,'陪玩單','2026-10-02 10:00:00','2026-10-02 10:30:00','B-031'),
+                   (32,'customer','user-f',2,'completed',7777,0,7777,1,7777,1,0,'陪玩單','2026-10-02 11:00:00','2026-10-02 11:30:00','F-032')`);
+        await run(db, `INSERT INTO salary_adjustments (user_id,studio_id,available_delta,earned_delta,history_delta,adjustment_month,adjustment_type,reason,created_at)
+             VALUES ('user-e',1,-500,0,0,'2026-10','manual_adjustment','October deduction','2026-10-03 10:00:00'),
+                 ('user-e',1,0,1000,0,'2026-10','distribution','October base salary','2026-10-03 11:00:00'),
+                 ('user-e',1,0,0,-20,'2026-12','history_adjustment','Year-end correction','2026-12-02 09:00:00'),
+                 ('user-e',1,0,100.25,0,'2026-11','distribution','Decimal base salary','2026-11-02 09:00:00'),
+                 ('user-e',1,-0.25,0,0,'2026-11','manual_adjustment','Decimal deduction','2026-11-02 10:00:00'),
+                   ('user-e',1,0,0,-30,'2026-11','history_adjustment','Decimal history correction','2026-11-02 11:00:00'),
+                   ('user-e',1,0,50,0,'2027-01','distribution','Pure income month','2027-01-03 10:00:00')`);
+        await run(db, `INSERT INTO payouts (withdrawal_no,user_id,studio_id,withdrawal_period,amount,status,requested_at,paid_at,created_at,updated_at)
+             VALUES ('WD-E-2026-10-P','user-e',1,'2026-10',321,'pending','2026-10-03 12:00:00',NULL,'2026-10-03 12:00:00','2026-10-03 12:00:00'),
+                 ('WD-E-2026-10-D','user-e',1,'2026-10',123,'completed','2026-10-04 12:00:00','2026-10-05 09:00:00','2026-10-04 12:00:00','2026-10-05 09:00:00')`);
+        await run(db, `INSERT INTO wallet_transactions
+            (user_id,type,amount,balance_before,balance_after,reference_type,reference_id,description,operator_id,created_at)
+             VALUES ('user-e','order_payment',-999,1000,1,'order','E-030','wallet payment should not join salary','user-e','2026-10-02 12:00:00'),
+                 ('user-e','refund',500,1,501,'order','E-030','wallet refund should not join salary','manager-a','2026-10-02 13:00:00')`);
+
+        const octoberSummary = await service.listMonthlyIncomeSummary({
+             userId: 'user-e',
+            studioId: 1,
+            month: '2026-10',
+            date: new Date('2026-10-05T12:00:00.000Z')
+        });
+        assert.equal(octoberSummary.totals.totalIncome, 1400);
+        assert.equal(octoberSummary.totals.totalDeduction, 500);
+        assert.equal(octoberSummary.totals.netSalary, 900);
+        assert.equal(octoberSummary.totals.monthlyNetAmount, 900);
+        assert.equal(octoberSummary.totals.pendingAmount, 321);
+        assert.equal(octoberSummary.totals.paidAmount, 123);
+        assert.equal(octoberSummary.rows.some(item => item.category === '薪資扣減' && item.totalAmount === -500), true);
+        assert.equal(octoberSummary.rows.some(item => item.category === '陪玩單' && item.totalAmount === 400), true);
+        assert.equal(octoberSummary.rows.some(item => item.category === '月薪規則發放' && item.totalAmount === 1000), true);
+        assert.equal(octoberSummary.rows.some(item => item.totalAmount === 9999), false);
+        assert.equal(octoberSummary.rows.some(item => item.totalAmount === 7777), false);
+
+        const octoberSummaryRowsTotal = Number(octoberSummary.rows
+            .reduce((sum, row) => sum + Number(row.totalAmount || 0), 0)
+            .toFixed(2));
+        assert.equal(octoberSummaryRowsTotal, octoberSummary.totals.netSalary);
+
+        const octoberDetailsAll = await service.listMonthlyIncomeDetails({
+            userId: 'user-e',
+            studioId: 1,
+            month: '2026-10',
+            page: 1,
+            limit: 15,
+            date: new Date('2026-10-05T12:00:00.000Z')
+        });
+        assert.equal(octoberDetailsAll.totalAmount, 900);
+        assert.equal(octoberDetailsAll.rows.some(row => row.sourceType === 'wallet'), false);
+
+        const novemberSummary = await service.listMonthlyIncomeSummary({
+            userId: 'user-e',
+            studioId: 1,
+            month: '2026-11',
+            date: new Date('2026-11-04T12:00:00.000Z')
+        });
+        assert.equal(novemberSummary.totals.totalIncome, 100.25);
+        assert.equal(novemberSummary.totals.totalDeduction, 30.25);
+        assert.equal(novemberSummary.totals.netSalary, 70);
+        assert.equal(novemberSummary.rows.some(item => item.category === '薪資扣減' && item.totalAmount === -0.25), true);
+        assert.equal(novemberSummary.rows.some(item => item.category === '歷史收入校正' && item.totalAmount === -30), true);
+
+        const decemberSummary = await service.listMonthlyIncomeSummary({
+            userId: 'user-e',
+            studioId: 1,
+            month: '2026-12',
+            date: new Date('2026-12-03T12:00:00.000Z')
+        });
+        assert.equal(decemberSummary.totals.totalIncome, 0);
+        assert.equal(decemberSummary.totals.totalDeduction, 20);
+        assert.equal(decemberSummary.totals.netSalary, -20);
+
+        const augustSummary = await service.listMonthlyIncomeSummary({
+            userId: 'user-e',
+            studioId: 1,
+            month: '2026-08',
+            date: new Date('2026-08-03T12:00:00.000Z')
+        });
+        assert.equal(augustSummary.totals.totalIncome, 0);
+        assert.equal(augustSummary.totals.totalDeduction, 0);
+        assert.equal(augustSummary.totals.netSalary, 0);
+
+        const januarySummary = await service.listMonthlyIncomeSummary({
+            userId: 'user-e',
+            studioId: 1,
+            month: '2027-01',
+            date: new Date('2027-01-05T12:00:00.000Z')
+        });
+        assert.equal(januarySummary.totals.totalIncome, 50);
+        assert.equal(januarySummary.totals.totalDeduction, 0);
+        assert.equal(januarySummary.totals.netSalary, 50);
 
         const monthlyOrderDetail = await service.listMonthlyIncomeDetails({
             userId: 'user-d',

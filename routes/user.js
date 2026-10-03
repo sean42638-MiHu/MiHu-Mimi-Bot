@@ -490,7 +490,23 @@ router.get('/api/income/monthly-summary', ensureAuth, checkPerm('view_income'), 
             studioId,
             month: requestedMonth || undefined
         });
-        return res.json({ success: true, summary });
+        const totals = summary && summary.totals ? summary.totals : {};
+        const categories = Array.isArray(summary && summary.rows)
+            ? summary.rows.map(item => ({
+                type: item.type || (Number(item.totalAmount || 0) < 0 ? 'deduction' : 'income'),
+                category: item.category || '未分類收入',
+                amount: Number(item.totalAmount || 0),
+                count: Number(item.count || 0)
+            }))
+            : [];
+        return res.json({
+            success: true,
+            netSalary: Number(totals.netSalary || totals.monthlyNetAmount || 0),
+            totalIncome: Number(totals.totalIncome || 0),
+            totalDeduction: Number(totals.totalDeduction || 0),
+            categories,
+            summary
+        });
     } catch (error) {
         const status = /月份格式/.test(String(error && error.message || '')) ? 400 : 500;
         return res.status(status).json({ success: false, message: error.message || '無法載入收入摘要' });
