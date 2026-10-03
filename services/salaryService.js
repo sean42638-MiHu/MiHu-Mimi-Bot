@@ -354,6 +354,95 @@ async function listSalarySettings({ studioId, month = nowMonth(), page = 1, sear
     };
 }
 
+async function listSalaryAdjustmentHistory({ studioId, page = 1, pageSize = 15, search = '', userId = '' }) {
+    const normalizedSearch = String(search || '').trim().slice(0, 80);
+    const normalizedUserId = String(userId || '').trim();
+    const requestedPage = Math.max(1, Math.floor(Number(page) || 1));
+    const fixedPageSize = Math.max(1, Math.min(30, Math.floor(Number(pageSize) || 15)));
+    const searchPattern = `%${normalizedSearch}%`;
+
+    const whereSql = `
+        a.studio_id = ?
+        AND (? = '' OR a.user_id = ?)
+        AND (
+            ? = ''
+            OR a.user_id LIKE ?
+            OR COALESCE(u.custom_nickname, '') LIKE ?
+            OR COALESCE(u.global_name, '') LIKE ?
+            OR COALESCE(u.username, '') LIKE ?
+            OR COALESCE(a.reason, '') LIKE ?
+        )
+    `;
+
+    const whereParams = [
+        studioId,
+        normalizedUserId,
+        normalizedUserId,
+        normalizedSearch,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern
+    ];
+
+    const countRow = await dbGet(`
+        SELECT COUNT(*) AS total
+        FROM salary_adjustments a
+        JOIN users u ON u.id = a.user_id
+        WHERE ${whereSql}
+    `, whereParams);
+
+    const totalCount = Number(countRow && countRow.total || 0);
+    const totalPages = Math.max(1, Math.ceil(totalCount / fixedPageSize));
+    const currentPage = Math.min(requestedPage, totalPages);
+
+    const rows = await dbAll(`
+        SELECT
+            a.id,
+            a.user_id,
+            a.adjustment_type,
+            a.amount,
+            a.available_delta,
+            a.history_delta,
+            a.reason,
+            a.created_by,
+            a.created_at,
+            u.username,
+            u.global_name,
+            u.custom_nickname,
+            op.username AS operator_username,
+            op.global_name AS operator_global_name,
+            op.custom_nickname AS operator_custom_nickname
+        FROM salary_adjustments a
+        JOIN users u ON u.id = a.user_id
+        LEFT JOIN users op ON op.id = a.created_by
+        WHERE ${whereSql}
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT ? OFFSET ?
+    `, [...whereParams, fixedPageSize, (currentPage - 1) * fixedPageSize]);
+
+    return {
+        page: currentPage,
+        pageSize: fixedPageSize,
+        totalPages,
+        totalCount,
+        rows: rows.map(row => ({
+            id: Number(row.id),
+            userId: row.user_id,
+            displayName: row.custom_nickname || row.global_name || row.username || row.user_id,
+            adjustmentType: row.adjustment_type,
+            amount: Number(row.amount || 0),
+            availableDelta: Number(row.available_delta || 0),
+            historyDelta: Number(row.history_delta || 0),
+            reason: row.reason || '',
+            createdBy: row.created_by || null,
+            operatorDisplayName: row.operator_custom_nickname || row.operator_global_name || row.operator_username || row.created_by || '',
+            createdAt: row.created_at
+        }))
+    };
+}
+
 async function getMonthlyDistributionStatus({ studioId, month = nowMonth() }) {
     const normalizedMonth = normalizeMonth(month);
     const activeRules = await resolveActiveRulesForMonth({ studioId, month: normalizedMonth });
@@ -1109,6 +1198,7 @@ module.exports = {
     SALARY_IMPORT_MAX_FILE_SIZE,
     SALARY_IMPORT_MAX_ROWS,
     listSalarySettings,
+    listSalaryAdjustmentHistory,
     searchSalaryAdjustmentStaff,
     getSalaryAdjustmentStaffSnapshot,
     previewManualAdjustment,

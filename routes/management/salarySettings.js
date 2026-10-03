@@ -9,6 +9,7 @@ const { DEFAULT_AVATAR_URL } = require('../../utils/avatarUrl');
 const {
     SALARY_IMPORT_MAX_FILE_SIZE,
     listSalarySettings,
+    listSalaryAdjustmentHistory,
     searchSalaryAdjustmentStaff,
     getSalaryAdjustmentStaffSnapshot,
     createManualAdjustmentPreview,
@@ -183,6 +184,27 @@ router.get('/adjustments/staff/:userId/snapshot',
             if (!userId) return res.status(400).json({ success: false, message: '成員編號不可空白' });
             const snapshot = await getSalaryAdjustmentStaffSnapshot({ studioId, userId });
             return res.json({ success: true, snapshot: serializeStaffSnapshot(snapshot) });
+        } catch (error) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+    }
+);
+
+router.get('/adjustments/history',
+    ensureAuth,
+    checkPerm('view_payroll'),
+    async (req, res) => {
+        const studioId = getActorStudioId(req);
+        if (!studioId) return denyStudioScope(req, res);
+        try {
+            const result = await listSalaryAdjustmentHistory({
+                studioId,
+                page: req.query.page,
+                pageSize: req.query.page_size,
+                search: req.query.q,
+                userId: req.query.user_id
+            });
+            return res.json({ success: true, ...result });
         } catch (error) {
             return res.status(400).json({ success: false, message: error.message });
         }
