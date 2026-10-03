@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
@@ -27,406 +27,40 @@
         <% const distStatus = distributionStatus || { locked: false, totalRules: 0, pendingRules: 0, committedRules: 0, message: '尚未載入派發狀態' }; %>
         <% const roleNameMap = { admin: '店長', owner: '負責人', cfo: '財務長', aftersales: '售後管理', after_sales: '售後管理', manager: '客服主管', cs_director: '客服主管', cs: '客服', reviewer: '審核', talent: '陪陪', staff: '陪陪', member: '會員' }; %>
         <% const roleBadgeMap = { admin: 'role-badge role-badge-admin', owner: 'role-badge role-badge-owner', cfo: 'role-badge role-badge-cfo', aftersales: 'role-badge role-badge-aftersales', after_sales: 'role-badge role-badge-aftersales', manager: 'role-badge role-badge-manager', cs_director: 'role-badge role-badge-manager', cs: 'role-badge role-badge-cs', reviewer: 'role-badge role-badge-reviewer', talent: 'role-badge role-badge-talent', staff: 'role-badge role-badge-talent', member: 'role-badge role-badge-member' }; %>
-        <%- include('partials/admin_page_header', { icon: 'fa-wallet', title: '薪資設定', description: '依收益、提領保留款與可追蹤調整項管理薪資。' }) %>
+        <%- include('partials/admin_page_header', { icon: 'fa-money-bill-transfer', title: '💵 薪資設定與底薪規則管理', description: '管控員工初次匯入帳目、每月固定底薪派發規則與薪資手動微調' }) %>
 
         <% if (successMsg) { %><div class="alert alert-success"><%= successMsg %></div><% } %>
         <% if (errorMsg) { %><div class="alert alert-danger"><%= errorMsg %></div><% } %>
 
-        <section class="admin-panel salary-section mb-4 p-3 p-lg-4 rounded-3">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-                <div>
-                    <h2 class="h5 mb-1">本月薪資總覽 <span class="text-secondary">(<%= month %>)</span></h2>
-                    <p class="small text-secondary mb-0">共 <%= totalStaff %> 位員工，每頁 <%= pageSize || 15 %> 位</p>
-                </div>
-                <form method="get" action="/management/salary-settings" class="row g-2 align-items-end salary-filter-form">
-                    <div class="col-6">
-                        <label class="small text-secondary" for="monthFilter">月份</label>
-                        <input id="monthFilter" class="form-control form-control-sm" type="month" name="month" value="<%= month %>">
-                    </div>
-                    <div class="col-6">
-                        <label class="small text-secondary" for="salarySearch">搜尋員工</label>
-                        <input id="salarySearch" class="form-control form-control-sm" type="search" name="q" value="<%= search %>" placeholder="名稱、暱稱或 Discord ID">
-                    </div>
-                    <div class="col-12 text-end">
-                        <button class="btn btn-sm btn-outline-light" type="submit">套用篩選</button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table table-dark table-sm align-middle mb-0 salary-table">
-                    <thead>
-                        <tr>
-                            <th>員工</th>
-                            <th class="text-end">歷史收入</th>
-                            <th class="text-end">已請款 / 待請款</th>
-                            <th class="text-end">調整累計</th>
-                            <th class="text-end">可提領（調整後）</th>
-                            <th class="text-end">固定月薪規則</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <% if (!salaryRows.length) { %>
-                            <tr><td colspan="6" class="text-center text-secondary py-4">目前沒有可顯示的薪資資料</td></tr>
-                        <% } %>
-                        <% salaryRows.forEach(row => { %>
-                            <% const roleKey = String(row.role || 'staff').toLowerCase(); %>
-                            <% const roleBadgeClass = roleBadgeMap[roleKey] || 'role-badge role-badge-member'; %>
-                            <% const roleLabel = roleNameMap[roleKey] || roleKey; %>
-                            <tr>
-                                <td>
-                                    <div class="salary-staff-cell">
-                                        <div class="salary-staff-title"><%= row.displayName %></div>
-                                        <div class="salary-staff-meta">
-                                            <span class="salary-staff-id"><%= row.userId %></span>
-                                            <span class="<%= roleBadgeClass %>"><%= roleLabel %></span>
-                                            <% if (canSalaryAdjust) { %>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-info btn-sm salary-row-adjust"
-                                                    data-user-id="<%= row.userId %>"
-                                                    data-display-name="<%= row.displayName %>"
-                                                    data-role-key="<%= roleKey %>"
-                                                    data-role-badge-class="<%= roleBadgeClass %>"
-                                                    data-role-name="<%= roleLabel %>"
-                                                >快速調整</button>
-                                            <% } %>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="text-end">$<%= Number(row.earnedSalary).toLocaleString() %></td>
-                                <td class="text-end">$<%= Number(row.paidAmount).toLocaleString() %> / $<%= Number(row.pendingAmount).toLocaleString() %></td>
-                                <td class="text-end"><span class="<%= row.adjustmentAmount >= 0 ? 'text-success' : 'text-danger' %>">$<%= Number(row.adjustmentAmount).toLocaleString() %></span></td>
-                                <td class="text-end fw-semibold">$<%= Number(row.adjustedAvailableAmount).toLocaleString() %></td>
-                                <td class="text-end">
-                                    <% if (row.fixedSalaryRules.length) { %>
-                                        <% row.fixedSalaryRules.forEach(rule => { %>
-                                            <div><%= rule.itemName %> $<%= Number(rule.amount).toLocaleString() %></div>
-                                        <% }) %>
-                                    <% } else { %>
-                                        <span class="text-secondary">未設定</span>
-                                    <% } %>
-                                </td>
-                            </tr>
-                        <% }) %>
-                    </tbody>
-                </table>
-            </div>
-
-            <% if (totalPages > 1) { %>
-                <% const previousPage = Math.max(1, page - 1); %>
-                <% const nextPage = Math.min(totalPages, page + 1); %>
-                <div class="salary-pagination mt-3">
-                    <a class="btn btn-sm btn-outline-light <%= page <= 1 ? 'disabled' : '' %>" <%= page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' %> href="/management/salary-settings?month=<%= encodeURIComponent(month) %>&q=<%= encodeURIComponent(search) %>&page=<%= previousPage %>">上一頁</a>
-                    <span class="salary-pagination-current">第 <%= page %> / <%= totalPages %> 頁</span>
-                    <a class="btn btn-sm btn-outline-light <%= page >= totalPages ? 'disabled' : '' %>" <%= page >= totalPages ? 'aria-disabled="true" tabindex="-1"' : '' %> href="/management/salary-settings?month=<%= encodeURIComponent(month) %>&q=<%= encodeURIComponent(search) %>&page=<%= nextPage %>">下一頁</a>
-                </div>
-            <% } %>
-        </section>
-
-        <div class="row g-3 mb-4">
-            <% if (canSalaryAdjust) { %>
-                <div class="col-12 col-lg-6">
-                    <section class="admin-panel salary-section p-3 p-lg-4 rounded-3 h-100">
-                        <h2 class="h6 mb-3">手動薪資調整</h2>
-                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#salaryAdjustModal">新增調整</button>
-
-                        <div class="modal fade salary-modal" id="salaryAdjustModal" tabindex="-1" aria-labelledby="salaryAdjustModalTitle" aria-hidden="true">
-                            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-                                <div class="modal-content bg-dark text-light">
-                                    <div class="modal-header">
-                                        <h2 class="modal-title h5" id="salaryAdjustModalTitle">手動薪資調整</h2>
-                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        <form method="post" action="/management/salary-settings/adjustments" id="salaryAdjustForm">
-                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                            <input type="hidden" name="request_id" id="adjustRequestId" value="">
-                                            <input type="hidden" name="preview_token" id="adjustPreviewToken" value="">
-                                            <input type="hidden" name="user_id" id="adjustUserId" value="<%= adjustState.user_id || '' %>">
-
-                                            <div class="mb-2">
-                                                <label class="form-label" for="adjustMode">調整項目</label>
-                                                <select class="form-select" id="adjustMode" name="adjustment_mode" required>
-                                                    <option value="available" <%= adjustState.adjustment_mode !== 'history' ? 'selected' : '' %>>可提領薪資</option>
-                                                    <option value="history" <%= adjustState.adjustment_mode === 'history' ? 'selected' : '' %>>歷史累積收入</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="mb-2 position-relative">
-                                                <label class="form-label" for="adjustStaffSearch">選擇成員</label>
-                                                <input
-                                                    class="form-control"
-                                                    id="adjustStaffSearch"
-                                                    type="text"
-                                                    autocomplete="off"
-                                                    placeholder="輸入名稱、暱稱或 Discord ID"
-                                                    value="<%= adjustState.user_id || '' %>"
-                                                    required
-                                                >
-                                                <div id="adjustStaffStatus" class="form-text text-secondary">輸入至少 1 個字元開始搜尋。</div>
-                                                <div class="salary-search-results" id="adjustStaffResults" hidden role="listbox" aria-label="可選成員列表"></div>
-                                            </div>
-
-                                            <div class="salary-selected-card" id="adjustSelectedCard" hidden>
-                                                <img src="/images/default-avatar.png" alt="已選成員頭像" id="adjustSelectedAvatar" class="salary-selected-avatar">
-                                                <div class="salary-selected-meta">
-                                                    <div class="salary-selected-name" id="adjustSelectedName"></div>
-                                                    <div class="salary-selected-sub" id="adjustSelectedSub"></div>
-                                                    <div class="salary-selected-summary" id="adjustSelectedSummary"></div>
-                                                </div>
-                                                <button type="button" class="btn btn-outline-light btn-sm" id="adjustClearSelection">清除</button>
-                                            </div>
-
-                                            <div class="mb-2">
-                                                <label class="form-label" for="adjustAmount">調整金額 (+/-，最多 2 位小數)</label>
-                                                <input class="form-control" id="adjustAmount" type="text" name="amount" inputmode="decimal" value="<%= adjustState.amount || '' %>" required>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label" for="adjustReason">原因</label>
-                                                <input class="form-control" id="adjustReason" type="text" name="reason" maxlength="200" value="<%= adjustState.reason || '' %>" required>
-                                            </div>
-
-                                            <div class="d-flex gap-2">
-                                                <button type="button" class="btn btn-outline-info btn-sm" id="previewAdjustButton" disabled>預覽調整</button>
-                                                <button type="submit" class="btn btn-primary btn-sm" id="executeAdjustButton" disabled>確認寫入</button>
-                                            </div>
-                                            <pre id="adjustPreview" class="small mt-3 mb-0 text-wrap text-light bg-black p-2 rounded" hidden></pre>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            <% } %>
-
-            <% if (canSalaryRuleManage) { %>
-                <div class="col-12 col-lg-6">
-                    <section class="admin-panel salary-section p-3 p-lg-4 rounded-3 h-100">
-                        <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
-                            <h2 class="h6 mb-0">固定月薪規則</h2>
-                            <button type="button" class="btn btn-warning btn-sm" id="addSalaryRuleButton">新增規則</button>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-dark table-sm align-middle mb-0">
-                                <thead><tr><th>薪資項目／身分組</th><th>金額／發放日</th><th>生效</th><th>狀態</th><th>操作</th></tr></thead>
-                                <tbody>
-                                    <% if (!ruleRecords.length) { %><tr><td colspan="5" class="text-center text-secondary py-3">尚未建立規則</td></tr><% } %>
-                                    <% ruleRecords.forEach(rule => { %>
-                                        <tr>
-                                            <td><%= rule.item_name %><div class="small text-secondary"><%= rule.role_key || `舊規則：${rule.user_id}` %></div></td>
-                                            <td>$<%= Number(rule.amount).toLocaleString() %><div class="small text-secondary">每月 <%= rule.payout_day %> 日</div></td>
-                                            <td><%= rule.effective_month %></td>
-                                            <td><%= rule.is_active ? '啟用' : '停用' %></td>
-                                            <td class="text-nowrap">
-                                                <% if (rule.is_active && rule.role_key) { %>
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-outline-light btn-sm salary-rule-edit"
-                                                        data-id="<%= rule.id %>"
-                                                        data-role="<%= rule.role_key %>"
-                                                        data-item="<%= rule.item_name %>"
-                                                        data-amount="<%= rule.amount %>"
-                                                        data-day="<%= rule.payout_day %>"
-                                                        data-month="<%= rule.effective_month %>"
-                                                        data-note="<%= rule.note || '' %>"
-                                                    >編輯</button>
-                                                    <form method="post" action="/management/salary-settings/rules/<%= rule.id %>/delete" class="d-inline">
-                                                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                                        <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="確定停用此薪資規則？">停用</button>
-                                                    </form>
-                                                <% } %>
-                                            </td>
-                                        </tr>
-                                    <% }) %>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="modal fade salary-modal" id="salaryRuleModal" tabindex="-1" aria-labelledby="salaryRuleModalTitle" aria-hidden="true">
-                            <div class="modal-dialog modal-dialog-centered">
-                                <div class="modal-content bg-dark text-light">
-                                    <div class="modal-header"><h2 class="modal-title h5" id="salaryRuleModalTitle">固定月薪規則</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button></div>
-                                    <div class="modal-body">
-                                        <form method="post" action="/management/salary-settings/rules" id="salaryRuleForm">
-                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                            <input type="hidden" id="ruleId" name="rule_id" value="<%= ruleState.rule_id || '' %>">
-                                            <div class="mb-2"><label class="form-label" for="ruleRole">身分組</label>
-                                                <select class="form-select" id="ruleRole" name="role_key" required>
-                                                    <option value="">選擇身分組</option>
-                                                    <% roles.forEach(role => { if (role.role_key !== 'member') { %><option value="<%= role.role_key %>" <%= ruleState.role_key === role.role_key ? 'selected' : '' %>><%= role.name %> (<%= role.role_key %>)</option><% } }) %>
-                                                </select>
-                                            </div>
-                                            <div class="mb-2"><label class="form-label" for="ruleItem">薪資項目</label><input class="form-control" id="ruleItem" name="item_name" maxlength="80" value="<%= ruleState.item_name || '固定月薪' %>" required></div>
-                                            <div class="mb-2"><label class="form-label" for="ruleAmount">每月金額</label><input class="form-control" id="ruleAmount" type="number" step="0.01" name="amount" min="0.01" value="<%= ruleState.amount || '' %>" required></div>
-                                            <div class="mb-2"><label class="form-label" for="ruleDay">發放日 (1-31)</label><input class="form-control" id="ruleDay" type="number" name="payout_day" min="1" max="31" value="<%= ruleState.payout_day || 1 %>" required><div class="form-text text-secondary">超過當月天數時，於當月最後一天 00:00（Asia/Taipei）發放。</div></div>
-                                            <div class="mb-2"><label class="form-label" for="ruleMonth">生效月份</label><input class="form-control" id="ruleMonth" type="month" name="effective_month" value="<%= ruleState.effective_month || month %>" required></div>
-                                            <div class="mb-3"><label class="form-label" for="ruleNote">備註</label><input class="form-control" id="ruleNote" name="note" maxlength="200" value="<%= ruleState.note || '' %>"></div>
-                                            <button type="submit" class="btn btn-warning btn-sm">儲存規則</button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            <% } %>
-        </div>
-
-        <% if (canSalaryDistribute) { %>
-            <section class="admin-panel salary-section p-3 p-lg-4 rounded-3 mb-4">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                    <h2 class="h6 mb-0">固定月薪派發（不可重複）</h2>
-                    <small class="text-secondary">以 committed batch 防重複</small>
-                </div>
-                <div class="salary-distribute-status <%= distStatus.locked ? 'is-locked' : 'is-open' %>">
-                    <div class="salary-distribute-title"><%= distStatus.message %></div>
-                    <div class="small text-secondary">規則：<%= distStatus.totalRules %>，已完成：<%= distStatus.committedRules %>，待派發：<%= distStatus.pendingRules %></div>
-                </div>
-                <form method="post" action="/management/salary-settings/distribute" class="row g-2 align-items-end" id="salaryDistributeForm">
-                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                    <div class="col-12 col-md-3">
-                        <label class="form-label" for="distMonth">派發月份</label>
-                        <input class="form-control" id="distMonth" type="month" name="month" value="<%= distributeState.month || month %>" required>
-                    </div>
-                    <div class="col-12 col-md-5">
-                        <label class="form-label" for="distNote">批次備註</label>
-                        <input class="form-control" id="distNote" type="text" name="note" maxlength="200" value="<%= distributeState.note || '' %>">
-                    </div>
-                    <div class="col-12 col-md-4 d-flex gap-2">
-                        <button class="btn btn-outline-info btn-sm" type="button" id="previewDistributeButton" <%= distStatus.locked ? 'disabled' : '' %>>預覽派發</button>
-                        <button class="btn btn-danger btn-sm" type="submit" id="executeDistributeButton" <%= distStatus.locked ? 'disabled' : '' %>>確認寫入</button>
-                    </div>
-                </form>
-                <div class="modal fade salary-modal" id="salaryDistributePreviewModal" tabindex="-1" aria-labelledby="salaryDistributePreviewTitle" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content bg-dark text-light">
-                        <div class="modal-header"><h2 class="modal-title h5" id="salaryDistributePreviewTitle">固定月薪派發預覽</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button></div>
-                        <div class="modal-body"><pre id="distributePreview" class="small text-wrap text-light bg-black p-2 rounded mb-0" hidden></pre></div>
-                        <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">返回</button><button type="button" class="btn btn-danger btn-sm" id="confirmDistributeButton">確認派發</button></div>
-                    </div></div>
-                </div>
-            </section>
-        <% } %>
-
-        <% if (canSalaryImport) { %>
-            <section class="admin-panel salary-section p-3 p-lg-4 rounded-3 mb-4">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                    <h2 class="h6 mb-0">CSV / XLSX 匯入調整</h2>
-                    <div class="d-flex gap-2">
-                        <a class="btn btn-outline-light btn-sm" href="/management/salary-settings/import/template?format=csv">下載 CSV 範本</a>
-                        <a class="btn btn-outline-light btn-sm" href="/management/salary-settings/import/template?format=xlsx">下載 XLSX 範本</a>
-                    </div>
-                </div>
-                <form method="post" action="/management/salary-settings/import/preview" enctype="multipart/form-data" id="salaryImportPreviewForm" class="row g-2 align-items-end">
-                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                    <div class="col-12 col-md-3">
-                        <label class="form-label" for="importMonth">調整月份</label>
-                        <input class="form-control" id="importMonth" type="month" name="month" value="<%= importState.month || month %>" required>
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label" for="importFile">上傳檔案</label>
-                        <input class="form-control" id="importFile" type="file" name="salary_file" accept=".csv,.xlsx" required>
-                    </div>
-                    <div class="col-12 col-md-3">
-                        <button class="btn btn-outline-info btn-sm w-100" type="submit">上傳並預覽</button>
-                    </div>
-                </form>
-
-                <% if (importState.result || importState.previewToken) { %>
-                    <button type="button" class="btn btn-outline-info btn-sm mt-2" data-bs-toggle="modal" data-bs-target="#salaryImportPreviewModal">開啟匯入預覽</button>
-                <% } %>
-
-                <div class="modal fade salary-modal" id="salaryImportPreviewModal" tabindex="-1" aria-labelledby="salaryImportPreviewTitle" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg"><div class="modal-content bg-dark text-light">
-                        <div class="modal-header"><h2 class="modal-title h5" id="salaryImportPreviewTitle">匯入預覽與確認</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button></div>
-                        <div class="modal-body">
-                            <p class="small text-secondary">預覽綁定工作室、操作者與資料版本；有效期限：<%= importState.expiresAt || '未建立' %></p>
-                            <% const importResult = importState.result || null; %>
-                            <% if (importResult) { %>
-                                <div class="salary-import-stats mb-2">
-                                    <span class="badge text-bg-success">可執行 <%= Number(importResult.acceptedRows || 0) %> 筆</span>
-                                    <span class="badge text-bg-danger">拒絕 <%= Number(importResult.rejectedRows || 0) %> 筆</span>
-                                </div>
-                                <% if (Array.isArray(importResult.errors) && importResult.errors.length) { %>
-                                    <div class="table-responsive mb-3">
-                                        <table class="table table-dark table-sm align-middle mb-0">
-                                            <thead><tr><th>列號</th><th>錯誤內容</th></tr></thead>
-                                            <tbody>
-                                                <% importResult.errors.slice(0, 50).forEach(err => { %>
-                                                    <tr><td><%= err.row %></td><td><%= err.message %></td></tr>
-                                                <% }) %>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                <% } %>
-                                <% if (Array.isArray(importResult.previewRows) && importResult.previewRows.length) { %>
-                                    <div class="table-responsive">
-                                        <table class="table table-dark table-sm align-middle mb-0">
-                                            <thead><tr><th>員工</th><th>調整項目</th><th class="text-end">金額</th><th>原因</th></tr></thead>
-                                            <tbody>
-                                                <% importResult.previewRows.slice(0, 50).forEach(previewRow => { %>
-                                                    <tr>
-                                                        <td><%= previewRow.displayName %> <span class="text-secondary">(<%= previewRow.userId %>)</span></td>
-                                                        <td><%= previewRow.adjustmentMode === 'history' ? '歷史累積收入' : '可提領薪資' %></td>
-                                                        <td class="text-end"><%= Number(previewRow.amount).toLocaleString() %></td>
-                                                        <td><%= previewRow.reason %></td>
-                                                    </tr>
-                                                <% }) %>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                <% } %>
-                            <% } else { %>
-                                <pre id="importPreview" class="small text-wrap text-light bg-black p-2 rounded" hidden><%= errorMsg || '預覽資料需要重新確認。' %></pre>
-                            <% } %>
-
-                            <% if (importState.previewToken) { %>
-                                <form method="post" action="/management/salary-settings/import/execute" id="salaryImportExecuteForm" class="row g-2 align-items-end mt-3">
-                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                    <input type="hidden" name="month" value="<%= importState.month || month %>">
-                                    <input type="hidden" name="preview_token" value="<%= importState.previewToken %>">
-                                    <div class="col-12 col-md-8"><label class="form-label" for="importExecuteId">冪等批次 ID（留空使用預覽 token）</label><input class="form-control" id="importExecuteId" type="text" name="execute_id" value="<%= importState.executeId || '' %>"></div>
-                                    <div class="col-12 col-md-4"><button class="btn btn-danger btn-sm w-100" type="submit">確認執行整批匯入</button></div>
-                                </form>
-                            <% } else if (importResult && Number(importResult.rejectedRows || 0) > 0) { %>
-                                <div class="alert alert-warning mt-3 mb-0">目前預覽包含錯誤列，尚未產生可執行 token，請先修正檔案後再預覽。</div>
-                            <% } %>
-                        </div>
-                    </div></div>
-                </div>
-            </section>
-        <% } %>
-
-        <section class="admin-panel salary-section p-3 p-lg-4 rounded-3">
-            <h2 class="h6 mb-3">最近調整紀錄</h2>
-            <div class="table-responsive">
-                <table class="table table-dark table-sm align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>時間</th>
-                            <th>員工</th>
-                            <th>類型</th>
-                            <th class="text-end">金額</th>
-                            <th>原因</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <% if (!recentAdjustments.length) { %>
-                            <tr><td colspan="5" class="text-center text-secondary py-4">目前沒有調整紀錄</td></tr>
-                        <% } %>
-                        <% recentAdjustments.forEach(row => { %>
-                            <tr>
-                                <td><%= row.created_at %></td>
-                                <td><%= row.custom_nickname || row.global_name || row.username || row.user_id %></td>
-                                <td><%= row.adjustment_type %></td>
-                                <td class="text-end"><span class="<%= row.amount >= 0 ? 'text-success' : 'text-danger' %>">$<%= Number(row.amount).toLocaleString() %></span></td>
-                                <td><%= row.reason %></td>
-                            </tr>
-                        <% }) %>
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        <%- include('partials/salary_settings_overview_card', {
+            month,
+            totalStaff,
+            pageSize,
+            page,
+            totalPages,
+            search,
+            salaryRows,
+            distStatus,
+            recentAdjustments,
+            canSalaryAdjust,
+            canSalaryRuleManage,
+            canSalaryDistribute,
+            canSalaryImport,
+            roleNameMap,
+            roleBadgeMap
+        }) %>
+        <%- include('partials/salary_settings_modals', {
+            csrfToken,
+            adjustState,
+            ruleState,
+            distributeState,
+            importState,
+            errorMsg,
+            month,
+            roles,
+            ruleRecords,
+            distStatus
+        }) %>
     </div>
 </div>
 </div>
@@ -444,6 +78,15 @@
     function openModal(id) {
         const element = document.getElementById(id);
         if (element && window.bootstrap) bootstrap.Modal.getOrCreateInstance(element).show();
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     async function postJson(url, payload, signal) {
@@ -474,6 +117,12 @@
 
     function toCurrency(value) {
         return Number(value || 0).toLocaleString();
+    }
+
+    function formatSignedAmount(value) {
+        const numeric = Number(value || 0);
+        const sign = numeric > 0 ? '+' : '';
+        return `${sign}${numeric.toLocaleString()}`;
     }
 
     const adjustForm = document.getElementById('salaryAdjustForm');
@@ -781,7 +430,7 @@
             };
             if (adjustSearchInput) adjustSearchInput.value = `${candidate.displayName} (${candidate.userId})`;
             selectSearchCandidate(candidate);
-            openModal('salaryAdjustModal');
+            openModal('adjustSalaryModal');
         });
     });
 
@@ -801,6 +450,13 @@
 
     syncAdjustmentSubmitState();
 
+    const adjustModalElement = document.getElementById('adjustSalaryModal');
+    if (adjustModalElement) {
+        adjustModalElement.addEventListener('hidden.bs.modal', () => {
+            hideSearchResults();
+        });
+    }
+
     const ruleForm = document.getElementById('salaryRuleForm');
     const addRuleButton = document.getElementById('addSalaryRuleButton');
     if (addRuleButton && ruleForm) {
@@ -810,8 +466,7 @@
             document.getElementById('ruleMonth').value = '<%= month %>';
             document.getElementById('ruleDay').value = '1';
             document.getElementById('ruleItem').value = '固定月薪';
-            document.getElementById('salaryRuleModalTitle').textContent = '新增固定月薪規則';
-            openModal('salaryRuleModal');
+            document.getElementById('monthlySalaryRulesModalTitle').textContent = '新增固定月薪規則';
         });
     }
 
@@ -823,8 +478,8 @@
         document.getElementById('ruleDay').value = button.dataset.day;
         document.getElementById('ruleMonth').value = button.dataset.month;
         document.getElementById('ruleNote').value = button.dataset.note;
-        document.getElementById('salaryRuleModalTitle').textContent = '編輯固定月薪規則';
-        openModal('salaryRuleModal');
+        document.getElementById('monthlySalaryRulesModalTitle').textContent = '編輯固定月薪規則';
+        openModal('monthlySalaryRulesModal');
     }));
 
     document.querySelectorAll('form').forEach(form => {
@@ -838,7 +493,7 @@
     const distributeButton = document.getElementById('previewDistributeButton');
     const distributePreview = document.getElementById('distributePreview');
     const distributeForm = document.getElementById('salaryDistributeForm');
-    const confirmDistributeButton = document.getElementById('confirmDistributeButton');
+    const executeDistributeButton = document.getElementById('executeDistributeButton');
     let distributionPreviewCurrent = false;
 
     if (distributeButton && distributePreview) {
@@ -850,12 +505,10 @@
                 distributePreview.hidden = false;
                 distributePreview.textContent = JSON.stringify(result.preview, null, 2);
                 distributionPreviewCurrent = true;
-                openModal('salaryDistributePreviewModal');
             } catch (error) {
                 distributePreview.hidden = false;
                 distributePreview.textContent = String(error.message || error);
                 distributionPreviewCurrent = false;
-                openModal('salaryDistributePreviewModal');
             }
         });
     }
@@ -867,12 +520,10 @@
         distributeForm.addEventListener('submit', event => {
             if (distributionLocked || !distributionPreviewCurrent || !window.confirm('確認依照預覽派發固定月薪？')) {
                 event.preventDefault();
+                return;
             }
+            if (executeDistributeButton) executeDistributeButton.disabled = true;
         });
-    }
-
-    if (confirmDistributeButton && distributeForm) {
-        confirmDistributeButton.addEventListener('click', () => distributeForm.requestSubmit());
     }
 
     const importExecuteForm = document.getElementById('salaryImportExecuteForm');
@@ -887,10 +538,184 @@
         });
     }
 
-    if (hasImportPreview) openModal('salaryImportPreviewModal');
-    if (hasAdjustmentState) openModal('salaryAdjustModal');
-    if (hasRuleState) openModal('salaryRuleModal');
-    if (hasDistributionState) openModal('salaryDistributePreviewModal');
+    const historyBody = document.getElementById('salaryHistoryBody');
+    const historyStatus = document.getElementById('salaryHistoryStatus');
+    const historyPageInfo = document.getElementById('historyPageInfo');
+    const historyPrevButton = document.getElementById('historyPrevButton');
+    const historyNextButton = document.getElementById('historyNextButton');
+    const historySearchInput = document.getElementById('historySearchInput');
+    const historySearchButton = document.getElementById('historySearchButton');
+    const historyClearFilter = document.getElementById('historyClearFilter');
+    const historyModalElement = document.getElementById('salaryHistoryModal');
+    const openFullHistoryButton = document.getElementById('openFullSalaryHistoryButton');
+
+    const historyState = {
+        page: 1,
+        totalPages: 1,
+        totalCount: 0,
+        userId: '',
+        displayName: '',
+        query: '',
+        loaded: false
+    };
+
+    let historyController = null;
+    let historyRequestIndex = 0;
+
+    function adjustmentTypeLabel(type) {
+        if (type === 'manual') return '手動';
+        if (type === 'import') return '匯入';
+        if (type === 'distribution') return '固定月薪派發';
+        return type || '未知';
+    }
+
+    function renderHistoryRows(rows) {
+        if (!historyBody) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            historyBody.innerHTML = '<tr><td colspan="8" class="text-center text-secondary py-4">查無符合條件的調整紀錄</td></tr>';
+            return;
+        }
+        historyBody.innerHTML = rows.map(row => {
+            const availableDelta = Number(row.availableDelta || 0);
+            const historyDelta = Number(row.historyDelta || 0);
+            const amount = Number(row.amount || 0);
+            return `
+                <tr>
+                    <td>${escapeHtml(row.createdAt)}</td>
+                    <td>${escapeHtml(row.displayName)} <span class="text-secondary">(${escapeHtml(row.userId)})</span></td>
+                    <td>${escapeHtml(adjustmentTypeLabel(row.adjustmentType))}</td>
+                    <td class="text-end ${availableDelta >= 0 ? 'text-success' : 'text-danger'}">${escapeHtml(formatSignedAmount(availableDelta))}</td>
+                    <td class="text-end ${historyDelta >= 0 ? 'text-success' : 'text-danger'}">${escapeHtml(formatSignedAmount(historyDelta))}</td>
+                    <td class="text-end ${amount >= 0 ? 'text-success' : 'text-danger'}">${escapeHtml(formatSignedAmount(amount))}</td>
+                    <td>${escapeHtml(row.reason)}</td>
+                    <td>${escapeHtml(row.operatorDisplayName || row.createdBy || '-')}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function syncHistoryPager() {
+        if (historyPageInfo) {
+            historyPageInfo.textContent = `第 ${historyState.page} / ${historyState.totalPages} 頁`;
+        }
+        if (historyPrevButton) historyPrevButton.disabled = historyState.page <= 1;
+        if (historyNextButton) historyNextButton.disabled = historyState.page >= historyState.totalPages;
+    }
+
+    async function loadHistory(page) {
+        if (!historyBody) return;
+        const targetPage = Math.max(1, Number(page || 1));
+        historyRequestIndex += 1;
+        const currentIndex = historyRequestIndex;
+        if (historyController) historyController.abort();
+        historyController = new AbortController();
+
+        historyBody.innerHTML = '<tr><td colspan="8" class="text-center text-secondary py-4">載入中...</td></tr>';
+        if (historyStatus) historyStatus.textContent = '查詢調整紀錄中...';
+        syncHistoryPager();
+
+        const params = new URLSearchParams({
+            page: String(targetPage),
+            page_size: '15'
+        });
+        const query = String(historyState.query || '').trim();
+        if (historyState.userId) params.set('user_id', historyState.userId);
+        if (query) params.set('q', query);
+
+        try {
+            const result = await getJson(`/management/salary-settings/adjustments/history?${params.toString()}`, historyController.signal);
+            if (currentIndex !== historyRequestIndex) return;
+
+            historyState.page = Number(result.page || 1);
+            historyState.totalPages = Number(result.totalPages || 1);
+            historyState.totalCount = Number(result.totalCount || 0);
+            historyState.loaded = true;
+            renderHistoryRows(result.rows || []);
+            syncHistoryPager();
+
+            if (historyStatus) {
+                const userText = historyState.userId ? `成員：${historyState.displayName || historyState.userId}` : '全員';
+                const queryText = query ? `，關鍵字：${query}` : '';
+                historyStatus.textContent = `${userText}${queryText}，共 ${historyState.totalCount} 筆。`;
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            historyBody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${escapeHtml(String(error.message || error))}</td></tr>`;
+            if (historyStatus) historyStatus.textContent = '讀取調整紀錄失敗，請稍後再試。';
+        }
+    }
+
+    if (historySearchButton) {
+        historySearchButton.addEventListener('click', () => {
+            historyState.query = historySearchInput ? String(historySearchInput.value || '').trim() : '';
+            loadHistory(1);
+        });
+    }
+
+    if (historySearchInput) {
+        historySearchInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                historyState.query = String(historySearchInput.value || '').trim();
+                loadHistory(1);
+            }
+        });
+    }
+
+    if (historyClearFilter) {
+        historyClearFilter.addEventListener('click', () => {
+            historyState.userId = '';
+            historyState.displayName = '';
+            historyState.query = '';
+            if (historySearchInput) historySearchInput.value = '';
+            loadHistory(1);
+        });
+    }
+
+    if (openFullHistoryButton) {
+        openFullHistoryButton.addEventListener('click', () => {
+            historyState.userId = '';
+            historyState.displayName = '';
+            historyState.query = '';
+            if (historySearchInput) historySearchInput.value = '';
+            openModal('salaryHistoryModal');
+            loadHistory(1);
+        });
+    }
+
+    if (historyPrevButton) {
+        historyPrevButton.addEventListener('click', () => {
+            if (historyState.page > 1) loadHistory(historyState.page - 1);
+        });
+    }
+
+    if (historyNextButton) {
+        historyNextButton.addEventListener('click', () => {
+            if (historyState.page < historyState.totalPages) loadHistory(historyState.page + 1);
+        });
+    }
+
+    document.querySelectorAll('.salary-row-history').forEach(button => {
+        button.addEventListener('click', () => {
+            historyState.userId = String(button.dataset.userId || '').trim();
+            historyState.displayName = String(button.dataset.displayName || historyState.userId);
+            historyState.query = '';
+            if (historySearchInput) historySearchInput.value = '';
+            openModal('salaryHistoryModal');
+            loadHistory(1);
+        });
+    });
+
+    if (historyModalElement) {
+        historyModalElement.addEventListener('shown.bs.modal', () => {
+            if (!historyState.loaded) loadHistory(1);
+        });
+    }
+
+    if (hasImportPreview) openModal('batchImportSalaryModal');
+    if (hasAdjustmentState) openModal('adjustSalaryModal');
+    if (hasRuleState) openModal('monthlySalaryRulesModal');
+    if (hasDistributionState) openModal('distributeBaseSalaryModal');
 })();
 </script>
 </body>
