@@ -11,6 +11,116 @@ const BUSINESS_TIMEZONE_ENV = 'BUSINESS_TIMEZONE';
 const USER_PAYROLL_FIELDS = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 const PAYOUT_PAYROLL_FIELDS = ['bank_name_snapshot', 'bank_code_snapshot', 'bank_branch_snapshot', 'account_name_snapshot', 'bank_account_snapshot'];
 const INCOME_DETAIL_PAGE_SIZE = 15;
+const INCOME_SUMMARY_MAX_LIMIT = 50;
+
+function toIsoLocalString(date) {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+        + ` ${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
+}
+
+function getTimeZoneOffsetMinutes(date, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'shortOffset',
+        hour12: false
+    }).formatToParts(date);
+    const zoneName = String((parts.find(part => part.type === 'timeZoneName') || {}).value || '').trim();
+    const match = zoneName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+    if (!match) return 0;
+    const sign = match[1] === '-' ? -1 : 1;
+    const hours = Number(match[2] || 0);
+    const minutes = Number(match[3] || 0);
+    return sign * (hours * 60 + minutes);
+}
+
+function zonedDateTimeToUtc(year, month, day, hour, minute, second, timeZone) {
+    const base = Date.UTC(year, month - 1, day, hour, minute, second);
+    let utcMs = base;
+    for (let i = 0; i < 3; i += 1) {
+        const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcMs), timeZone);
+        const next = base - offsetMinutes * 60 * 1000;
+        if (Math.abs(next - utcMs) < 1000) break;
+        utcMs = next;
+    }
+    return new Date(utcMs);
+}
+
+function formatDateTimeInTimeZone(date, timeZone) {
+    return new Intl.DateTimeFormat('zh-TW', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).format(date);
+}
+
+function toMonthString(year, month) {
+    return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function getNextMonthLabel(month) {
+    const [yearText, monthText] = String(month || '').split('-');
+    const year = Number(yearText);
+    const monthValue = Number(monthText);
+    if (!Number.isInteger(year) || !Number.isInteger(monthValue)) return month;
+    if (monthValue === 12) return `${year + 1}-01`;
+    return `${year}-${String(monthValue + 1).padStart(2, '0')}`;
+}
+
+function buildMonthWindow({ month, timeZone }) {
+    const normalizedMonth = normalizeMonth(month);
+    const [yearText, monthText] = normalizedMonth.split('-');
+    const year = Number(yearText);
+    const monthValue = Number(monthText);
+    const nextMonth = monthValue === 12 ? 1 : (monthValue + 1);
+    const nextYear = monthValue === 12 ? (year + 1) : year;
+    const startUtc = zonedDateTimeToUtc(year, monthValue, 1, 0, 0, 0, timeZone);
+    const endUtc = zonedDateTimeToUtc(nextYear, nextMonth, 1, 0, 0, 0, timeZone);
+    return {
+        month: normalizedMonth,
+        startLocal: `${normalizedMonth}-01 00:00:00`,
+        endLocal: `${toMonthString(nextYear, nextMonth)}-01 00:00:00`,
+        startUtcIso: startUtc.toISOString(),
+        endUtcIso: endUtc.toISOString(),
+        startUtcText: toIsoLocalString(startUtc),
+        endUtcText: toIsoLocalString(endUtc)
+    };
+}
+
+function describeNextOpenWindow({ summary }) {
+    const currentPeriod = String(summary.withdrawalPeriod || '');
+    const nextPeriod = getNextMonthLabel(currentPeriod);
+    const currentOpenUtc = zonedDateTimeToUtc(
+        Number(currentPeriod.slice(0, 4)),
+        Number(currentPeriod.slice(5, 7)),
+        summary.settings.startDay,
+        0,
+        0,
+        0,
+        summary.settings.timeZone
+    );
+    const nextOpenUtc = zonedDateTimeToUtc(
+        Number(nextPeriod.slice(0, 4)),
+        Number(nextPeriod.slice(5, 7)),
+        summary.settings.startDay,
+        0,
+        0,
+        0,
+        summary.settings.timeZone
+    );
+    const now = summary.currentDate instanceof Date ? summary.currentDate : new Date();
+    const selected = summary.windowOpen || now < currentOpenUtc ? currentOpenUtc : nextOpenUtc;
+    return {
+        nextOpenAtUtc: selected.toISOString(),
+        nextOpenAtText: formatDateTimeInTimeZone(selected, summary.settings.timeZone)
+    };
+}
 
 function getLocalDateParts(date, timeZone) {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -84,9 +194,10 @@ function buildWithdrawalGate({ summary, bankDetailsReady, activePeriodPayout, ha
     }
 
     if (!summary.windowOpen) {
+        const nextWindowText = summary.nextOpenAtText ? `下次開放：${summary.nextOpenAtText}（${summary.settings.timeZone}）` : null;
         reasons.push({
             code: 'TIME_WINDOW_CLOSED',
-            message: `目前不在提款開放期間（每月 ${summary.settings.startDay} 日至 ${summary.settings.endDay} 日，${summary.settings.timeZone}）。`
+            message: `目前不在每月提款申請期間（每月 ${summary.settings.startDay} 日至 ${summary.settings.endDay} 日，${summary.settings.timeZone}）。${nextWindowText || ''}`.trim()
         });
     }
 
@@ -205,7 +316,9 @@ async function getPayoutSummary({ userId, studioId, date = new Date() }) {
     const totalEarned = Number((orderEarned + earnedAdjustment + historyAdjustment).toFixed(2));
     const paidAmount = Number(Number(totals && totals.paid_amount || 0).toFixed(2));
     const pendingAmount = Number(Number(totals && totals.pending_amount || 0).toFixed(2));
-    return {
+    const dayOfMonth = Number(dateParts.day);
+    const windowOpen = dayOfMonth >= settings.startDay && dayOfMonth <= settings.endDay;
+    const baseSummary = {
         userId,
         studioId,
         withdrawalPeriod,
@@ -217,8 +330,16 @@ async function getPayoutSummary({ userId, studioId, date = new Date() }) {
         earnedAdjustment,
         historyAdjustment,
         settings,
-        dayOfMonth: Number(dateParts.day),
-        windowOpen: Number(dateParts.day) >= settings.startDay && Number(dateParts.day) <= settings.endDay
+        dayOfMonth,
+        windowOpen,
+        currentDate: date,
+        nowInBusinessTz: formatDateTimeInTimeZone(date, settings.timeZone)
+    };
+    const nextWindow = describeNextOpenWindow({ summary: baseSummary });
+    return {
+        ...baseSummary,
+        nextOpenAtUtc: nextWindow.nextOpenAtUtc,
+        nextOpenAtText: nextWindow.nextOpenAtText
     };
 }
 
@@ -262,6 +383,11 @@ async function getEmployeePayoutOverview({ userId, studioId, date = new Date() }
             activePeriodPayout,
             hasPermission: true
         }),
+        timeline: {
+            now: summary.nowInBusinessTz,
+            nextOpenAt: summary.nextOpenAtText,
+            timeZone: summary.settings.timeZone
+        },
         payouts: payouts.map(payout => {
             const safePayout = decryptSensitiveFields(payout, PAYOUT_PAYROLL_FIELDS);
             return {
@@ -280,6 +406,279 @@ async function getEmployeePayoutOverview({ userId, studioId, date = new Date() }
                 bank_account_masked: maskAccount(safePayout.bank_account_snapshot)
             };
         })
+    };
+}
+
+function bucketAdjustmentEntry({ row, key, amount, category, entryType, description }) {
+    return {
+        sourceType: 'salary_adjustment',
+        entryType,
+        sourceId: `adjustment:${row.id}:${key}`,
+        sourceNo: `ADJ-${row.id}`,
+        occurredAt: row.created_at || '',
+        category,
+        description,
+        amount,
+        status: String(row.adjustment_type || 'manual').trim() || 'manual'
+    };
+}
+
+async function buildMonthlyIncomeEntries({ userId, studioId, month = null, date = new Date() }) {
+    const user = await dbGet('SELECT studio_id FROM users WHERE id = ?', [userId]);
+    if (!user || Number(user.studio_id) !== Number(studioId)) throw new Error('會員工作室範圍不一致');
+
+    const payoutSummary = await getPayoutSummary({ userId, studioId, date });
+    const normalizedMonth = normalizeMonth(month, payoutSummary.withdrawalPeriod);
+    const monthWindow = buildMonthWindow({ month: normalizedMonth, timeZone: payoutSummary.settings.timeZone });
+
+    const orderRows = await dbAll(`
+        SELECT
+            o.id,
+            o.order_no,
+            o.category,
+            COALESCE(NULLIF(o.end_time, ''), o.created_at) AS occurred_at,
+            ROUND(COALESCE(o.talent_earning,
+                ROUND(
+                    COALESCE(NULLIF(o.unit_price, 0) * COALESCE(o.duration, 1), o.total_amount + COALESCE(o.discount, 0), o.total_amount)
+                    * COALESCE(
+                        o.commission_rate_snapshot,
+                        t.commission_rate,
+                        (SELECT cs.rate FROM commission_settings cs WHERE cs.category = o.category),
+                        (SELECT cs_normalized.rate FROM commission_settings cs_normalized
+                            WHERE cs_normalized.category = CASE
+                                WHEN o.category LIKE '%單' THEN o.category
+                                ELSE o.category || '單'
+                            END),
+                        (SELECT fallback.rate FROM commission_settings fallback WHERE fallback.category = '其他單'),
+                        0.80
+                    )
+                )
+            ), 2) AS commission_amount
+        FROM orders o
+        LEFT JOIN talents t ON t.user_id = COALESCE(o.talent_id, o.staff_id)
+        WHERE (o.talent_id = ? OR o.staff_id = ?)
+            AND o.studio_id = ?
+            AND o.status = 'completed'
+            AND COALESCE(NULLIF(o.end_time, ''), o.created_at) >= ?
+            AND COALESCE(NULLIF(o.end_time, ''), o.created_at) < ?
+        ORDER BY occurred_at DESC, o.id DESC
+    `, [userId, userId, studioId, monthWindow.startLocal, monthWindow.endLocal]);
+
+    const adjustmentRows = await dbAll(`
+        SELECT
+            id,
+            adjustment_type,
+            available_delta,
+            earned_delta,
+            history_delta,
+            reason,
+            created_at
+        FROM salary_adjustments
+        WHERE user_id = ? AND studio_id = ? AND adjustment_month = ?
+        ORDER BY created_at DESC, id DESC
+    `, [userId, studioId, normalizedMonth]);
+
+    const dedupe = new Set();
+    const entries = [];
+
+    for (const row of orderRows) {
+        const sourceId = `order:${row.id}`;
+        if (dedupe.has(sourceId)) continue;
+        dedupe.add(sourceId);
+        entries.push({
+            sourceType: 'order',
+            entryType: 'commission',
+            sourceId,
+            sourceNo: row.order_no || `#${row.id}`,
+            occurredAt: row.occurred_at || '',
+            category: normalizeOrderCategory(row.category),
+            description: `訂單分潤 ${row.order_no || `#${row.id}`}`,
+            amount: Number(row.commission_amount || 0),
+            status: 'completed'
+        });
+    }
+
+    for (const row of adjustmentRows) {
+        const reason = String(row.reason || '').trim() || '薪資調整';
+        const adjustmentType = String(row.adjustment_type || '').trim();
+        const earnedDelta = Number(row.earned_delta || 0);
+        const availableDelta = Number(row.available_delta || 0);
+        const historyDelta = Number(row.history_delta || 0);
+
+        if (earnedDelta !== 0) {
+            const entry = bucketAdjustmentEntry({
+                row,
+                key: 'earned',
+                amount: earnedDelta,
+                category: adjustmentType === 'distribution' ? '月薪規則發放' : (earnedDelta < 0 ? '薪資扣減' : '薪資調整'),
+                entryType: adjustmentType === 'distribution' ? 'fixed_salary' : 'earned_adjustment',
+                description: reason
+            });
+            if (!dedupe.has(entry.sourceId)) {
+                dedupe.add(entry.sourceId);
+                entries.push(entry);
+            }
+        }
+
+        if (availableDelta !== 0) {
+            const entry = bucketAdjustmentEntry({
+                row,
+                key: 'available',
+                amount: availableDelta,
+                category: availableDelta < 0 ? '薪資扣減' : '薪資津貼',
+                entryType: availableDelta < 0 ? 'deduction' : 'allowance',
+                description: reason
+            });
+            if (!dedupe.has(entry.sourceId)) {
+                dedupe.add(entry.sourceId);
+                entries.push(entry);
+            }
+        }
+
+        if (historyDelta !== 0) {
+            const entry = bucketAdjustmentEntry({
+                row,
+                key: 'history',
+                amount: historyDelta,
+                category: '歷史收入校正',
+                entryType: 'history_adjustment',
+                description: reason
+            });
+            if (!dedupe.has(entry.sourceId)) {
+                dedupe.add(entry.sourceId);
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries.sort((left, right) => {
+        const dateDiff = String(right.occurredAt || '').localeCompare(String(left.occurredAt || ''));
+        if (dateDiff !== 0) return dateDiff;
+        return String(right.sourceId || '').localeCompare(String(left.sourceId || ''));
+    });
+
+    return {
+        month: normalizedMonth,
+        entries,
+        payoutSummary,
+        timeZone: payoutSummary.settings.timeZone,
+        monthWindow,
+        limitations: [
+            '明細以訂單結束時間或建立時間（缺少結束時間時）與薪資調整 adjustment_month 歸屬月份。',
+            '跨月調價或退款若未建立可追蹤薪資校正事件，系統不會自動回沖歷史月報。',
+            '會員錢包消費與退款流水不納入陪陪薪資收入或扣減。'
+        ]
+    };
+}
+
+async function listMonthlyIncomeSummary({ userId, studioId, month = null, date = new Date() }) {
+    const dataset = await buildMonthlyIncomeEntries({ userId, studioId, month, date });
+    const grouped = new Map();
+
+    for (const entry of dataset.entries) {
+        const sourceType = String(entry.sourceType || 'unknown');
+        const category = String(entry.category || '未分類收入');
+        const groupKey = `${sourceType}|${category}`;
+        if (!grouped.has(groupKey)) {
+            grouped.set(groupKey, {
+                sourceType,
+                category,
+                count: 0,
+                totalAmount: 0,
+                descriptions: new Set()
+            });
+        }
+        const target = grouped.get(groupKey);
+        target.count += 1;
+        target.totalAmount = Number((target.totalAmount + Number(entry.amount || 0)).toFixed(2));
+        if (entry.description) target.descriptions.add(String(entry.description));
+    }
+
+    const rows = [...grouped.values()]
+        .map(item => ({
+            sourceType: item.sourceType,
+            category: item.category,
+            count: item.count,
+            totalAmount: item.totalAmount,
+            descriptions: [...item.descriptions].slice(0, 3),
+            countLabel: item.sourceType === 'order' ? `${item.count} 單` : `${item.count} 筆`
+        }))
+        .sort((left, right) => {
+            const absDiff = Math.abs(Number(right.totalAmount || 0)) - Math.abs(Number(left.totalAmount || 0));
+            if (absDiff !== 0) return absDiff;
+            return `${left.sourceType}:${left.category}`.localeCompare(`${right.sourceType}:${right.category}`);
+        });
+
+    const monthlyNetAmount = Number(dataset.entries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0).toFixed(2));
+
+    return {
+        month: dataset.month,
+        timeZone: dataset.timeZone,
+        range: {
+            startUtc: dataset.monthWindow.startUtcIso,
+            endUtcExclusive: dataset.monthWindow.endUtcIso,
+            startUtcText: dataset.monthWindow.startUtcText,
+            endUtcText: dataset.monthWindow.endUtcText
+        },
+        totals: {
+            monthlyNetAmount,
+            paidAmount: Number(dataset.payoutSummary.paidAmount || 0),
+            pendingAmount: Number(dataset.payoutSummary.pendingAmount || 0),
+            availableAmount: Number(dataset.payoutSummary.availableAmount || 0)
+        },
+        rows,
+        limitations: dataset.limitations
+    };
+}
+
+async function listMonthlyIncomeDetails({
+    userId,
+    studioId,
+    month = null,
+    sourceType = '',
+    category = '',
+    page = 1,
+    limit = 15,
+    date = new Date()
+}) {
+    const dataset = await buildMonthlyIncomeEntries({ userId, studioId, month, date });
+    const safeSourceType = String(sourceType || '').trim().toLowerCase();
+    const safeCategory = String(category || '').trim().slice(0, 40);
+    const safeLimit = Math.max(5, Math.min(INCOME_SUMMARY_MAX_LIMIT, Math.floor(Number(limit) || 15)));
+    const safePage = Math.max(1, Math.floor(Number(page) || 1));
+
+    const sourceFilter = safeSourceType
+        ? (safeSourceType === 'order' ? 'order' : (safeSourceType === 'salary_adjustment' ? 'salary_adjustment' : null))
+        : null;
+    if (safeSourceType && !sourceFilter) throw new Error('來源類型參數無效');
+
+    const filtered = dataset.entries.filter(entry => {
+        if (sourceFilter && String(entry.sourceType) !== sourceFilter) return false;
+        if (safeCategory && String(entry.category) !== safeCategory) return false;
+        return true;
+    });
+
+    const totalRows = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / safeLimit));
+    const currentPage = Math.min(safePage, totalPages);
+    const startIndex = (currentPage - 1) * safeLimit;
+    const rows = filtered.slice(startIndex, startIndex + safeLimit);
+    const pageAmount = Number(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0).toFixed(2));
+    const totalAmount = Number(filtered.reduce((sum, row) => sum + Number(row.amount || 0), 0).toFixed(2));
+
+    return {
+        month: dataset.month,
+        timeZone: dataset.timeZone,
+        sourceType: sourceFilter,
+        category: safeCategory,
+        page: currentPage,
+        limit: safeLimit,
+        totalRows,
+        totalPages,
+        pageAmount,
+        totalAmount,
+        rows,
+        limitations: dataset.limitations
     };
 }
 
@@ -531,6 +930,24 @@ async function requestWithdrawal({ userId, amount, operatorId = userId, date = n
             }
 
             const summary = await getPayoutSummary({ userId, studioId, date });
+            const activePeriodPayout = await dbGet(`
+                SELECT id, withdrawal_no, status
+                FROM payouts
+                WHERE user_id = ? AND studio_id = ? AND withdrawal_period = ?
+                    AND status IN ('pending','paid')
+                ORDER BY id DESC
+                LIMIT 1
+            `, [userId, studioId, summary.withdrawalPeriod]);
+            const gate = buildWithdrawalGate({
+                summary,
+                bankDetailsReady: hasBankDetails(user),
+                activePeriodPayout,
+                hasPermission: true
+            });
+            if (!gate.allowed && gate.primaryReason) {
+                if (gate.primaryReason.code === 'ALREADY_REQUESTED') throw new Error('本提款週期已申請過提款');
+                throw new Error(gate.primaryReason.message);
+            }
             assertRequestWindow(summary);
             const requestedAmount = Number(amount);
             if (!Number.isFinite(requestedAmount) || requestedAmount < summary.settings.minimumAmount) {
@@ -538,12 +955,7 @@ async function requestWithdrawal({ userId, amount, operatorId = userId, date = n
             }
             if (requestedAmount > summary.availableAmount) throw new Error('提款金額超過目前可提領薪資');
 
-            const existing = await dbGet(`
-                                SELECT id FROM payouts
-                                WHERE user_id = ? AND studio_id = ? AND withdrawal_period = ?
-                                    AND status IN ('pending','paid')
-            `, [userId, studioId, summary.withdrawalPeriod]);
-            if (existing) throw new Error('本提款週期已申請過提款');
+            if (activePeriodPayout) throw new Error('本提款週期已申請過提款');
 
             const withdrawalNo = `WD-${summary.withdrawalPeriod.replace('-', '')}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
             const encryptedSnapshot = encryptSensitiveFields({
@@ -797,6 +1209,8 @@ module.exports = {
     getPayoutSummary,
     getEmployeePayoutOverview,
     listSalaryCommissionDetails,
+    listMonthlyIncomeSummary,
+    listMonthlyIncomeDetails,
     requestWithdrawal,
     markPayoutPaid,
     markPayoutsPaid,

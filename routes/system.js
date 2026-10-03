@@ -425,26 +425,16 @@ router.post('/system/bot-settings/sync', ensureAuth, checkPerm('view_discord_sta
 router.get('/system/bot/sync', ensureAuth, checkPerm('view_discord_status'), (req, res) => redirectWithQuery(req, res, '/system/bot-settings/sync'));
 router.post('/system/bot/sync', ensureAuth, checkPerm('view_discord_status'), redirectToCommandDeploymentInfo);
 
-router.get('/system/payout-settings', ensureAuth, checkPerm('view_system_settings'), async (req, res) => {
-    try {
-        const values = await readWithdrawalSettings();
-        res.render('payout_settings', {
-            user: req.user,
-            values,
-            error: req.query.error || null,
-            saved: req.query.saved === '1'
-        });
-    } catch (error) {
-        return res.status(500).send('無法載入提款設定');
-    }
+router.get('/system/payout-settings', ensureAuth, checkPerm('view_system_settings'), (req, res) => {
+    return redirectWithQuery(req, res, '/system/settings');
 });
 
 router.post('/system/payout-settings', ensureAuth, checkPerm('action_system_config'), async (req, res) => {
     try {
         await updateWithdrawalSettings(req);
-        return res.redirect(303, '/system/payout-settings?saved=1');
+        return res.redirect(303, '/system/settings?saved=1');
     } catch (error) {
-        return res.redirect(303, '/system/payout-settings?error=' + encodeURIComponent('儲存提款設定失敗'));
+        return res.redirect(303, '/system/settings?error=' + encodeURIComponent('儲存提款設定失敗'));
     }
 });
 

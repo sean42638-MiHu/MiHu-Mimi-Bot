@@ -322,6 +322,27 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.match(incomePage.body, /id="withdrawalGateNotice"/);
         assert.doesNotMatch(incomePage.body, /ORDER-B/);
 
+        const incomeSummaryApi = await createRequest(port, 'GET', '/api/income/monthly-summary?month=2026-09', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie, Accept: 'application/json'
+        });
+        assert.equal(incomeSummaryApi.status, 200, incomeSummaryApi.body);
+        const incomeSummaryPayload = JSON.parse(incomeSummaryApi.body);
+        assert.equal(incomeSummaryPayload.success, true);
+        assert.equal(incomeSummaryPayload.summary.month, '2026-09');
+
+        const incomeSummaryInvalidMonth = await createRequest(port, 'GET', '/api/income/monthly-summary?month=2026-13', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie, Accept: 'application/json'
+        });
+        assert.equal(incomeSummaryInvalidMonth.status, 400);
+
+        const incomeDetailsApi = await createRequest(port, 'GET', '/api/income/monthly-details?month=2026-09&page=1&limit=12', {
+            Host: `127.0.0.1:${port}`, Cookie: member.cookie, Accept: 'application/json'
+        });
+        assert.equal(incomeDetailsApi.status, 200, incomeDetailsApi.body);
+        const incomeDetailsPayload = JSON.parse(incomeDetailsApi.body);
+        assert.equal(incomeDetailsPayload.success, true);
+        assert.equal(incomeDetailsPayload.details.month, '2026-09');
+
         const memberBankSnapshot = await new Promise((resolve, reject) => db.get(
             "SELECT real_name,bank_name,bank_code,bank_branch,bank_account FROM users WHERE id='member-a'",
             (error, row) => error ? reject(error) : resolve(row)
@@ -379,6 +400,11 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
         });
         assert.equal(systemSettings.status, 200);
+        const legacyPayoutSettings = await createRequest(port, 'GET', '/system/payout-settings', {
+            Host: `127.0.0.1:${port}`, Cookie: managerA.cookie
+        });
+        assert.equal(legacyPayoutSettings.status, 302);
+        assert.match(legacyPayoutSettings.headers.location, /^\/system\/settings/);
         assert.match(systemSettings.body, /薪資提款設定/);
         assert.match(systemSettings.body, /配置全站核心運作參數/);
         assert.doesNotMatch(systemSettings.body, /href="\/system\/settings"[^>]*class="menu-item active"/);
