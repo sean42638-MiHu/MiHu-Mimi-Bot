@@ -10,11 +10,22 @@ const { resolveVipLevel, resolveVipTier, parseVipLevel, resolveVipTheme, resolve
 const { dbAll, dbGet, dbRun } = require('../utils/dbHelper');
 const { writeAuditLog } = require('../utils/auditService');
 const { withTransactionGate } = require('../utils/transactionGate');
-const { getEmployeePayoutOverview, listSalaryCommissionDetails } = require('../services/payoutService');
+const {
+    getEmployeePayoutOverview,
+    listSalaryCommissionDetails,
+    listMonthlyIncomeSummary,
+    listMonthlyIncomeDetails
+} = require('../services/payoutService');
 const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
 
 const payrollProfileFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 const PROFILE_NICKNAME_PERMISSION_DENIED = 'PROFILE_NICKNAME_PERMISSION_DENIED';
+
+function normalizeIncomeMonthInput(value, fallback) {
+    const month = String(value || '').trim();
+    if (!month) return fallback;
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : null;
+}
 
 function createVipInfo(tiers, level) {
     const numericLevel = parseVipLevel(level);
@@ -432,6 +443,13 @@ router.get('/income', ensureAuth, checkPerm('view_income'), async (req, res) => 
             month: req.query.income_month || payoutOverview.withdrawalPeriod,
             page: req.query.income_page || 1
         });
+        const monthlySummaryMonth = normalizeIncomeMonthInput(req.query.summary_month, payoutOverview.withdrawalPeriod);
+        if (!monthlySummaryMonth) return res.status(400).send('月份格式無效，請使用 YYYY-MM');
+        const monthlySummary = await listMonthlyIncomeSummary({
+            userId,
+            studioId,
+            month: monthlySummaryMonth
+        });
 
         return res.render('income', {
             user: currentUser || req.user,
@@ -446,6 +464,8 @@ router.get('/income', ensureAuth, checkPerm('view_income'), async (req, res) => 
             },
             payoutOverview,
             incomeDetail,
+            incomeMonthlySummary: monthlySummary,
+            incomeSummaryMonth: monthlySummaryMonth,
             openIncomeDetailModal: String(req.query.income_modal || '') === '1',
             orders: orderList
         });
@@ -454,6 +474,56 @@ router.get('/income', ensureAuth, checkPerm('view_income'), async (req, res) => 
         return res.status(503).send('目前無法載入收入與提款資訊，請稍後再試');
     }
 });
+
+router.get('/api/income/monthly-summary', ensureAuth, checkPerm('view_income'), async (req, res) => {
+    const studioId = Number(req.user.studio_id);
+    if (!Number.isInteger(studioId) || studioId <= 0) {
+        return res.status(403).json({ success: false, message: '找不到已授權的工作室範圍' });
+    }
+    const requestedMonth = normalizeIncomeMonthInput(req.query.month, null);
+    if (req.query.month && !requestedMonth) {
+        return res.status(400).json({ success: false, message: '月份格式無效，請使用 YYYY-MM' });
+    }
+    try {
+        const summary = await listMonthlyIncomeSummary({
+            userId: req.user.id,
+            studioId,
+            month: requestedMonth || undefined
+        });
+        return res.json({ success: true, summary });
+    } catch (error) {
+        const status = /月份格式/.test(String(error && error.message || '')) ? 400 : 500;
+        return res.status(status).json({ success: false, message: error.message || '無法載入收入摘要' });
+    }
+});
+
+router.get('/api/income/monthly-details', ensureAuth, checkPerm('view_income'), async (req, res) => {
+    const studioId = Number(req.user.studio_id);
+    if (!Number.isInteger(studioId) || studioId <= 0) {
+        return res.status(403).json({ success: false, message: '找不到已授權的工作室範圍' });
+    }
+    const requestedMonth = normalizeIncomeMonthInput(req.query.month, null);
+    if (req.query.month && !requestedMonth) {
+        return res.status(400).json({ success: false, message: '月份格式無效，請使用 YYYY-MM' });
+    }
+    try {
+        const details = await listMonthlyIncomeDetails({
+            userId: req.user.id,
+            studioId,
+            month: requestedMonth || undefined,
+            sourceType: req.query.sourceType || '',
+            category: req.query.category || '',
+            page: req.query.page || 1,
+            limit: req.query.limit || 15
+        });
+        return res.json({ success: true, details });
+    } catch (error) {
+        const message = String(error && error.message || '');
+        const status = /月份格式|來源類型/.test(message) ? 400 : (/工作室範圍/.test(message) ? 403 : 500);
+        return res.status(status).json({ success: false, message: error.message || '無法載入收入明細' });
+    }
+});
+
 // =========================================================================
 // 5. 我的訂單 (My Orders)
 // =========================================================================

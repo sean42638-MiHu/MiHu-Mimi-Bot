@@ -122,6 +122,9 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-01T16:00:00.000Z') })).windowOpen, true);
         assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T15:59:59.000Z') })).windowOpen, true);
         assert.equal((await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-06T16:00:00.000Z') })).windowOpen, false);
+        const closedTimeline = await service.getPayoutSummary({ userId: 'user-a', studioId: 1, date: new Date('2026-09-08T12:00:00.000Z') });
+        assert.equal(typeof closedTimeline.nextOpenAtText, 'string');
+        assert.equal(typeof closedTimeline.nowInBusinessTz, 'string');
         await run(db, "INSERT INTO payouts (user_id,amount,status) VALUES ('user-b',250,'completed')");
         const legacySummary = await service.getPayoutSummary({ userId: 'user-b', studioId: 1, date: testDate });
         assert.equal(legacySummary.paidAmount, 250);
@@ -166,6 +169,33 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
         assert.equal(incomeDetail.summary.deductionAmount, 50);
         assert.equal(incomeDetail.summary.historyAdjustment, -20);
         assert.equal(incomeDetail.summary.netSalary, 4150);
+
+        const monthlySummary = await service.listMonthlyIncomeSummary({ userId: 'user-d', studioId: 1, month: '2026-09', date: testDate });
+        assert.equal(monthlySummary.month, '2026-09');
+        assert.equal(monthlySummary.timeZone, 'Asia/Taipei');
+        assert.equal(Array.isArray(monthlySummary.rows), true);
+        assert.equal(monthlySummary.rows.some(item => item.category === '有獎單' && item.sourceType === 'order'), true);
+        assert.equal(monthlySummary.rows.some(item => item.category === '薪資扣減' && item.sourceType === 'salary_adjustment'), true);
+        assert.equal(monthlySummary.totals.monthlyNetAmount, 4150);
+
+        const monthlyOrderDetail = await service.listMonthlyIncomeDetails({
+            userId: 'user-d',
+            studioId: 1,
+            month: '2026-09',
+            sourceType: 'order',
+            category: '有獎單',
+            page: 1,
+            limit: 2,
+            date: testDate
+        });
+        assert.equal(monthlyOrderDetail.rows.length, 2);
+        assert.equal(monthlyOrderDetail.totalRows, 2);
+        assert.equal(monthlyOrderDetail.totalAmount, 1100);
+
+        await assert.rejects(
+            service.listMonthlyIncomeDetails({ userId: 'user-d', studioId: 1, month: '2026-09', sourceType: 'wallet', category: '有獎單', date: testDate }),
+            /來源類型/
+        );
 
         await run(db, "UPDATE roles SET permissions='[]' WHERE role_key='member'");
         await assert.rejects(service.requestWithdrawal({ userId: 'user-d', amount: 100, date: testDate, requiredPermission: 'view_income' }), /權限已變更/);
@@ -293,6 +323,6 @@ test('payout reserve, paid, reject and batch transitions are atomic and do not t
 test('withdrawal window documents day-of-month and timezone policy', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'payoutService.js'), 'utf8');
     assert.match(source, /getLocalDateParts\(date, settings\.timeZone\)/);
-    assert.match(source, /Number\(dateParts\.day\) >= settings\.startDay/);
-    assert.match(source, /Number\(dateParts\.day\) <= settings\.endDay/);
+    assert.match(source, /dayOfMonth\s*>=\s*settings\.startDay/);
+    assert.match(source, /dayOfMonth\s*<=\s*settings\.endDay/);
 });

@@ -234,17 +234,132 @@
         .withdrawal-card-apply-btn { color: #f8fafc; border: 1px solid rgba(52, 211, 153, 0.48); background: linear-gradient(120deg, #059669, #6d28d9); box-shadow: 0 0 18px rgba(52, 211, 153, 0.18), 0 5px 18px rgba(109, 40, 217, 0.24); }
         .withdrawal-card-apply-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 24px rgba(52, 211, 153, 0.28), 0 7px 22px rgba(109, 40, 217, 0.32); }
         .withdrawal-card-apply-btn:disabled { opacity: 0.48; cursor: not-allowed; box-shadow: none; }
+        .withdrawal-card-apply-btn[aria-disabled="true"] {
+            opacity: 0.7;
+            border-color: rgba(248, 113, 113, 0.45);
+            box-shadow: 0 0 12px rgba(248, 113, 113, 0.2);
+        }
         .withdrawal-card-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .withdrawal-card-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.45);
+            background: rgba(30, 41, 59, 0.38);
+            color: #e2e8f0;
+            font-weight: 700;
+        }
         .withdrawal-pending-badge { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(253, 224, 71, 0.7); border-radius: 8px; color: #fde047; background: rgba(253, 224, 71, 0.08); font-weight: 700; }
         .withdrawal-card-period { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(125, 211, 252, 0.28); border-radius: 8px; color: #bae6fd; background: rgba(56, 189, 248, 0.07); font-size: 0.9rem; }
         .withdrawal-card-notes { display: grid; gap: 5px; margin-top: 15px; }
         .withdrawal-card-note { margin: 0; color: #94a3b8; font-size: 0.8rem; line-height: 1.5; }
+
+        .income-summary-shell {
+            margin-bottom: 24px;
+            padding: 20px 22px;
+            border: 1px solid rgba(250, 204, 21, 0.25);
+            border-radius: 16px;
+            background: linear-gradient(160deg, rgba(24, 16, 42, 0.92), rgba(12, 10, 26, 0.96));
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
+        }
+        .income-summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .income-summary-sub {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 0.82rem;
+        }
+        .income-summary-actions {
+            width: 180px;
+            max-width: 100%;
+        }
+        .income-summary-month-label {
+            display: block;
+            font-size: 0.76rem;
+            color: #cbd5e1;
+            margin-bottom: 4px;
+            font-weight: 700;
+        }
+        .income-summary-kpis {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .income-summary-kpi {
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            padding: 6px 10px;
+            color: #e2e8f0;
+            font-size: 0.82rem;
+        }
+        .income-summary-kpi strong { color: #f8fafc; font-family: monospace; }
+        .income-summary-contract {
+            color: #94a3b8;
+            border-left: 3px solid rgba(250, 204, 21, 0.45);
+            padding-left: 10px;
+            margin-bottom: 12px;
+        }
+        .income-summary-table-wrap {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            overflow: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(250, 204, 21, 0.45) rgba(15, 23, 42, 0.5);
+        }
+        .income-summary-table-wrap::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .income-summary-table-wrap::-webkit-scrollbar-thumb {
+            background: rgba(250, 204, 21, 0.45);
+            border-radius: 999px;
+        }
+        .income-summary-table {
+            margin-bottom: 0;
+            min-width: 760px;
+        }
+        .income-summary-table thead th {
+            white-space: nowrap;
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            border-bottom-color: rgba(148, 163, 184, 0.3);
+        }
+        .income-summary-table td {
+            border-bottom-color: rgba(148, 163, 184, 0.12);
+            vertical-align: middle;
+        }
+        .income-category-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 999px;
+            color: #e2e8f0;
+            background: rgba(30, 41, 59, 0.32);
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+        .income-amount-positive { color: #34d399 !important; font-weight: 700; }
+        .income-amount-negative { color: #fb7185 !important; font-weight: 700; }
+        .income-amount-zero { color: #94a3b8 !important; font-weight: 700; }
         @media (max-width: 575px) {
             .withdrawal-card-shell { padding: 16px; }
             .withdrawal-card-header { align-items: stretch; flex-direction: column; gap: 14px; }
             .withdrawal-card-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
             .withdrawal-card-actions button { width: 100%; }
             .withdrawal-card-metrics { align-items: flex-start; flex-direction: column; }
+            .income-summary-shell { padding: 16px; }
+            .income-summary-header { flex-direction: column; }
+            .income-summary-actions { width: 100%; }
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-content {
@@ -596,16 +711,20 @@
                         data-minimum="<%= minimumWithdrawalAmount %>"
                         data-gate-allowed="<%= withdrawalGate.allowed ? 'true' : 'false' %>"
                         data-gate-reasons="<%- JSON.stringify(withdrawalReasons) %>"
+                        data-refresh-url="/api/withdrawals"
                         data-profile-url="/profile"
                         data-timezone="<%= payoutOverview.settings.timeZone %>"
-                        <% if (!withdrawalGate.allowed) { %>disabled<% } %>>
+                        aria-disabled="<%= withdrawalGate.allowed ? 'false' : 'true' %>">
                         <i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i>申請提款
                     </button>
                 </div>
             </div>
             <div class="withdrawal-card-metrics">
+                <span class="withdrawal-card-status" id="withdrawalWindowStatusBadge"><i class="fa-solid <%= payoutOverview.windowOpen ? 'fa-circle-check' : 'fa-circle-xmark' %>" aria-hidden="true"></i>提領狀態：<%= payoutOverview.windowOpen ? '開放中' : '未開放' %></span>
                 <span class="withdrawal-pending-badge"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>撥款中：$<%= Number(payoutOverview.pendingAmount).toLocaleString() %> NTD</span>
                 <span class="withdrawal-card-period"><i class="fa-regular fa-calendar" aria-hidden="true"></i>申請期間：每月 <%= payoutOverview.settings.startDay %> 日 ~ <%= payoutOverview.settings.endDay %> 日（<%= payoutOverview.settings.timeZone %>）</span>
+                <span class="withdrawal-card-period" id="withdrawalNowLabel"><i class="fa-regular fa-clock" aria-hidden="true"></i>台北現在：<%= payoutOverview.timeline && payoutOverview.timeline.now ? payoutOverview.timeline.now : '-' %></span>
+                <span class="withdrawal-card-period" id="withdrawalNextOpenLabel"><i class="fa-solid fa-door-open" aria-hidden="true"></i>下次開放：<%= payoutOverview.timeline && payoutOverview.timeline.nextOpenAt ? payoutOverview.timeline.nextOpenAt : '-' %></span>
             </div>
             <div class="withdrawal-card-notes">
                 <p class="withdrawal-card-note">• 最低申請金額 $<%= minimumWithdrawalAmount.toLocaleString() %> · <%= payoutOverview.bankDetailsReady ? '薪轉帳戶已設定' : '薪轉帳戶尚未設定' %></p>
@@ -614,14 +733,14 @@
             <div class="withdrawal-card-notes mt-2" id="withdrawalGateNotice" aria-live="polite">
                 <% if (withdrawalReasons.length) { %>
                     <% withdrawalReasons.forEach(reason => { %>
-                        <p class="withdrawal-card-note">• <%= reason.message %>
+                        <p class="withdrawal-card-note" data-gate-item="true">• <%= reason.message %>
                             <% if (reason.actionUrl) { %>
                                 <a href="<%= reason.actionUrl %>" class="ms-1 text-info text-decoration-underline"><%= reason.actionText || '前往設定' %></a>
                             <% } %>
                         </p>
                     <% }) %>
                 <% } else { %>
-                    <p class="withdrawal-card-note">• 目前符合提款申請條件，可繼續下一步確認金額。</p>
+                    <p class="withdrawal-card-note" data-gate-item="true">• 目前符合提款申請條件，可繼續下一步確認金額。</p>
                 <% } %>
                 <p class="withdrawal-card-note text-danger" id="withdrawalFrontendError" hidden></p>
             </div>
@@ -648,6 +767,21 @@
             <% } %>
         </section>
 
+        <section class="income-summary-shell" aria-labelledby="incomeSummaryTitle">
+            <div class="income-summary-header">
+                <div>
+                    <h5 class="text-white mb-1" id="incomeSummaryTitle"><i class="fa-solid fa-chart-column text-warning me-2"></i>薪資與分潤明細</h5>
+                    <p class="income-summary-sub">明細、分類統計與分頁已整合到同一個薪資明細視窗。</p>
+                </div>
+                <div class="income-summary-actions">
+                    <button type="button" class="btn btn-outline-warning rounded-pill px-3 py-2 small fw-semibold" data-bs-toggle="modal" data-bs-target="#incomeLedgerModal" id="openIncomeLedgerButton">
+                        <i class="fa-solid fa-file-invoice-dollar me-1"></i>
+                        <span>薪資與分潤明細</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
         <!-- 🚀 2. 我的接單管理中心 -->
         <div class="p-4 rounded-4 d-flex justify-content-between align-items-center flex-wrap gap-3" style="background: var(--card-bg); border: 1px solid var(--card-border); box-shadow: 0 10px 30px rgba(0,0,0,0.4);">
             <div>
@@ -659,10 +793,6 @@
 
             <!-- 右側操作按鈕群 (支援主動點擊相容性) -->
             <div class="d-flex align-items-center gap-3">
-                <button type="button" class="btn btn-outline-warning rounded-pill px-3 py-2 small fw-semibold" data-bs-toggle="modal" data-bs-target="#incomeLedgerModal" id="openIncomeLedgerButton">
-                    <i class="fa-solid fa-file-invoice-dollar me-1"></i>
-                    <span>薪資與分潤明細</span>
-                </button>
                 <button type="button" class="btn btn-income-info" data-bs-toggle="modal" data-bs-target="#commissionRatesModal">
                     <i class="fa-solid fa-circle-info text-info"></i>
                     <span>當前分潤成數表</span>
@@ -680,7 +810,13 @@
 
 <%- include('partials/income_withdrawal_modal', { payoutOverview: payoutOverview }) %>
 <%- include('modals/withdrawal_terms_modal', { settings: payoutOverview.settings }) %>
-<%- include('partials/income_salary_detail_modal', { incomeDetail: incomeDetail || null, openIncomeDetailModal: openIncomeDetailModal === true }) %>
+<%- include('partials/income_salary_detail_modal', {
+    incomeDetail: incomeDetail || null,
+    incomeMonthlySummary: incomeMonthlySummary || null,
+    incomeSummaryMonth: incomeSummaryMonth || '',
+    openIncomeDetailModal: openIncomeDetailModal === true
+}) %>
+<%- include('modals/income_category_detail_modal') %>
 
 <!-- 🚀 3. 載入獨立模組：分潤成數彈窗 -->
 <%- include('partials/income_commission_modal') %>
@@ -701,11 +837,22 @@
         const applyButton = document.getElementById('beginWithdrawalFlow');
         const continueButton = document.getElementById('withdrawalTermsContinue');
         const frontendError = document.getElementById('withdrawalFrontendError');
+        const gateNotice = document.getElementById('withdrawalGateNotice');
+        const statusBadge = document.getElementById('withdrawalWindowStatusBadge');
+        const nowLabel = document.getElementById('withdrawalNowLabel');
+        const nextOpenLabel = document.getElementById('withdrawalNextOpenLabel');
+        const amountInput = document.getElementById('withdrawalAmount');
 
         function showFrontendError(message) {
             if (!frontendError) return;
             frontendError.hidden = false;
             frontendError.textContent = message;
+        }
+
+        function clearFrontendError() {
+            if (!frontendError) return;
+            frontendError.hidden = true;
+            frontendError.textContent = '';
         }
 
         if (!termsModalEl || !amountModalEl || !termsButton || !applyButton || !continueButton || !window.bootstrap?.Modal) {
@@ -728,6 +875,64 @@
             }
         }
 
+        function renderGateReasons(reasons) {
+            if (!gateNotice) return;
+            gateNotice.querySelectorAll('[data-gate-item="true"]').forEach(node => node.remove());
+
+            const items = Array.isArray(reasons) ? reasons : [];
+            if (!items.length) {
+                const ok = document.createElement('p');
+                ok.className = 'withdrawal-card-note';
+                ok.dataset.gateItem = 'true';
+                ok.textContent = '• 目前符合提款申請條件，可繼續下一步確認金額。';
+                gateNotice.insertBefore(ok, frontendError || null);
+                return;
+            }
+
+            for (const reason of items) {
+                const line = document.createElement('p');
+                line.className = 'withdrawal-card-note';
+                line.dataset.gateItem = 'true';
+                line.textContent = `• ${reason && reason.message ? reason.message : '目前不符合提款條件'}`;
+                if (reason && reason.actionUrl) {
+                    const link = document.createElement('a');
+                    link.href = reason.actionUrl;
+                    link.className = 'ms-1 text-info text-decoration-underline';
+                    link.textContent = reason.actionText || '前往設定';
+                    line.appendChild(link);
+                }
+                gateNotice.insertBefore(line, frontendError || null);
+            }
+        }
+
+        function syncApplyStateFromOverview(overview) {
+            if (!overview || typeof overview !== 'object') return;
+            const gate = overview.withdrawalGate || { allowed: false, reasons: [] };
+            const allowed = gate.allowed === true;
+            applyButton.dataset.windowOpen = overview.windowOpen ? 'true' : 'false';
+            applyButton.dataset.bankReady = overview.bankDetailsReady ? 'true' : 'false';
+            applyButton.dataset.available = String(Number(overview.availableAmount || 0));
+            applyButton.dataset.minimum = String(Number(overview.settings && overview.settings.minimumAmount || 0));
+            applyButton.dataset.gateAllowed = allowed ? 'true' : 'false';
+            applyButton.dataset.gateReasons = JSON.stringify(Array.isArray(gate.reasons) ? gate.reasons : []);
+            applyButton.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+            if (amountInput) {
+                amountInput.max = String(Number(overview.availableAmount || 0));
+                amountInput.min = String(Number(overview.settings && overview.settings.minimumAmount || 0));
+            }
+
+            if (statusBadge) {
+                statusBadge.innerHTML = `<i class="fa-solid ${overview.windowOpen ? 'fa-circle-check' : 'fa-circle-xmark'}" aria-hidden="true"></i>提領狀態：${overview.windowOpen ? '開放中' : '未開放'}`;
+            }
+            if (nowLabel) {
+                nowLabel.innerHTML = `<i class="fa-regular fa-clock" aria-hidden="true"></i>台北現在：${overview.timeline && overview.timeline.now ? overview.timeline.now : '-'}`;
+            }
+            if (nextOpenLabel) {
+                nextOpenLabel.innerHTML = `<i class="fa-solid fa-door-open" aria-hidden="true"></i>下次開放：${overview.timeline && overview.timeline.nextOpenAt ? overview.timeline.nextOpenAt : '-'}`;
+            }
+            renderGateReasons(gate.reasons || []);
+        }
+
         function renderGateReasonFallback() {
             const reasons = parseGateReasons();
             if (!reasons.length) return;
@@ -744,10 +949,7 @@
 
         termsButton.addEventListener('click', () => openTerms('READ_ONLY'));
         applyButton.addEventListener('click', () => {
-            if (applyButton.disabled) {
-                renderGateReasonFallback();
-                return;
-            }
+            clearFrontendError();
             if (transitionPending) return;
             const canRequest = applyButton.dataset.windowOpen === 'true'
                 && applyButton.dataset.bankReady === 'true'
@@ -779,6 +981,29 @@
         window.addEventListener('error', event => {
             const message = event && event.message ? `提款功能腳本發生錯誤：${event.message}` : '提款功能腳本發生錯誤。';
             showFrontendError(message);
+        });
+
+        const refreshUrl = applyButton.dataset.refreshUrl;
+        async function refreshWithdrawalOverview() {
+            if (!refreshUrl) return;
+            try {
+                const response = await fetch(refreshUrl, {
+                    method: 'GET',
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin'
+                });
+                if (!response.ok) return;
+                const payload = await response.json();
+                if (!payload || payload.success !== true || !payload.overview) return;
+                syncApplyStateFromOverview(payload.overview);
+            } catch {
+                // 前端定時同步失敗時保持目前畫面，後端送出時仍會再次核對
+            }
+        }
+
+        setInterval(refreshWithdrawalOverview, 60 * 1000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') refreshWithdrawalOverview();
         });
     })();
 
@@ -851,8 +1076,13 @@
         }
     }
 
+    const orderDetailFlowState = {
+        returnToOrders: false,
+        triggerEl: null
+    };
+
     // 🚀 單筆工單詳情顯示
-    function showOrderIncomeDetail(data) {
+    function showOrderIncomeDetail(data, triggerEl = null) {
         if (!data) return;
 
         const setElText = (id, text) => {
@@ -870,7 +1100,39 @@
         setElText('detailEndTime', data.endTime || '尚未結束');
         setElText('detailNote', data.note || '無特別備註');
 
-        safeShowModal('incomeDetailModal');
+        const ordersModalEl = document.getElementById('ordersHistoryModal');
+        const detailModalEl = document.getElementById('incomeDetailModal');
+        const canSwitchSingleModal = Boolean(
+            window.bootstrap?.Modal
+            && ordersModalEl
+            && detailModalEl
+            && ordersModalEl.classList.contains('show')
+        );
+
+        if (!canSwitchSingleModal) {
+            safeShowModal('incomeDetailModal');
+            return;
+        }
+
+        orderDetailFlowState.returnToOrders = true;
+        orderDetailFlowState.triggerEl = triggerEl;
+
+        const ordersModal = bootstrap.Modal.getOrCreateInstance(ordersModalEl, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        const detailModal = bootstrap.Modal.getOrCreateInstance(detailModalEl, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+
+        const handleOrdersHidden = () => {
+            detailModal.show();
+        };
+        ordersModalEl.addEventListener('hidden.bs.modal', handleOrdersHidden, { once: true });
+        ordersModal.hide();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -900,6 +1162,39 @@
             });
         }
 
+        const ordersModalEl = document.getElementById('ordersHistoryModal');
+        const detailModalEl = document.getElementById('incomeDetailModal');
+        if (ordersModalEl && detailModalEl && window.bootstrap?.Modal) {
+            const ordersModal = bootstrap.Modal.getOrCreateInstance(ordersModalEl, {
+                backdrop: true,
+                keyboard: true,
+                focus: true
+            });
+
+            detailModalEl.addEventListener('hidden.bs.modal', () => {
+                if (!orderDetailFlowState.returnToOrders) return;
+
+                const focusTarget = orderDetailFlowState.triggerEl;
+                orderDetailFlowState.returnToOrders = false;
+                orderDetailFlowState.triggerEl = null;
+
+                ordersModalEl.addEventListener('shown.bs.modal', () => {
+                    window.setTimeout(() => {
+                        if (focusTarget && typeof focusTarget.focus === 'function') {
+                            focusTarget.focus();
+                            if (document.activeElement === focusTarget) return;
+                        }
+                        const fallbackTrigger = ordersModalEl.querySelector('.btn-detail-trigger');
+                        if (fallbackTrigger && typeof fallbackTrigger.focus === 'function') {
+                            fallbackTrigger.focus();
+                        }
+                    }, 120);
+                }, { once: true });
+
+                ordersModal.show();
+            });
+        }
+
         const incomeLedgerFilterForm = document.querySelector('#incomeLedgerModal [data-income-ledger-filter-form="true"]');
         const incomeLedgerUpdateButton = document.querySelector('#incomeLedgerModal [data-income-ledger-update-button="true"]');
         const incomeLedgerLoadingState = document.getElementById('incomeLedgerLoadingState');
@@ -909,6 +1204,9 @@
                 if (incomeLedgerSubmitting) {
                     event.preventDefault();
                     return;
+                }
+                if (ledgerSummaryMonthHidden && summaryMonthInput) {
+                    ledgerSummaryMonthHidden.value = summaryMonthInput.value || '';
                 }
                 incomeLedgerSubmitting = true;
                 if (incomeLedgerLoadingState) incomeLedgerLoadingState.hidden = false;
@@ -924,6 +1222,322 @@
         }
 
         if (shouldOpenIncomeDetailModal) safeShowModal('incomeLedgerModal');
+
+        const summaryMonthInput = document.getElementById('incomeSummaryMonthInput');
+        const ledgerModalEl = document.getElementById('incomeLedgerModal');
+        const ledgerModal = ledgerModalEl && window.bootstrap?.Modal
+            ? bootstrap.Modal.getOrCreateInstance(ledgerModalEl)
+            : null;
+        const ledgerSummaryMonthHidden = document.querySelector('#incomeLedgerModal input[name="summary_month"]');
+        const summaryTableBody = document.getElementById('incomeSummaryTableBody');
+        const summaryError = document.getElementById('incomeSummaryError');
+        const summaryContract = document.getElementById('incomeSummaryContractNotice');
+        const monthlyNetAmountEl = document.getElementById('incomeMonthlyNetAmount');
+        const paidAmountEl = document.getElementById('incomePaidAmount');
+        const availableAmountEl = document.getElementById('incomeAvailableAmount');
+        const categoryModalEl = document.getElementById('incomeCategoryDetailModal');
+        const categoryDetailBody = document.getElementById('incomeCategoryDetailBody');
+        const categoryDetailMeta = document.getElementById('incomeCategoryDetailMeta');
+        const categoryDetailPagination = document.getElementById('incomeCategoryDetailPagination');
+        const categoryDetailLoading = document.getElementById('incomeCategoryDetailLoading');
+        const categoryDetailError = document.getElementById('incomeCategoryDetailError');
+        const detailPrevButton = document.getElementById('incomeCategoryDetailPrevPage');
+        const detailNextButton = document.getElementById('incomeCategoryDetailNextPage');
+        const categoryModal = categoryModalEl && window.bootstrap?.Modal
+            ? bootstrap.Modal.getOrCreateInstance(categoryModalEl)
+            : null;
+        const detailState = {
+            sourceType: '',
+            category: '',
+            month: summaryMonthInput ? summaryMonthInput.value : '',
+            page: 1,
+            totalPages: 1,
+            loading: false,
+            requestSeq: 0
+        };
+        let categoryDetailTriggerButton = null;
+        const categoryDetailFlowState = {
+            returnToLedger: false,
+            triggerEl: null
+        };
+        let summaryRequestSeq = 0;
+
+        function setSummaryError(message) {
+            if (!summaryError) return;
+            if (!message) {
+                summaryError.hidden = true;
+                summaryError.textContent = '';
+                return;
+            }
+            summaryError.hidden = false;
+            summaryError.textContent = message;
+        }
+
+        function formatSignedAmount(value) {
+            const amount = Number(value || 0);
+            const absText = Math.abs(amount).toLocaleString();
+            if (amount > 0) return { text: `+$${absText}`, cls: 'income-amount-positive' };
+            if (amount < 0) return { text: `-$${absText}`, cls: 'income-amount-negative' };
+            return { text: `$${absText}`, cls: 'income-amount-zero' };
+        }
+
+        function renderSummaryRows(rows) {
+            if (!summaryTableBody) return;
+            summaryTableBody.innerHTML = '';
+            if (!Array.isArray(rows) || rows.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="5" class="text-center py-3 text-secondary">本月沒有可顯示的薪資與分潤項目</td>';
+                summaryTableBody.appendChild(tr);
+                return;
+            }
+
+            rows.forEach(item => {
+                const signed = formatSignedAmount(item.totalAmount);
+                const tr = document.createElement('tr');
+                const desc = Array.isArray(item.descriptions) && item.descriptions.length ? item.descriptions.join('、') : '-';
+                const categoryTd = document.createElement('td');
+                const categoryChip = document.createElement('span');
+                categoryChip.className = 'income-category-chip';
+                categoryChip.textContent = item.category || '未分類收入';
+                categoryTd.appendChild(categoryChip);
+
+                const countTd = document.createElement('td');
+                countTd.className = 'text-center';
+                countTd.textContent = item.countLabel || `${Number(item.count || 0)} 筆`;
+
+                const amountTd = document.createElement('td');
+                amountTd.className = `text-end ${signed.cls}`;
+                amountTd.textContent = signed.text;
+
+                const descTd = document.createElement('td');
+                descTd.textContent = desc;
+
+                const actionTd = document.createElement('td');
+                actionTd.className = 'text-center';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-sm btn-outline-warning income-open-detail';
+                btn.setAttribute('data-source-type', item.sourceType || '');
+                btn.setAttribute('data-category', item.category || '');
+                btn.textContent = '查看明細';
+                actionTd.appendChild(btn);
+
+                tr.append(categoryTd, countTd, amountTd, descTd, actionTd);
+                summaryTableBody.appendChild(tr);
+            });
+        }
+
+        function renderLimitations(limitations) {
+            if (!summaryContract) return;
+            summaryContract.innerHTML = '';
+            const items = Array.isArray(limitations) ? limitations : [];
+            items.forEach(text => {
+                const p = document.createElement('p');
+                p.className = 'mb-1';
+                p.textContent = `• ${text}`;
+                summaryContract.appendChild(p);
+            });
+        }
+
+        function renderSummary(snapshot) {
+            const totals = snapshot && snapshot.totals ? snapshot.totals : {};
+            if (monthlyNetAmountEl) monthlyNetAmountEl.textContent = `$${Number(totals.monthlyNetAmount || 0).toLocaleString()}`;
+            if (paidAmountEl) paidAmountEl.textContent = `$${Number(totals.paidAmount || 0).toLocaleString()}`;
+            if (availableAmountEl) availableAmountEl.textContent = `$${Number(totals.availableAmount || 0).toLocaleString()}`;
+            renderSummaryRows(snapshot && Array.isArray(snapshot.rows) ? snapshot.rows : []);
+            renderLimitations(snapshot && snapshot.limitations ? snapshot.limitations : []);
+        }
+
+        async function refreshIncomeSummary(month) {
+            const currentSeq = ++summaryRequestSeq;
+            setSummaryError('');
+            try {
+                const response = await fetch(`/api/income/monthly-summary?month=${encodeURIComponent(month)}`, {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin'
+                });
+                const payload = await response.json();
+                if (currentSeq !== summaryRequestSeq) return;
+                if (!response.ok || payload.success !== true || !payload.summary) {
+                    throw new Error(payload && payload.message ? payload.message : '無法更新收入摘要');
+                }
+                renderSummary(payload.summary);
+            } catch (error) {
+                if (currentSeq !== summaryRequestSeq) return;
+                setSummaryError(error.message || '無法更新收入摘要');
+            }
+        }
+
+        function setDetailLoading(loading) {
+            detailState.loading = loading;
+            if (categoryDetailLoading) categoryDetailLoading.hidden = !loading;
+            if (detailPrevButton) detailPrevButton.disabled = loading || detailState.page <= 1;
+            if (detailNextButton) detailNextButton.disabled = loading || detailState.page >= detailState.totalPages;
+        }
+
+        function setDetailError(message) {
+            if (!categoryDetailError) return;
+            if (!message) {
+                categoryDetailError.hidden = true;
+                categoryDetailError.textContent = '';
+                return;
+            }
+            categoryDetailError.hidden = false;
+            categoryDetailError.textContent = message;
+        }
+
+        function renderDetailRows(rows) {
+            if (!categoryDetailBody) return;
+            categoryDetailBody.innerHTML = '';
+            if (!Array.isArray(rows) || rows.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="6" class="text-center text-secondary py-3">沒有符合條件的明細</td>';
+                categoryDetailBody.appendChild(tr);
+                return;
+            }
+            rows.forEach(row => {
+                const signed = formatSignedAmount(row.amount);
+                const tr = document.createElement('tr');
+
+                const timeTd = document.createElement('td');
+                timeTd.textContent = String(row.occurredAt || '-').replace('T', ' ').slice(0, 19);
+
+                const sourceTd = document.createElement('td');
+                sourceTd.textContent = row.sourceNo || row.sourceId || '-';
+
+                const categoryTd = document.createElement('td');
+                categoryTd.textContent = row.category || '-';
+
+                const amountTd = document.createElement('td');
+                amountTd.className = `text-end ${signed.cls}`;
+                amountTd.textContent = signed.text;
+
+                const reasonTd = document.createElement('td');
+                reasonTd.textContent = row.description || '-';
+
+                const statusTd = document.createElement('td');
+                statusTd.textContent = row.status || '-';
+
+                tr.append(timeTd, sourceTd, categoryTd, amountTd, reasonTd, statusTd);
+                categoryDetailBody.appendChild(tr);
+            });
+        }
+
+        async function loadCategoryDetails() {
+            if (!detailState.month || !detailState.sourceType || !detailState.category) return;
+            const currentSeq = ++detailState.requestSeq;
+            setDetailError('');
+            setDetailLoading(true);
+            try {
+                const query = new URLSearchParams({
+                    month: detailState.month,
+                    sourceType: detailState.sourceType,
+                    category: detailState.category,
+                    page: String(detailState.page),
+                    limit: '12'
+                });
+                const response = await fetch(`/api/income/monthly-details?${query.toString()}`, {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin'
+                });
+                const payload = await response.json();
+                if (currentSeq !== detailState.requestSeq) return;
+                if (!response.ok || payload.success !== true || !payload.details) {
+                    throw new Error(payload && payload.message ? payload.message : '無法載入明細');
+                }
+                const details = payload.details;
+                detailState.totalPages = Number(details.totalPages || 1);
+                detailState.page = Number(details.page || 1);
+                renderDetailRows(details.rows || []);
+                if (categoryDetailMeta) {
+                    categoryDetailMeta.textContent = `${details.month}｜${details.sourceType || '-'}｜${details.category || '-'}｜本頁合計：$${Number(details.pageAmount || 0).toLocaleString()}｜分類總計：$${Number(details.totalAmount || 0).toLocaleString()}`;
+                }
+                if (categoryDetailPagination) {
+                    categoryDetailPagination.textContent = `第 ${detailState.page} / ${detailState.totalPages} 頁`;
+                }
+            } catch (error) {
+                if (currentSeq !== detailState.requestSeq) return;
+                renderDetailRows([]);
+                setDetailError(error.message || '無法載入明細');
+            } finally {
+                if (currentSeq === detailState.requestSeq) setDetailLoading(false);
+            }
+        }
+
+        summaryTableBody?.addEventListener('click', event => {
+            const trigger = event.target && event.target.closest ? event.target.closest('.income-open-detail') : null;
+            if (!trigger) return;
+            categoryDetailTriggerButton = trigger;
+            detailState.sourceType = String(trigger.getAttribute('data-source-type') || '').trim();
+            detailState.category = String(trigger.getAttribute('data-category') || '').trim();
+            detailState.month = summaryMonthInput ? summaryMonthInput.value : detailState.month;
+            detailState.page = 1;
+
+            const openCategoryModal = () => {
+                if (categoryModal) {
+                    categoryModal.show();
+                } else {
+                    safeShowModal('incomeCategoryDetailModal');
+                }
+                loadCategoryDetails();
+            };
+
+            const ledgerIsOpen = Boolean(ledgerModalEl && ledgerModalEl.classList.contains('show'));
+            if (ledgerIsOpen && ledgerModal) {
+                categoryDetailFlowState.returnToLedger = true;
+                categoryDetailFlowState.triggerEl = trigger;
+                ledgerModalEl.addEventListener('hidden.bs.modal', openCategoryModal, { once: true });
+                ledgerModal.hide();
+                return;
+            }
+
+            categoryDetailFlowState.returnToLedger = false;
+            categoryDetailFlowState.triggerEl = trigger;
+            openCategoryModal();
+        });
+
+        categoryModalEl?.addEventListener('hidden.bs.modal', () => {
+            if (categoryDetailFlowState.returnToLedger && ledgerModal && ledgerModalEl) {
+                const focusTarget = categoryDetailFlowState.triggerEl;
+                categoryDetailFlowState.returnToLedger = false;
+                categoryDetailFlowState.triggerEl = null;
+                ledgerModalEl.addEventListener('shown.bs.modal', () => {
+                    window.setTimeout(() => {
+                        if (focusTarget && typeof focusTarget.focus === 'function') {
+                            focusTarget.focus();
+                        }
+                    }, 120);
+                }, { once: true });
+                ledgerModal.show();
+                return;
+            }
+
+            if (categoryDetailTriggerButton && typeof categoryDetailTriggerButton.focus === 'function') {
+                categoryDetailTriggerButton.focus();
+            }
+        });
+
+        detailPrevButton?.addEventListener('click', () => {
+            if (detailState.loading || detailState.page <= 1) return;
+            detailState.page -= 1;
+            loadCategoryDetails();
+        });
+
+        detailNextButton?.addEventListener('click', () => {
+            if (detailState.loading || detailState.page >= detailState.totalPages) return;
+            detailState.page += 1;
+            loadCategoryDetails();
+        });
+
+        summaryMonthInput?.addEventListener('change', () => {
+            const selectedMonth = String(summaryMonthInput.value || '').trim();
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth)) {
+                setSummaryError('月份格式無效，請使用 YYYY-MM');
+                return;
+            }
+            if (ledgerSummaryMonthHidden) ledgerSummaryMonthHidden.value = selectedMonth;
+            refreshIncomeSummary(selectedMonth);
+        });
 
         // 🚀 2. 訂單篩選與明細綁定
         const rows = document.querySelectorAll('.order-income-row');
@@ -1002,13 +1616,13 @@
                 const rawAttr = row.getAttribute('data-order');
                 if (rawAttr) {
                     const data = JSON.parse(rawAttr);
-                    row.addEventListener('click', () => showOrderIncomeDetail(data));
+                    row.addEventListener('click', () => showOrderIncomeDetail(data, row));
 
                     const btn = row.querySelector('.btn-detail-trigger');
                     if (btn) {
                         btn.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            showOrderIncomeDetail(data);
+                            showOrderIncomeDetail(data, btn);
                         });
                     }
                 }

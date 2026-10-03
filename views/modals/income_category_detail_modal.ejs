@@ -1,0 +1,48 @@
+<div class="modal fade" id="incomeCategoryDetailModal" tabindex="-1" aria-labelledby="incomeCategoryDetailTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="incomeCategoryDetailTitle">
+                    <i class="fa-solid fa-table-list text-warning me-2" aria-hidden="true"></i>薪資與分潤明細
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="small text-secondary" id="incomeCategoryDetailMeta">-</div>
+                    <div class="small text-secondary" id="incomeCategoryDetailPagination">第 1 / 1 頁</div>
+                </div>
+                <div id="incomeCategoryDetailLoading" class="alert alert-info py-2 px-3 mb-3" hidden>
+                    <i class="fa-solid fa-spinner fa-spin me-2" aria-hidden="true"></i>讀取明細中...
+                </div>
+                <div id="incomeCategoryDetailError" class="alert alert-danger py-2 px-3 mb-3" hidden></div>
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm align-middle mb-0" id="incomeCategoryDetailTable">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>來源編號</th>
+                                <th>類別</th>
+                                <th class="text-end">收入／扣款</th>
+                                <th>原因</th>
+                                <th>狀態</th>
+                            </tr>
+                        </thead>
+                        <tbody id="incomeCategoryDetailBody">
+                            <tr>
+                                <td colspan="6" class="text-center text-secondary py-3">請先選擇分類</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary d-flex justify-content-between">
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-light btn-sm" id="incomeCategoryDetailPrevPage">上一頁</button>
+                    <button type="button" class="btn btn-outline-light btn-sm" id="incomeCategoryDetailNextPage">下一頁</button>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
