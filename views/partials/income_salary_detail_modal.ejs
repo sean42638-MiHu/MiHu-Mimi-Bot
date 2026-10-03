@@ -133,8 +133,8 @@
                                     <th>收入／扣款類別</th>
                                     <th class="text-center">筆數／單數</th>
                                     <th class="text-end">總金額</th>
-                                    <th>說明</th>
-                                    <th class="text-center">查看明細</th>
+                                    <th class="income-summary-col-desc">說明</th>
+                                    <th class="income-summary-col-action">查看明細</th>
                                 </tr>
                             </thead>
                             <tbody id="incomeSummaryTableBody">
@@ -148,8 +148,8 @@
                                         <td><span class="income-category-chip"><%= item.category %></span></td>
                                         <td class="text-center"><%= item.countLabel %></td>
                                         <td class="text-end <%= signedClass %>"><%= signedAmount > 0 ? '+' : (signedAmount < 0 ? '-' : '') %>$<%= Math.abs(signedAmount).toLocaleString() %></td>
-                                        <td><%= (item.descriptions || []).join('、') || '-' %></td>
-                                        <td class="text-center">
+                                        <td class="income-summary-col-desc"><%= (item.descriptions || []).join('、') || '-' %></td>
+                                        <td class="income-summary-col-action">
                                             <button
                                                 type="button"
                                                 class="btn btn-sm income-neon-detail-btn income-open-detail"

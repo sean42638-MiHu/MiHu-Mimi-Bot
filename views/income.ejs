@@ -259,7 +259,7 @@
         .income-summary-shell {
             margin-bottom: 24px;
             padding: 20px 22px;
-            border: 1px solid rgba(250, 204, 21, 0.25);
+            border: 1px solid var(--card-border);
             border-radius: 16px;
             background: linear-gradient(160deg, rgba(24, 16, 42, 0.92), rgba(12, 10, 26, 0.96));
             box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
@@ -327,33 +327,56 @@
             margin-bottom: 12px;
         }
         .income-summary-table-wrap {
-            border: 1px solid rgba(148, 163, 184, 0.2);
+            border: 1px solid rgba(168, 85, 247, 0.26);
             border-radius: 12px;
-            overflow: auto;
+            background: rgba(10, 7, 22, 0.62);
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
             scrollbar-width: thin;
-            scrollbar-color: rgba(250, 204, 21, 0.45) rgba(15, 23, 42, 0.5);
+            scrollbar-color: rgba(168, 85, 247, 0.45) rgba(15, 23, 42, 0.5);
         }
         .income-summary-table-wrap::-webkit-scrollbar {
             width: 6px;
             height: 6px;
         }
         .income-summary-table-wrap::-webkit-scrollbar-thumb {
-            background: rgba(250, 204, 21, 0.45);
+            background: rgba(168, 85, 247, 0.45);
             border-radius: 999px;
         }
         .income-summary-table {
             margin-bottom: 0;
-            min-width: 760px;
+            min-width: 700px;
         }
         .income-summary-table thead th {
             white-space: nowrap;
             font-size: 0.8rem;
             color: #cbd5e1;
+            background: rgba(15, 23, 42, 0.78);
             border-bottom-color: rgba(148, 163, 184, 0.3);
         }
         .income-summary-table td {
+            background: rgba(2, 6, 23, 0.42);
             border-bottom-color: rgba(148, 163, 184, 0.12);
             vertical-align: middle;
+        }
+        .income-summary-table .income-summary-col-action {
+            min-width: 118px;
+            white-space: nowrap;
+            text-align: center;
+        }
+        .income-summary-table .income-summary-col-desc {
+            min-width: 165px;
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+        @media (min-width: 992px) {
+            .income-summary-table .income-summary-col-desc {
+                width: 210px;
+                max-width: 210px;
+            }
         }
         .income-category-chip {
             display: inline-flex;
@@ -1369,10 +1392,11 @@
                 amountTd.textContent = signed.text;
 
                 const descTd = document.createElement('td');
+                descTd.className = 'income-summary-col-desc';
                 descTd.textContent = desc;
 
                 const actionTd = document.createElement('td');
-                actionTd.className = 'text-center';
+                actionTd.className = 'income-summary-col-action';
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-sm income-neon-detail-btn income-open-detail';
