@@ -1,32 +1,32 @@
 <section class="admin-panel salary-main-card salary-overview-panel mb-4">
-    <div class="salary-overview-head mb-3">
-        <div>
-            <h2 class="h5 mb-1">本月薪資總覽 <span class="text-secondary">(<%= month %>)</span></h2>
-            <p class="small text-secondary mb-0">共 <%= totalStaff %> 位員工，每頁 <%= pageSize || 15 %> 位</p>
+    <div class="admin-panel-header salary-overview-head">
+        <h2 class="admin-section-title">本月薪資總覽 <span class="text-secondary">(<%= month %>)</span></h2>
+        <p class="admin-section-description">共 <%= totalStaff %> 位員工，每頁 <%= pageSize || 15 %> 位</p>
+    </div>
+
+    <div class="salary-overview-controls">
+        <form method="get" action="/management/salary-settings" class="row g-2 align-items-end salary-filter-form">
+            <div class="col-12 col-md-3">
+                <label class="small text-secondary" for="monthFilter">月份</label>
+                <input id="monthFilter" class="form-control form-control-sm admin-form-control" type="month" name="month" value="<%= month %>">
+            </div>
+            <div class="col-12 col-md-6">
+                <label class="small text-secondary" for="salarySearch">搜尋員工</label>
+                <input id="salarySearch" class="form-control form-control-sm admin-form-control" type="search" name="q" value="<%= search %>" placeholder="名稱、暱稱或 Discord ID">
+            </div>
+            <div class="col-12 col-md-3 text-md-end">
+                <button class="btn btn-sm rounded-pill text-white fw-semibold salary-filter-submit" type="submit">套用篩選</button>
+            </div>
+        </form>
+
+        <div class="salary-distribute-status <%= distStatus.locked ? 'is-locked' : 'is-open' %>">
+            <div class="salary-distribute-title"><%= distStatus.message %></div>
+            <div class="small text-secondary">規則：<%= distStatus.totalRules %>，已完成：<%= distStatus.committedRules %>，待派發：<%= distStatus.pendingRules %></div>
         </div>
     </div>
 
-    <form method="get" action="/management/salary-settings" class="row g-2 align-items-end salary-filter-form mb-3">
-        <div class="col-12 col-md-3">
-            <label class="small text-secondary" for="monthFilter">月份</label>
-            <input id="monthFilter" class="form-control form-control-sm" type="month" name="month" value="<%= month %>">
-        </div>
-        <div class="col-12 col-md-6">
-            <label class="small text-secondary" for="salarySearch">搜尋員工</label>
-            <input id="salarySearch" class="form-control form-control-sm" type="search" name="q" value="<%= search %>" placeholder="名稱、暱稱或 Discord ID">
-        </div>
-        <div class="col-12 col-md-3 text-md-end">
-            <button class="btn btn-sm salary-filter-submit" type="submit">套用篩選</button>
-        </div>
-    </form>
-
-    <div class="salary-distribute-status <%= distStatus.locked ? 'is-locked' : 'is-open' %>">
-        <div class="salary-distribute-title"><%= distStatus.message %></div>
-        <div class="small text-secondary">規則：<%= distStatus.totalRules %>，已完成：<%= distStatus.committedRules %>，待派發：<%= distStatus.pendingRules %></div>
-    </div>
-
-    <div class="table-responsive">
-        <table class="table table-dark table-sm align-middle mb-0 salary-table">
+    <div class="table-responsive salary-overview-table-wrap">
+        <table class="table table-sm align-middle mb-0 mihu-table admin-table salary-table">
             <thead>
                 <tr>
                     <th>員工</th>
@@ -75,14 +75,14 @@
                             <div class="salary-row-actions">
                                 <button
                                     type="button"
-                                    class="btn btn-sm salary-row-history"
+                                    class="btn btn-sm btn-outline-light rounded-pill action-btn-clean salary-row-history"
                                     data-user-id="<%= row.userId %>"
                                     data-display-name="<%= row.displayName %>"
                                 >調整紀錄</button>
                                 <% if (canSalaryAdjust) { %>
                                     <button
                                         type="button"
-                                        class="btn btn-sm salary-row-adjust"
+                                        class="btn btn-sm rounded-pill text-white fw-semibold action-btn-clean salary-row-adjust"
                                         data-user-id="<%= row.userId %>"
                                         data-display-name="<%= row.displayName %>"
                                         data-role-key="<%= roleKey %>"
@@ -102,9 +102,9 @@
         <% const previousPage = Math.max(1, page - 1); %>
         <% const nextPage = Math.min(totalPages, page + 1); %>
         <div class="salary-pagination mt-3">
-            <a class="btn btn-sm salary-pager-btn <%= page <= 1 ? 'disabled' : '' %>" <%= page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' %> href="/management/salary-settings?month=<%= encodeURIComponent(month) %>&q=<%= encodeURIComponent(search) %>&page=<%= previousPage %>">上一頁</a>
+            <a class="btn btn-sm btn-outline-light rounded-pill action-btn-clean salary-pager-btn <%= page <= 1 ? 'disabled' : '' %>" <%= page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' %> href="/management/salary-settings?month=<%= encodeURIComponent(month) %>&q=<%= encodeURIComponent(search) %>&page=<%= previousPage %>">上一頁</a>
             <span class="salary-pagination-current">第 <%= page %> / <%= totalPages %> 頁</span>
-            <a class="btn btn-sm salary-pager-btn <%= page >= totalPages ? 'disabled' : '' %>" <%= page >= totalPages ? 'aria-disabled="true" tabindex="-1"' : '' %> href="/management/salary-settings?month=<%= encodeURIComponent(month) %>&q=<%= encodeURIComponent(search) %>&page=<%= nextPage %>">下一頁</a>
+            <a class="btn btn-sm btn-outline-light rounded-pill action-btn-clean salary-pager-btn <%= page >= totalPages ? 'disabled' : '' %>" <%= page >= totalPages ? 'aria-disabled="true" tabindex="-1"' : '' %> href="/management/salary-settings?month=<%= encodeURIComponent(month) %>&q=<%= encodeURIComponent(search) %>&page=<%= nextPage %>">下一頁</a>
         </div>
     <% } %>
 </section>
@@ -114,7 +114,7 @@
         <h2 class="h6 mb-0">最近調整摘要</h2>
         <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
             <span class="small text-secondary">可切換查看全員調整明細</span>
-            <button type="button" class="btn btn-sm salary-row-history" id="openFullSalaryHistoryButton">全員調整紀錄</button>
+            <button type="button" class="btn btn-sm btn-outline-light rounded-pill action-btn-clean salary-row-history" id="openFullSalaryHistoryButton">全員調整紀錄</button>
         </div>
     </div>
     <div class="small text-secondary mb-2">顯示最近 <%= Math.min(5, recentAdjustments.length) %> 筆，完整資料可在「調整紀錄」查詢與分頁。</div>

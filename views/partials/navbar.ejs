@@ -63,6 +63,8 @@
         display: flex;
         align-items: center;
         gap: 14px;
+        min-width: 0;
+        flex: 1 1 auto;
     }
     .nav-page-title-badge {
         display: flex;
@@ -72,6 +74,16 @@
         font-weight: 700;
         color: #ffffff;
         letter-spacing: 0.5px;
+        min-width: 0;
+        max-width: 100%;
+        flex: 1 1 auto;
+    }
+    .nav-page-title-badge span {
+        display: block;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .nav-title-icon {
         font-size: 1.15rem;
@@ -99,6 +111,8 @@
         display: flex;
         align-items: center;
         margin-left: auto;
+        min-width: 0;
+        flex: 0 0 auto;
     }
     .profile-dropdown-btn {
         background: rgba(255, 255, 255, 0.04);
@@ -110,10 +124,16 @@
         gap: 12px;
         cursor: pointer;
         transition: all 0.25s ease;
+        max-width: min(44vw, 230px);
+        text-align: left;
     }
     .profile-dropdown-btn:hover {
         border-color: rgba(168, 85, 247, 0.45);
         background: rgba(168, 85, 247, 0.1);
+    }
+    .profile-dropdown-btn:focus-visible {
+        outline: 2px solid #e9d5ff;
+        outline-offset: 2px;
     }
     .user-avatar-img { 
         width: 38px !important; 
@@ -130,18 +150,29 @@
         flex-direction: column; 
         text-align: left; 
         gap: 2px;
+        min-width: 0;
+        flex: 1 1 auto;
+        max-width: 100%;
     }
     .user-name { 
         font-size: 0.88rem; 
         font-weight: 700; 
         color: #ffffff; 
         line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: keep-all;
     }
     .user-role-badge { 
         font-size: 0.72rem; 
         color: #c084fc; 
         font-weight: 700; 
         letter-spacing: 0.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: keep-all;
     }
     .mihu-dropdown-menu {
         background: #171326;
@@ -159,6 +190,52 @@
     .mihu-dropdown-menu .dropdown-item:hover {
         background: rgba(168, 85, 247, 0.18);
         color: #fff;
+    }
+
+    @media (max-width: 767.98px) {
+        .mihu-navbar {
+            padding: 12px 16px;
+            gap: 8px;
+        }
+
+        .navbar-left {
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .nav-page-title-badge {
+            gap: 8px;
+            font-size: 0.98rem;
+            letter-spacing: 0.2px;
+        }
+
+        .profile-dropdown-btn {
+            padding: 5px 10px 5px 6px;
+            gap: 8px;
+            max-width: min(50vw, 190px);
+        }
+
+        .user-avatar-img {
+            width: 34px !important;
+            height: 34px !important;
+            min-width: 34px !important;
+            max-width: 34px !important;
+        }
+
+        .user-name {
+            font-size: 0.82rem;
+        }
+
+        .user-role-badge {
+            font-size: 0.67rem;
+            letter-spacing: 0.35px;
+        }
+    }
+
+    @media (max-width: 430px) {
+        .profile-dropdown-btn {
+            max-width: min(52vw, 160px);
+        }
     }
 </style>
 
@@ -185,14 +262,14 @@
     <!-- 右側個人資料選單 -->
     <div class="navbar-right">
         <div class="dropdown">
-            <div class="profile-dropdown-btn" data-bs-toggle="dropdown" aria-expanded="false">
-                <img src="<%= avatarUrl %>" alt="頭像" class="user-avatar-img">
+            <button type="button" class="profile-dropdown-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="<%= `${displayName}（${roleChinese}）使用者選單` %>" title="<%= displayName %>">
+                <img src="<%= avatarUrl %>" alt="<%= `${displayName} 頭像` %>" class="user-avatar-img">
                 <div class="user-info-text">
-                    <span class="user-name"><%= displayName %></span>
-                    <span class="user-role-badge"><%= roleChinese %></span>
+                    <span class="user-name" title="<%= displayName %>"><%= displayName %></span>
+                    <span class="user-role-badge" aria-label="目前身分：<%= roleChinese %>"><%= roleChinese %></span>
                 </div>
-                <i class="fa-solid fa-chevron-down text-secondary small ms-1" style="font-size: 0.72rem;"></i>
-            </div>
+                <i class="fa-solid fa-chevron-down text-secondary small ms-1" style="font-size: 0.72rem;" aria-hidden="true"></i>
+            </button>
             <ul class="dropdown-menu dropdown-menu-end mihu-dropdown-menu">
                 <li class="dropdown-header pb-2">
                     <div class="fw-bold text-white fs-6"><%= activeUser ? activeUser.username : '' %></div>
