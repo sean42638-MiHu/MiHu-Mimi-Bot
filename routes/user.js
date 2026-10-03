@@ -812,11 +812,16 @@ router.get('/api/income/monthly-summary', ensureAuth, checkPerm('view_income'), 
                 count: Number(item.count || 0)
             }))
             : [];
+
+        const totalIncome = Number(totals.totalIncome || 0);
+        const totalDeduction = Number(totals.totalDeduction || 0);
+        const netSalary = Number(totals.netSalary || totals.monthlyNetAmount || 0);
+
         return res.json({
             success: true,
-            netSalary: Number(totals.netSalary || totals.monthlyNetAmount || 0),
-            totalIncome: Number(totals.totalIncome || 0),
-            totalDeduction: Number(totals.totalDeduction || 0),
+            netSalary,
+            totalIncome,
+            totalDeduction,
             categories,
             summary
         });
