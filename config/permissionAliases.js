@@ -59,6 +59,7 @@ const PERMISSION_ALIASES = Object.freeze({
     "profile": "view_profile",
     "profile_discord": "view_profile_discord",
     "profile_nickname": "action_profile_nickname",
+    "profile_privacy_data": "action_edit_privacy_data",
     "my_wallet": "view_wallet",
     "my_income": "view_income",
     "my_orders": "view_personal_orders",

@@ -16,10 +16,208 @@ const {
     listMonthlyIncomeSummary,
     listMonthlyIncomeDetails
 } = require('../services/payoutService');
-const { encryptSensitiveFields, decryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
+const { encryptSensitiveFields, decryptSensitiveFields, isEncryptedSensitiveValue, assertEncryptionKey } = require('../utils/sensitiveDataCrypto');
+const { hasResolvedPermission, isPlatformSuperuserId, parsePermissionData, resolvePermissions } = require('../utils/permissionResolver');
+const { getRoleInfo } = require('../utils/roleHelper');
 
 const payrollProfileFields = ['real_name', 'bank_name', 'bank_code', 'bank_branch', 'bank_account'];
 const PROFILE_NICKNAME_PERMISSION_DENIED = 'PROFILE_NICKNAME_PERMISSION_DENIED';
+const PROFILE_PRIVACY_PERMISSION_DENIED = 'PROFILE_PRIVACY_PERMISSION_DENIED';
+const PROFILE_INPUT_VALIDATION_DENIED = 'PROFILE_INPUT_VALIDATION_DENIED';
+const PROFILE_ENCRYPTION_KEY_DENIED = 'PROFILE_ENCRYPTION_KEY_DENIED';
+const PROFILE_CROSS_USER_DENIED = 'PROFILE_CROSS_USER_DENIED';
+const PROFILE_SAVE_FAILED = 'PROFILE_SAVE_FAILED';
+const PRIVACY_TIER_THRESHOLD = 30;
+
+function normalizeRoleKey(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function validationError(message) {
+    const error = new Error(message);
+    error.code = PROFILE_INPUT_VALIDATION_DENIED;
+    return error;
+}
+
+function profileActionError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
+function wantsProfileJsonResponse(req) {
+    const requestedWith = String(req.get('x-requested-with') || '').trim().toLowerCase();
+    if (requestedWith === 'xmlhttprequest') return true;
+    const accept = String(req.get('accept') || '').trim().toLowerCase();
+    return accept.includes('application/json');
+}
+
+function maskProfileSensitiveValue(value, type = 'text') {
+    const raw = value === null || value === undefined ? '' : String(value).trim();
+    if (!raw) return '';
+    if (type === 'bank_code') return '***';
+    return '********';
+}
+
+function applyMaskedProfilePrivacy(user) {
+    if (!user || typeof user !== 'object') return user;
+    return {
+        ...user,
+        real_name: maskProfileSensitiveValue(user.real_name, 'name'),
+        bank_name: maskProfileSensitiveValue(user.bank_name, 'bank_name'),
+        bank_code: maskProfileSensitiveValue(user.bank_code, 'bank_code'),
+        bank_branch: maskProfileSensitiveValue(user.bank_branch, 'bank_branch'),
+        bank_account: maskProfileSensitiveValue(user.bank_account, 'bank_account')
+    };
+}
+
+function isMaskedPlaceholderValue(value) {
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim();
+    if (!normalized) return false;
+    return /^(?:[\*•xX_#-]{4,}|已設定|已儲存|保密)$/.test(normalized);
+}
+
+function normalizeOptionalProfileField(rawValue, options = {}) {
+    const {
+        fieldLabel = '欄位',
+        maxLength = 120,
+        pattern = null
+    } = options;
+
+    if (rawValue === undefined) return { present: false, value: null };
+    if (rawValue === null) return { present: true, value: null };
+
+    const value = String(rawValue);
+    if (isMaskedPlaceholderValue(value)) return { present: false, value: null };
+
+    const trimmed = value.trim();
+    if (!trimmed) return { present: true, value: null };
+    if (trimmed.startsWith('enc:v1:')) throw validationError(`${fieldLabel}格式不正確`);
+    if (trimmed.length > maxLength) throw validationError(`${fieldLabel}長度不可超過 ${maxLength} 字元`);
+    if (pattern && !pattern.test(trimmed)) throw validationError(`${fieldLabel}格式不正確`);
+    return { present: true, value: trimmed };
+}
+
+function hasEffectiveEmployeeIdentity(userRow) {
+    if (!userRow || typeof userRow !== 'object') return false;
+    if (isPlatformSuperuserId(userRow.id)) return true;
+
+    const roleKey = normalizeRoleKey(userRow.role);
+    const roleInfo = getRoleInfo(roleKey);
+    const roleCategory = String(userRow.role_category || '').trim();
+    const isTalentAlias = roleInfo.key === 'talent' || roleInfo.key === 'staff';
+
+    if (isTalentAlias) return true;
+    if (!roleKey || roleKey === 'member') return false;
+    if (roleCategory === '會員') return false;
+    return true;
+}
+
+function resolveProfileAccessFromRow(userRow) {
+    const roleKey = normalizeRoleKey(userRow && userRow.role);
+    const parsedPermissions = parsePermissionData(userRow && userRow.role_permissions);
+    const storedPermissions = parsedPermissions.valid
+        ? [...parsedPermissions.keys, ...Object.keys(parsedPermissions.unknownEntries)]
+        : [];
+    const resolvedPermissions = resolvePermissions(storedPermissions, isPlatformSuperuserId(userRow && userRow.id));
+
+    const hasExplicitTier = userRow && userRow.role_tier_level !== null && userRow.role_tier_level !== undefined && userRow.role_tier_level !== '';
+    const rawTierLevel = hasExplicitTier ? Number(userRow.role_tier_level) : NaN;
+    const fallbackTierLevel = Number(getRoleInfo(roleKey).weight || 0);
+    const effectiveTierLevel = Number.isFinite(rawTierLevel) ? rawTierLevel : fallbackTierLevel;
+    const hasEmployeeIdentity = hasEffectiveEmployeeIdentity(userRow);
+
+    const canEditProfileNickname = hasResolvedPermission(resolvedPermissions, 'action_profile_nickname');
+    const canEditPrivacyByPermission = hasResolvedPermission(resolvedPermissions, 'action_edit_privacy_data')
+        || hasResolvedPermission(resolvedPermissions, '*');
+    const canEditPrivacyByTier = effectiveTierLevel >= PRIVACY_TIER_THRESHOLD;
+    const canEditPrivacyData = hasEmployeeIdentity && (canEditPrivacyByPermission || canEditPrivacyByTier);
+
+    return {
+        roleKey,
+        hasEmployeeIdentity,
+        effectiveTierLevel,
+        permissions: resolvedPermissions,
+        canEditProfileNickname,
+        canEditPrivacyData,
+        canViewPrivacyData: canEditPrivacyData
+    };
+}
+
+async function loadProfileUserRow(userId) {
+    return dbGet(`
+        SELECT u.*, r.permissions AS role_permissions, r.tier_level AS role_tier_level,
+            r.category AS role_category,
+            CASE WHEN t.user_id IS NULL THEN 0 ELSE 1 END AS has_talent_profile
+        FROM users u
+        LEFT JOIN roles r ON r.role_key = u.role
+        LEFT JOIN talents t ON t.user_id = u.id
+        WHERE u.id = ?
+    `, [userId]);
+}
+
+function applyProfileDraft(user, draft, canViewPrivacyData) {
+    if (!draft || typeof draft !== 'object') return user;
+    const result = { ...user };
+    const writableFields = ['email', 'custom_nickname', 'birthday', 'gender', 'age', 'mbti'];
+    writableFields.forEach(field => {
+        if (Object.prototype.hasOwnProperty.call(draft, field)) {
+            const value = draft[field];
+            result[field] = value === null || value === undefined ? '' : String(value);
+        }
+    });
+    if (canViewPrivacyData) {
+        payrollProfileFields.forEach(field => {
+            if (Object.prototype.hasOwnProperty.call(draft, field)) {
+                const value = draft[field];
+                result[field] = value === null || value === undefined ? '' : String(value);
+            }
+        });
+    }
+    return result;
+}
+
+async function renderProfilePage(res, userId, options = {}) {
+    const {
+        success = false,
+        errorMessage = null,
+        statusCode = 200,
+        draft = null,
+        decryptStrict = true,
+        maskPrivacy = false
+    } = options;
+
+    const currentUser = await loadProfileUserRow(userId);
+    if (!currentUser) return res.status(404).send('找不到會員資料');
+
+    const access = resolveProfileAccessFromRow(currentUser);
+    let user = { ...currentUser };
+    try {
+        if (access.canViewPrivacyData) {
+            user = decryptSensitiveFields(user, payrollProfileFields);
+        } else {
+            payrollProfileFields.forEach(field => { user[field] = null; });
+        }
+    } catch (error) {
+        if (decryptStrict) throw error;
+        payrollProfileFields.forEach(field => { user[field] = null; });
+    }
+
+    user = applyProfileDraft(user, draft, access.canViewPrivacyData);
+    if (maskPrivacy && access.canViewPrivacyData && !draft) {
+        user = applyMaskedProfilePrivacy(user);
+    }
+    return res.status(statusCode).render('profile', {
+        user,
+        success: Boolean(success),
+        error: errorMessage ? String(errorMessage) : null,
+        canViewProfileDiscord: hasResolvedPermission(access.permissions, 'view_profile_discord'),
+        canEditProfileNickname: access.canEditProfileNickname,
+        canViewPrivacyData: access.canViewPrivacyData,
+        canEditPrivacyData: access.canEditPrivacyData
+    });
+}
 
 function normalizeIncomeMonthInput(value, fallback) {
     const month = String(value || '').trim();
@@ -94,26 +292,28 @@ router.get('/dashboard', ensureAuth, checkPerm('view_dashboard'), (req, res) => 
 // =========================================================================
 // 2. 個人檔案 (Profile)
 // =========================================================================
-router.get('/profile', ensureAuth, checkPerm('view_profile'), (req, res) => {
-    db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, currentUser) => {
-        try {
-            const user = currentUser ? decryptSensitiveFields(currentUser, payrollProfileFields) : req.user;
-            res.render('profile', {
-                user,
-                success: req.query.saved === '1',
-                canViewProfileDiscord: res.locals.hasPerm('view_profile_discord'),
-                canEditProfileNickname: res.locals.hasPerm('action_profile_nickname')
-            });
-        } catch (error) {
-            return res.status(503).send('目前無法安全載入個人薪轉資料');
-        }
-    });
+router.get('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) => {
+    try {
+        return await renderProfilePage(res, req.user.id, {
+            success: req.query.saved === '1',
+            errorMessage: req.query.error ? String(req.query.error) : null,
+            maskPrivacy: req.query.mask_privacy === '1'
+        });
+    } catch (error) {
+        return res.status(503).send('目前無法安全載入個人薪轉資料');
+    }
 });
 
 router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) => {
     const { email, custom_nickname, birthday, gender, age, mbti, real_name, bank_name, bank_code, bank_branch, bank_account } = req.body;
+    const expectsJson = wantsProfileJsonResponse(req);
     try {
-        const canEditProfileNickname = res.locals.hasPerm('action_profile_nickname');
+        const hasUserIdField = Object.prototype.hasOwnProperty.call(req.body, 'user_id');
+        const submittedUserId = hasUserIdField ? String(req.body.user_id || '').trim() : '';
+        if (hasUserIdField && submittedUserId && submittedUserId !== String(req.user.id)) {
+            throw profileActionError(PROFILE_CROSS_USER_DENIED, '不可修改其他使用者資料');
+        }
+
         const hasNicknameField = Object.prototype.hasOwnProperty.call(req.body, 'custom_nickname');
         const hasEmailField = Object.prototype.hasOwnProperty.call(req.body, 'email');
         const hasBirthdayField = Object.prototype.hasOwnProperty.call(req.body, 'birthday');
@@ -125,50 +325,95 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
         const hasBankCodeField = Object.prototype.hasOwnProperty.call(req.body, 'bank_code');
         const hasBankBranchField = Object.prototype.hasOwnProperty.call(req.body, 'bank_branch');
         const hasBankAccountField = Object.prototype.hasOwnProperty.call(req.body, 'bank_account');
-        if (hasNicknameField && !canEditProfileNickname) {
-            return denyPermission(req, res, ['action_profile_nickname'], { kind: 'action', feature: '變更暱稱' });
-        }
+        const hasPrivacyField = hasRealNameField || hasBankNameField || hasBankCodeField || hasBankBranchField || hasBankAccountField;
         const normalizedAge = age ? parseInt(age, 10) : null;
 
         await withTransactionGate(async () => {
         await dbRun('BEGIN IMMEDIATE');
         try {
         const currentUser = await dbGet(`
-            SELECT email, email_verified, custom_nickname, birthday, gender, age, mbti,
-                real_name, bank_name, bank_code, bank_branch, bank_account
-            FROM users WHERE id = ?
+            SELECT u.id, u.role, u.email, u.email_verified, u.custom_nickname, u.birthday, u.gender, u.age, u.mbti,
+                u.real_name, u.bank_name, u.bank_code, u.bank_branch, u.bank_account,
+                r.permissions AS role_permissions, r.tier_level AS role_tier_level,
+                r.category AS role_category,
+                CASE WHEN t.user_id IS NULL THEN 0 ELSE 1 END AS has_talent_profile
+            FROM users u
+            LEFT JOIN roles r ON r.role_key = u.role
+            LEFT JOIN talents t ON t.user_id = u.id
+            WHERE u.id = ?
         `, [req.user.id]);
         if (!currentUser) throw new Error('找不到會員資料');
+        const access = resolveProfileAccessFromRow(currentUser);
 
-        const currentNickname = currentUser.custom_nickname === null || currentUser.custom_nickname === undefined
-            ? null
-            : String(currentUser.custom_nickname);
-        const requestedNickname = hasNicknameField ? (String(custom_nickname || '').trim() || null) : currentNickname;
-        if (hasNicknameField && requestedNickname !== currentNickname && !canEditProfileNickname) {
+        if (hasNicknameField && !access.canEditProfileNickname) {
             const permissionError = new Error('變更暱稱需要額外授權');
             permissionError.code = PROFILE_NICKNAME_PERMISSION_DENIED;
             throw permissionError;
         }
 
+        if (hasPrivacyField && !access.canEditPrivacyData) {
+            const permissionError = new Error('修改個人隱私資料需要額外授權');
+            permissionError.code = PROFILE_PRIVACY_PERMISSION_DENIED;
+            throw permissionError;
+        }
+
+        if (hasPrivacyField) {
+            try {
+                assertEncryptionKey();
+                decryptSensitiveFields(currentUser, payrollProfileFields);
+            } catch {
+                throw profileActionError(PROFILE_ENCRYPTION_KEY_DENIED, '薪轉安全金鑰設定異常，已拒絕儲存');
+            }
+        }
+
+        const currentNickname = currentUser.custom_nickname === null || currentUser.custom_nickname === undefined
+            ? null
+            : String(currentUser.custom_nickname);
+        const requestedNickname = hasNicknameField ? (String(custom_nickname || '').trim() || null) : currentNickname;
+
         const previousEmail = String(currentUser.email || '').trim().toLowerCase() || null;
         const normalizedEmail = hasEmailField ? (String(email || '').trim().toLowerCase() || null) : previousEmail;
         const emailChanged = hasEmailField && normalizedEmail !== previousEmail;
+
+        const normalizedRealName = normalizeOptionalProfileField(hasRealNameField ? real_name : undefined, {
+            fieldLabel: '本名',
+            maxLength: 60
+        });
+        const normalizedBankName = normalizeOptionalProfileField(hasBankNameField ? bank_name : undefined, {
+            fieldLabel: '銀行名稱',
+            maxLength: 80
+        });
+        const normalizedBankCode = normalizeOptionalProfileField(hasBankCodeField ? bank_code : undefined, {
+            fieldLabel: '機構代碼',
+            maxLength: 3,
+            pattern: /^\d{3}$/
+        });
+        const normalizedBankBranch = normalizeOptionalProfileField(hasBankBranchField ? bank_branch : undefined, {
+            fieldLabel: '分行名稱',
+            maxLength: 80
+        });
+        const normalizedBankAccount = normalizeOptionalProfileField(hasBankAccountField ? bank_account : undefined, {
+            fieldLabel: '銀行帳戶',
+            maxLength: 34,
+            pattern: /^\d+$/
+        });
+
         const encryptedPayrollFields = encryptSensitiveFields({
-            real_name: hasRealNameField ? (real_name || null) : null,
-            bank_name: hasBankNameField ? (bank_name || null) : null,
-            bank_code: hasBankCodeField ? (bank_code || null) : null,
-            bank_branch: hasBankBranchField ? (bank_branch || null) : null,
-            bank_account: hasBankAccountField ? (bank_account || null) : null
+            real_name: normalizedRealName.present ? normalizedRealName.value : null,
+            bank_name: normalizedBankName.present ? normalizedBankName.value : null,
+            bank_code: normalizedBankCode.present ? normalizedBankCode.value : null,
+            bank_branch: normalizedBankBranch.present ? normalizedBankBranch.value : null,
+            bank_account: normalizedBankAccount.present ? normalizedBankAccount.value : null
         }, payrollProfileFields);
         const nextBirthday = hasBirthdayField ? (birthday || null) : currentUser.birthday;
         const nextGender = hasGenderField ? (gender || null) : currentUser.gender;
         const nextAge = hasAgeField ? normalizedAge : currentUser.age;
         const nextMbti = hasMbtiField ? (mbti || null) : currentUser.mbti;
-        const nextRealName = hasRealNameField ? encryptedPayrollFields.real_name : currentUser.real_name;
-        const nextBankName = hasBankNameField ? encryptedPayrollFields.bank_name : currentUser.bank_name;
-        const nextBankCode = hasBankCodeField ? encryptedPayrollFields.bank_code : currentUser.bank_code;
-        const nextBankBranch = hasBankBranchField ? encryptedPayrollFields.bank_branch : currentUser.bank_branch;
-        const nextBankAccount = hasBankAccountField ? encryptedPayrollFields.bank_account : currentUser.bank_account;
+        const nextRealName = normalizedRealName.present ? encryptedPayrollFields.real_name : currentUser.real_name;
+        const nextBankName = normalizedBankName.present ? encryptedPayrollFields.bank_name : currentUser.bank_name;
+        const nextBankCode = normalizedBankCode.present ? encryptedPayrollFields.bank_code : currentUser.bank_code;
+        const nextBankBranch = normalizedBankBranch.present ? encryptedPayrollFields.bank_branch : currentUser.bank_branch;
+        const nextBankAccount = normalizedBankAccount.present ? encryptedPayrollFields.bank_account : currentUser.bank_account;
         const query = `UPDATE users SET email = ?, email_verified = CASE WHEN ? THEN 0 ELSE email_verified END, email_verified_at = CASE WHEN ? THEN NULL ELSE email_verified_at END, custom_nickname = ?, birthday = ?, gender = ?, age = ?, mbti = ?, real_name = ?, bank_name = ?, bank_code = ?, bank_branch = ?, bank_account = ? WHERE id = ?`;
         await dbRun(query, [
             normalizedEmail, emailChanged ? 1 : 0, emailChanged ? 1 : 0,
@@ -177,6 +422,27 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
             nextBankCode, nextBankBranch, nextBankAccount,
             req.user.id
         ]);
+
+        const persistedSensitive = await dbGet('SELECT real_name, bank_name, bank_code, bank_branch, bank_account FROM users WHERE id = ?', [req.user.id]);
+        if (!persistedSensitive) throw new Error('敏感資料儲存確認失敗');
+
+        const encryptedChecks = [
+            ['real_name', normalizedRealName],
+            ['bank_name', normalizedBankName],
+            ['bank_code', normalizedBankCode],
+            ['bank_branch', normalizedBankBranch],
+            ['bank_account', normalizedBankAccount]
+        ];
+        encryptedChecks.forEach(([field, normalizedField]) => {
+            if (!normalizedField.present) return;
+            const persistedValue = persistedSensitive[field];
+            if (normalizedField.value === null) {
+                if (persistedValue !== null && persistedValue !== '') throw new Error('敏感資料清空失敗');
+                return;
+            }
+            if (!isEncryptedSensitiveValue(persistedValue)) throw new Error('敏感資料必須以加密格式儲存');
+        });
+
         if (emailChanged) await dbRun('DELETE FROM email_verifications WHERE user_id = ?', [req.user.id]);
         const bankInfoPresent = Boolean(currentUser.bank_name || currentUser.bank_code || currentUser.bank_branch || currentUser.bank_account);
         const nextBankInfoPresent = Boolean(nextBankName || nextBankCode || nextBankBranch || nextBankAccount);
@@ -214,10 +480,57 @@ router.post('/profile', ensureAuth, checkPerm('view_profile'), async (req, res) 
         }
         });
         syncUsersJsonFromDb();
+        if (expectsJson) {
+            return res.status(200).json({
+                success: true,
+                message: '個人隱私資料已順利保存！',
+                reloadPath: '/profile?saved=1&mask_privacy=1'
+            });
+        }
         return res.redirect(303, '/profile?saved=1');
     } catch (error) {
         if (error.code === PROFILE_NICKNAME_PERMISSION_DENIED) {
+            if (expectsJson) {
+                return res.status(403).json({ success: false, code: error.code, message: '變更暱稱需要額外授權' });
+            }
             return denyPermission(req, res, ['action_profile_nickname'], { kind: 'action', feature: '變更暱稱' });
+        }
+        if (error.code === PROFILE_CROSS_USER_DENIED) {
+            if (expectsJson) {
+                return res.status(403).json({ success: false, code: error.code, message: '不可修改其他使用者資料' });
+            }
+            return denyPermission(req, res, ['action_edit_privacy_data'], { kind: 'action', feature: '不可代他人修改個資' });
+        }
+        if (error.code === PROFILE_PRIVACY_PERMISSION_DENIED) {
+            if (expectsJson) {
+                return res.status(403).json({ success: false, code: error.code, message: '修改個人隱私資料需要額外授權' });
+            }
+            return denyPermission(req, res, ['action_edit_privacy_data'], { kind: 'action', feature: '修改個人隱私資料' });
+        }
+        if (error.code === PROFILE_INPUT_VALIDATION_DENIED) {
+            if (expectsJson) {
+                return res.status(422).json({ success: false, code: error.code, message: error.message || '欄位格式錯誤' });
+            }
+            return renderProfilePage(res, req.user.id, {
+                statusCode: 422,
+                decryptStrict: false,
+                errorMessage: error.message || '欄位格式錯誤',
+                draft: req.body
+            });
+        }
+        if (error.code === PROFILE_ENCRYPTION_KEY_DENIED) {
+            if (expectsJson) {
+                return res.status(503).json({ success: false, code: error.code, message: '薪轉安全金鑰設定異常，已拒絕儲存，請聯絡管理員。' });
+            }
+            return renderProfilePage(res, req.user.id, {
+                statusCode: 503,
+                decryptStrict: false,
+                errorMessage: '薪轉安全金鑰設定異常，已拒絕儲存，請聯絡管理員。',
+                draft: req.body
+            });
+        }
+        if (expectsJson) {
+            return res.status(500).json({ success: false, code: PROFILE_SAVE_FAILED, message: '更新失敗，請稍後再試。' });
         }
         return res.redirect(303, '/profile?error=' + encodeURIComponent('更新失敗'));
     }

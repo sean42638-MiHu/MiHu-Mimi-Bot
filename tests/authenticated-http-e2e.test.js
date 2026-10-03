@@ -5,7 +5,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { encryptSensitiveFields } = require('../utils/sensitiveDataCrypto');
+const { encryptSensitiveFields, decryptSensitiveValue } = require('../utils/sensitiveDataCrypto');
 
 function replaceMethod(target, method, replacement) {
     const original = target[method];
@@ -28,6 +28,14 @@ function createRequest(port, method, route, headers = {}, body = '') {
         if (body) request.write(body);
         request.end();
     });
+}
+
+function parseJsonBody(response, label) {
+    try {
+        return JSON.parse(String(response && response.body || ''));
+    } catch (error) {
+        assert.fail(`${label} expected JSON response, got: ${String(response && response.body || '')}`);
+    }
 }
 
 function assertNestedSidebarState(body, href, collapseId) {
@@ -165,7 +173,8 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         (15,'settings_target','Settings Target','["action_system_config"]'),
         (16,'delegatable_target','Delegatable Target','["view_manage_members","view_manage_staff"]'),
         (23,'order_create_viewer','Order Creator','["view_manage_orders","action_order_create"]'),
-        (24,'order_create_no_page','Order Creator Without Page','["action_order_create"]')`);
+        (24,'order_create_no_page','Order Creator Without Page','["action_order_create"]'),
+        (25,'talent','Talent','["view_profile","view_income"]')`);
     await run("INSERT INTO studios VALUES (1,'Studio A','manager-a'),(2,'Studio B','manager-b')");
     await run("INSERT INTO user_wallets VALUES ('member-a',100,0,0,0,CURRENT_TIMESTAMP),('member-b',200,0,0,0,CURRENT_TIMESTAMP),('manager-a',0,0,0,0,CURRENT_TIMESTAMP),('manager-b',0,0,0,0,CURRENT_TIMESTAMP),('staff-a',0,0,0,0,CURRENT_TIMESTAMP),('admin-a',0,0,0,0,CURRENT_TIMESTAMP),('604610298581876746',0,0,0,0,CURRENT_TIMESTAMP),('manager-limited',0,0,0,0,CURRENT_TIMESTAMP),('cs-orders',0,0,0,0,CURRENT_TIMESTAMP),('order-creator',0,0,0,0,CURRENT_TIMESTAMP),('order-creator-no-page',0,0,0,0,CURRENT_TIMESTAMP),('legacy-orders',0,0,0,0,CURRENT_TIMESTAMP),('aftersales-orders',0,0,0,0,CURRENT_TIMESTAMP)");
     await run("INSERT INTO talents (user_id, nickname, staff_channel_id, commission_rate, status, skill_permissions) VALUES ('talent-a','Talent A','chan-talent-a',0.82,'idle','[]')");
@@ -923,11 +932,19 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
             Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
         });
         assert.equal(profilePage.status, 200);
-        assert.match(profilePage.body, /123456789/);
+        assert.doesNotMatch(profilePage.body, /123456789/);
+        assert.doesNotMatch(profilePage.body, /name="bank_account"/);
+        assert.doesNotMatch(profilePage.body, /name="real_name"/);
         assert.match(profilePage.body, /Discord 綁定資訊目前未授權顯示/);
         assert.doesNotMatch(profilePage.body, /Discord ID \(唯讀\)/);
         assert.doesNotMatch(profilePage.body, /value="member-a"[^>]*Discord ID/);
         assert.doesNotMatch(profilePage.body, /data-[a-z-]*discord|window\.[^<]*discord/i);
+
+        const deniedPrivacyUpdate = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=0011223344');
+        assert.equal(deniedPrivacyUpdate.status, 403, deniedPrivacyUpdate.body);
 
         const beforeDeniedNickname = await new Promise((resolve, reject) => db.get("SELECT custom_nickname, birthday FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row)));
         const deniedNicknameUpdate = await createRequest(port, 'POST', '/profile', {
@@ -937,18 +954,202 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
         assert.equal(deniedNicknameUpdate.status, 403, deniedNicknameUpdate.body);
         assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT custom_nickname, birthday FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row))), beforeDeniedNickname);
 
-        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify(['view_income', 'view_profile', 'view_profile_discord', 'action_profile_nickname', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'], error => error ? reject(error) : resolve()));
+        await new Promise((resolve, reject) => db.run('UPDATE roles SET permissions = ? WHERE role_key = ?', [JSON.stringify(['view_income', 'view_profile', 'view_profile_discord', 'action_profile_nickname', 'action_edit_privacy_data', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'], error => error ? reject(error) : resolve()));
         const profileWithDiscord = await createRequest(port, 'GET', '/profile', {
             Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
         });
         assert.equal(profileWithDiscord.status, 200, profileWithDiscord.body);
         assert.match(profileWithDiscord.body, /Discord ID \(唯讀\)/);
+        assert.match(profileWithDiscord.body, /data-admin-submit-loading/);
+        assert.doesNotMatch(profileWithDiscord.body, /name="bank_account"/);
+        const memberPrivacyStillDenied = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=8877665544');
+        assert.equal(memberPrivacyStillDenied.status, 403, memberPrivacyStillDenied.body);
         const allowedNicknameUpdate = await createRequest(port, 'POST', '/profile', {
             Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
             'X-CSRF-Token': memberA.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
         }, 'custom_nickname=member-a-renamed&birthday=2001-01-02');
         assert.equal(allowedNicknameUpdate.status, 303, allowedNicknameUpdate.body);
         assert.equal(await new Promise((resolve, reject) => db.get("SELECT custom_nickname FROM users WHERE id = 'member-a'", (error, row) => error ? reject(error) : resolve(row.custom_nickname))), 'member-a-renamed');
+
+        const profileNoCsrf = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: memberA.cookie,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'birthday=2001-01-03');
+        assert.equal(profileNoCsrf.status, 403, profileNoCsrf.body);
+
+        const talentSession = await createSession('talent-a');
+        const talentProfile = await createRequest(port, 'GET', '/profile', {
+            Host: `127.0.0.1:${port}`, Cookie: talentSession.cookie
+        });
+        assert.equal(talentProfile.status, 200, talentProfile.body);
+        assert.match(talentProfile.body, /name="bank_account"/);
+
+        await new Promise((resolve, reject) => db.run("UPDATE users SET bank_code='', bank_account='' WHERE id='talent-a'", error => error ? reject(error) : resolve()));
+        const talentIncomeMissingAccount = await createRequest(port, 'GET', '/income', {
+            Host: `127.0.0.1:${port}`, Cookie: talentSession.cookie
+        });
+        assert.equal(talentIncomeMissingAccount.status, 200, talentIncomeMissingAccount.body);
+        assert.match(talentIncomeMissingAccount.body, /ACCOUNT_MISSING/);
+
+        const initialTalentPrivacySave = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'real_name=Talent+Alpha&bank_name=Talent+Bank&bank_code=007&bank_branch=North&bank_account=000123456789');
+        assert.equal(initialTalentPrivacySave.status, 200, initialTalentPrivacySave.body);
+        assert.match(String(initialTalentPrivacySave.headers['content-type'] || ''), /application\/json/i);
+        const initialTalentPrivacyPayload = parseJsonBody(initialTalentPrivacySave, 'initialTalentPrivacySave');
+        assert.deepEqual(Object.keys(initialTalentPrivacyPayload).sort(), ['message', 'reloadPath', 'success']);
+        assert.equal(initialTalentPrivacyPayload.success, true);
+        assert.equal(initialTalentPrivacyPayload.message, '個人隱私資料已順利保存！');
+        assert.equal(initialTalentPrivacyPayload.reloadPath, '/profile?saved=1&mask_privacy=1');
+        assert.doesNotMatch(initialTalentPrivacySave.body, /bank_account|enc:v1:/i);
+
+        const jsonValidationDenied = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_code=12');
+        assert.equal(jsonValidationDenied.status, 422, jsonValidationDenied.body);
+        assert.match(String(jsonValidationDenied.headers['content-type'] || ''), /application\/json/i);
+        const jsonValidationDeniedPayload = parseJsonBody(jsonValidationDenied, 'jsonValidationDenied');
+        assert.equal(jsonValidationDeniedPayload.success, false);
+        assert.equal(jsonValidationDeniedPayload.code, 'PROFILE_INPUT_VALIDATION_DENIED');
+        assert.equal(String(jsonValidationDeniedPayload.message || '').length > 0, true);
+
+        const talentIncomeAfterSave = await createRequest(port, 'GET', '/income', {
+            Host: `127.0.0.1:${port}`, Cookie: talentSession.cookie
+        });
+        assert.equal(talentIncomeAfterSave.status, 200, talentIncomeAfterSave.body);
+        assert.doesNotMatch(talentIncomeAfterSave.body, /ACCOUNT_MISSING/);
+        assert.match(talentIncomeAfterSave.body, /NO_AVAILABLE_BALANCE/);
+
+        const talentCipherBeforeKeyChecks = await new Promise((resolve, reject) => db.get("SELECT bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row.bank_account)));
+        const originalEncryptionKey = process.env.PAYROLL_DATA_ENCRYPTION_KEY;
+
+        delete process.env.PAYROLL_DATA_ENCRYPTION_KEY;
+        const missingKeySave = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=123123123');
+        assert.equal(missingKeySave.status, 503, missingKeySave.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row.bank_account))), talentCipherBeforeKeyChecks);
+
+        process.env.PAYROLL_DATA_ENCRYPTION_KEY = 'invalid-key';
+        const invalidKeySave = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=321321321');
+        assert.equal(invalidKeySave.status, 503, invalidKeySave.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row.bank_account))), talentCipherBeforeKeyChecks);
+
+        process.env.PAYROLL_DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString('base64');
+        const mismatchedKeySave = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=555666777');
+        assert.equal(mismatchedKeySave.status, 503, mismatchedKeySave.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row.bank_account))), talentCipherBeforeKeyChecks);
+
+        process.env.PAYROLL_DATA_ENCRYPTION_KEY = originalEncryptionKey;
+
+        const memberABeforeCrossAttempt = await new Promise((resolve, reject) => db.get("SELECT bank_name FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row.bank_name)));
+        const talentPrivacyUpdate = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'user_id=member-a&real_name=Talent+Alpha&bank_name=Talent+Bank&bank_code=007&bank_branch=North&bank_account=000123456789');
+        assert.equal(talentPrivacyUpdate.status, 403, talentPrivacyUpdate.body);
+
+        const talentPrivacyUpdateJson = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'user_id=member-a&real_name=Talent+Alpha&bank_name=Talent+Bank&bank_code=007&bank_branch=North&bank_account=000123456789');
+        assert.equal(talentPrivacyUpdateJson.status, 403, talentPrivacyUpdateJson.body);
+        assert.match(String(talentPrivacyUpdateJson.headers['content-type'] || ''), /application\/json/i);
+        const talentPrivacyUpdateJsonPayload = parseJsonBody(talentPrivacyUpdateJson, 'talentPrivacyUpdateJson');
+        assert.equal(talentPrivacyUpdateJsonPayload.success, false);
+        assert.equal(talentPrivacyUpdateJsonPayload.code, 'PROFILE_CROSS_USER_DENIED');
+        assert.match(String(talentPrivacyUpdateJsonPayload.message || ''), /不可修改其他使用者資料/);
+
+        const memberAAfterCrossAttempt = await new Promise((resolve, reject) => db.get("SELECT bank_name FROM users WHERE id='member-a'", (error, row) => error ? reject(error) : resolve(row.bank_name)));
+        assert.equal(memberAAfterCrossAttempt, memberABeforeCrossAttempt);
+
+        const talentBranchClear = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_branch=');
+        assert.equal(talentBranchClear.status, 303, talentBranchClear.body);
+
+        const talentPrivacyAfterBranchClear = await new Promise((resolve, reject) => db.get("SELECT bank_branch, bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row)));
+        assert.equal(talentPrivacyAfterBranchClear.bank_branch, null);
+        const stableBankAccountCipher = talentPrivacyAfterBranchClear.bank_account;
+
+        const maskedNoOverwrite = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=********&birthday=2000-01-01');
+        assert.equal(maskedNoOverwrite.status, 303, maskedNoOverwrite.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row.bank_account))), stableBankAccountCipher);
+
+        const omittedNoOverwrite = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'birthday=2000-01-02');
+        assert.equal(omittedNoOverwrite.status, 303, omittedNoOverwrite.body);
+        assert.equal(await new Promise((resolve, reject) => db.get("SELECT bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row.bank_account))), stableBankAccountCipher);
+
+        const beforeSqlRollback = await new Promise((resolve, reject) => db.get("SELECT bank_name, bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row)));
+        await new Promise((resolve, reject) => db.run(`
+            CREATE TRIGGER profile_update_fail_sql
+            BEFORE UPDATE OF bank_account ON users
+            WHEN NEW.id = 'talent-a'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced profile sql failure');
+            END;
+        `, error => error ? reject(error) : resolve()));
+        const sqlRollbackAttempt = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_account=123123123123');
+        assert.equal(sqlRollbackAttempt.status, 303, sqlRollbackAttempt.body);
+        await new Promise((resolve, reject) => db.run('DROP TRIGGER profile_update_fail_sql', error => error ? reject(error) : resolve()));
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT bank_name, bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row))), beforeSqlRollback);
+
+        const beforeAuditRollback = await new Promise((resolve, reject) => db.get("SELECT bank_name, bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row)));
+        await new Promise((resolve, reject) => db.run(`
+            CREATE TRIGGER profile_update_fail_audit
+            BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'sensitive_profile_update'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced profile audit failure');
+            END;
+        `, error => error ? reject(error) : resolve()));
+        const auditRollbackAttempt = await createRequest(port, 'POST', '/profile', {
+            Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}`, Cookie: talentSession.cookie,
+            'X-CSRF-Token': talentSession.csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'
+        }, 'bank_name=Audit+Rollback+Should+Fail');
+        assert.equal(auditRollbackAttempt.status, 303, auditRollbackAttempt.body);
+        await new Promise((resolve, reject) => db.run('DROP TRIGGER profile_update_fail_audit', error => error ? reject(error) : resolve()));
+        assert.deepEqual(await new Promise((resolve, reject) => db.get("SELECT bank_name, bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row))), beforeAuditRollback);
+
+        const talentPrivacyRow = await new Promise((resolve, reject) => db.get("SELECT real_name, bank_name, bank_code, bank_branch, bank_account FROM users WHERE id='talent-a'", (error, row) => error ? reject(error) : resolve(row)));
+        for (const field of ['real_name', 'bank_name', 'bank_code', 'bank_account']) {
+            assert.match(String(talentPrivacyRow[field] || ''), /^enc:v1:/, field);
+        }
+        assert.equal(talentPrivacyRow.bank_branch, null);
+        assert.equal(decryptSensitiveValue(talentPrivacyRow.bank_code), '007');
+        assert.equal(decryptSensitiveValue(talentPrivacyRow.bank_account), '000123456789');
+
         const payoutOverview = await createRequest(port, 'GET', '/api/withdrawals', {
             Host: `127.0.0.1:${port}`, Cookie: memberA.cookie
         });
@@ -1006,7 +1207,7 @@ test('authenticated HTTP auth, CSRF and studio isolation use only a temporary DB
 
         await new Promise((resolve, reject) => db.run(
             "UPDATE roles SET permissions = ? WHERE role_key = ?",
-            [JSON.stringify(['view_income', 'view_profile', 'view_profile_discord', 'action_profile_nickname', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'],
+            [JSON.stringify(['view_income', 'view_profile', 'view_profile_discord', 'action_profile_nickname', 'action_edit_privacy_data', 'view_dashboard', 'view_dashboard_info', 'view_dashboard_wallet', 'view_personal_orders']), 'member'],
             error => error ? reject(error) : resolve()
         ));
         const memberRetryRequest = await createRequest(port, 'POST', '/api/withdrawals/request', {

@@ -167,21 +167,31 @@
 
         <div class="row justify-content-center">
             <div class="col-12">
-                
-                <% if (typeof success !== 'undefined' && success) { %>
-                    <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success d-flex align-items-center gap-2">
-                        <i class="fa-solid fa-circle-check"></i>
-                        <span>個人檔案與薪轉資料已成功儲存更新！</span>
-                    </div>
-                <% } %>
+                <div id="profileFormAlertHost">
+                    <% if (typeof success !== 'undefined' && success) { %>
+                        <div class="alert alert-success py-2 px-3 small mb-4 border-0 bg-success bg-opacity-25 text-success d-flex align-items-center gap-2" data-profile-alert="success" role="alert">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span>個人檔案與薪轉資料已成功儲存更新！</span>
+                        </div>
+                    <% } %>
 
-                <form action="/profile" method="POST">
+                    <% if (typeof error !== 'undefined' && error) { %>
+                        <div class="alert alert-danger py-2 px-3 small mb-4 border-0 bg-danger bg-opacity-25 text-danger d-flex align-items-center gap-2" data-profile-alert="error" role="alert">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span><%= error %></span>
+                        </div>
+                    <% } %>
+                </div>
+
+                <form action="/profile" method="POST" data-admin-submit-loading data-submit-loading-text="儲存中..." data-profile-fetch="<%= canViewPrivacyData ? 'privacy' : 'off' %>">
                     
                     <!-- 1. 模組化：個人基本資料區塊 -->
                     <%- include('partials/profile_basic_info', { user: user, canViewProfileDiscord: Boolean(canViewProfileDiscord), canEditProfileNickname: Boolean(canEditProfileNickname) }) %>
 
-                    <!-- 2. 模組化：個人資料 (含薪轉個資) 區塊 -->
-                    <%- include('partials/profile_bank_info', { user: user }) %>
+                    <!-- 2. 模組化：個人隱私資料區塊 -->
+                    <% if (canViewPrivacyData) { %>
+                        <%- include('partials/profile_privacy_card', { user: user, canEditPrivacyData: Boolean(canEditPrivacyData) }) %>
+                    <% } %>
 
                     <div class="d-flex justify-content-end mb-4">
                         <button type="submit" class="btn btn-primary px-4 py-2 rounded-pill fw-semibold shadow" style="background: linear-gradient(135deg, #9333ea, #7e22ce); border: none;">
@@ -211,6 +221,92 @@
             document.getElementById('inputAge').value = age;
         }
     }
+
+    (function () {
+        const form = document.querySelector('form[action="/profile"]');
+        if (!form) return;
+        if (form.getAttribute('data-profile-fetch') !== 'privacy') return;
+        if (typeof window.fetch !== 'function') return;
+
+        const alertHost = document.getElementById('profileFormAlertHost');
+        const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
+        const submitLabel = submitButton ? submitButton.innerHTML : '';
+        let submitPending = false;
+
+        function renderAlert(type, message) {
+            if (!alertHost) return;
+            const safeType = type === 'success' ? 'success' : 'danger';
+            const icon = safeType === 'success' ? 'fa-circle-check' : 'fa-triangle-exclamation';
+            const typeLabel = safeType === 'success' ? 'success' : 'error';
+            alertHost.innerHTML = '';
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${safeType} py-2 px-3 small mb-4 border-0 bg-${safeType} bg-opacity-25 text-${safeType} d-flex align-items-center gap-2`;
+            alert.setAttribute('data-profile-alert', typeLabel);
+            alert.setAttribute('role', 'alert');
+            alert.innerHTML = `<i class="fa-solid ${icon}"></i><span></span>`;
+            alert.querySelector('span').textContent = message;
+            alertHost.appendChild(alert);
+        }
+
+        function setSubmitState(isLoading) {
+            if (!submitButton) return;
+            submitButton.disabled = Boolean(isLoading);
+            if (submitButton.tagName === 'BUTTON') {
+                submitButton.innerHTML = isLoading
+                    ? '<i class="fa-solid fa-spinner fa-spin me-1"></i>儲存中...'
+                    : submitLabel;
+            } else if (!isLoading) {
+                submitButton.value = submitButton.getAttribute('data-original-label') || submitButton.value;
+            }
+        }
+
+        form.addEventListener('submit', async event => {
+            if (submitPending) {
+                event.preventDefault();
+                return;
+            }
+
+            if (!form.checkValidity()) {
+                return;
+            }
+
+            event.preventDefault();
+            submitPending = true;
+            setSubmitState(true);
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch(form.action || '/profile', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+                    },
+                    body: new URLSearchParams(formData).toString()
+                });
+
+                const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+                if (!contentType.includes('application/json')) {
+                    throw new Error('伺服器回應格式異常，已阻止將 HTML 或 redirect 誤判為成功。');
+                }
+
+                const payload = await response.json();
+                if (!response.ok || !payload || payload.success !== true) {
+                    const failMessage = payload && payload.message ? String(payload.message) : '更新失敗，請稍後再試。';
+                    throw new Error(failMessage);
+                }
+
+                renderAlert('success', payload.message || '個人隱私資料已順利保存！');
+                const reloadPath = payload.reloadPath || '/profile?saved=1&mask_privacy=1';
+                window.location.assign(reloadPath);
+            } catch (error) {
+                renderAlert('error', (error && error.message) ? error.message : '更新失敗，請稍後再試。');
+                submitPending = false;
+                setSubmitState(false);
+            }
+        });
+    })();
 </script>
 </body>
 </html>
