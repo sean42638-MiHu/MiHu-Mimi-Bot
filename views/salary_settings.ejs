@@ -29,15 +29,15 @@
         <% const roleBadgeMap = { admin: 'role-badge role-badge-admin', owner: 'role-badge role-badge-owner', cfo: 'role-badge role-badge-cfo', aftersales: 'role-badge role-badge-aftersales', after_sales: 'role-badge role-badge-aftersales', manager: 'role-badge role-badge-manager', cs_director: 'role-badge role-badge-manager', cs: 'role-badge role-badge-cs', reviewer: 'role-badge role-badge-reviewer', talent: 'role-badge role-badge-talent', staff: 'role-badge role-badge-talent', member: 'role-badge role-badge-member' }; %>
         <% const salaryHeaderActions = `
             <div class="page-header-action salary-toolbar-actions salary-top-toolbar" role="group" aria-label="薪資設定工具列">
-                <button type="button" class="btn btn-sm py-2 rounded-pill text-white fw-semibold salary-tool-btn btn-cyber-primary" data-bs-toggle="modal" data-bs-target="#adjustSalaryModal" ${canSalaryAdjust ? '' : 'disabled aria-disabled="true" title="缺少手動調整權限"'}><i class="fa-solid fa-plus me-1"></i>新增薪資調整</button>
-                <button type="button" class="btn btn-sm rounded-pill fw-semibold salary-tool-btn btn-cyber-secondary" data-bs-toggle="modal" data-bs-target="#monthlySalaryRulesModal" ${canSalaryRuleManage ? '' : 'disabled aria-disabled="true" title="缺少固定月薪規則權限"'}><i class="fa-solid fa-gear me-1"></i>固定月薪設定</button>
-                <button type="button" class="btn btn-sm rounded-pill fw-semibold salary-tool-btn btn-cyber-success" data-bs-toggle="modal" data-bs-target="#distributeBaseSalaryModal" ${canSalaryDistribute ? '' : 'disabled aria-disabled="true" title="缺少派發權限"'}><i class="fa-solid fa-paper-plane me-1"></i>派發本月底薪</button>
-                <button type="button" class="btn btn-sm rounded-pill fw-semibold salary-tool-btn btn-cyber-warning" data-bs-toggle="modal" data-bs-target="#batchImportSalaryModal" ${canSalaryImport ? '' : 'disabled aria-disabled="true" title="缺少匯入權限"'}><i class="fa-solid fa-file-import me-1"></i>CSV / XLSX 匯入</button>
+                <button type="button" class="btn salary-tool-btn btn-cyber-primary" data-bs-toggle="modal" data-bs-target="#adjustSalaryModal" ${canSalaryAdjust ? '' : 'disabled aria-disabled="true" title="缺少手動調整權限"'}><i class="fa-solid fa-plus me-1"></i>新增薪資調整</button>
+                <button type="button" class="btn salary-tool-btn btn-cyber-secondary" data-bs-toggle="modal" data-bs-target="#monthlySalaryRulesModal" ${canSalaryRuleManage ? '' : 'disabled aria-disabled="true" title="缺少固定月薪規則權限"'}><i class="fa-solid fa-gear me-1"></i>固定月薪設定</button>
+                <button type="button" class="btn salary-tool-btn btn-cyber-success" data-bs-toggle="modal" data-bs-target="#distributeBaseSalaryModal" ${canSalaryDistribute ? '' : 'disabled aria-disabled="true" title="缺少派發權限"'}><i class="fa-solid fa-paper-plane me-1"></i>派發本月底薪</button>
+                <button type="button" class="btn salary-tool-btn btn-cyber-warning" data-bs-toggle="modal" data-bs-target="#batchImportSalaryModal" ${canSalaryImport ? '' : 'disabled aria-disabled="true" title="缺少匯入權限"'}><i class="fa-solid fa-file-import me-1"></i>CSV / XLSX 匯入</button>
             </div>
         `; %>
         <%- include('partials/admin_page_header', {
             icon: 'fa-money-bill-transfer',
-            title: '💵 薪資設定與底薪規則管理',
+            title: '薪資設定與底薪規則管理',
             description: '管控員工初次匯入帳目、每月固定底薪派發規則與薪資手動微調',
             actions: salaryHeaderActions
         }) %>
@@ -92,6 +92,39 @@
         const element = document.getElementById(id);
         if (element && window.bootstrap) bootstrap.Modal.getOrCreateInstance(element).show();
     }
+
+    const salaryModalFocusRestore = new WeakMap();
+    document.querySelectorAll('.salary-modal').forEach(modal => {
+        modal.addEventListener('show.bs.modal', () => {
+            const active = document.activeElement;
+            salaryModalFocusRestore.set(modal, active instanceof HTMLElement ? active : null);
+        });
+
+        modal.addEventListener('shown.bs.modal', () => {
+            const focusTarget = modal.querySelector('button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])');
+            if (focusTarget instanceof HTMLElement) {
+                focusTarget.focus();
+            } else if (modal instanceof HTMLElement) {
+                modal.focus();
+            }
+        });
+
+        modal.addEventListener('hidden.bs.modal', () => {
+            const restoreTarget = salaryModalFocusRestore.get(modal);
+            if (restoreTarget instanceof HTMLElement && document.contains(restoreTarget)) {
+                restoreTarget.focus();
+            }
+        });
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const openedModal = document.querySelector('.salary-modal.show');
+        if (!openedModal || !window.bootstrap) return;
+        event.preventDefault();
+        const instance = window.bootstrap.Modal.getOrCreateInstance(openedModal);
+        if (instance) instance.hide();
+    }, true);
 
     function escapeHtml(value) {
         return String(value || '')
