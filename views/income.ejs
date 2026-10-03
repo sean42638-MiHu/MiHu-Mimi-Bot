@@ -246,6 +246,324 @@
             .withdrawal-card-actions button { width: 100%; }
             .withdrawal-card-metrics { align-items: flex-start; flex-direction: column; }
         }
+
+        #incomeLedgerModal.income-ledger-modal .modal-content {
+            background: rgba(10, 7, 22, 0.95);
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.3);
+            color: #e2e8f0;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .modal-header,
+        #incomeLedgerModal.income-ledger-modal .modal-body,
+        #incomeLedgerModal.income-ledger-modal .modal-footer {
+            background: rgba(10, 7, 22, 0.95);
+            border-color: rgba(168, 85, 247, 0.24);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .modal-header {
+            border-bottom: 1px solid rgba(168, 85, 247, 0.24);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .modal-footer {
+            border-top: 1px solid rgba(168, 85, 247, 0.24);
+            justify-content: flex-end;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-bar {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-month {
+            min-width: 200px;
+            flex: 1 1 240px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-submit {
+            width: 180px;
+            max-width: 100%;
+            flex: 0 1 180px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-summary {
+            flex: 1 1 220px;
+            text-align: right;
+            color: #94a3b8;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-bar .form-control {
+            background: rgba(76, 29, 149, 0.24);
+            border: 1px solid rgba(168, 85, 247, 0.45);
+            color: #e2e8f0;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-bar .form-control:focus-visible,
+        #incomeLedgerModal.income-ledger-modal .income-ledger-filter-bar .form-control:focus {
+            border-color: #a855f7;
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.3);
+            outline: none;
+        }
+
+        #incomeLedgerModal.income-ledger-modal [data-income-ledger-update-button="true"] {
+            background: linear-gradient(135deg, #a855f7, #6366f1);
+            border: none;
+            color: #fff;
+            border-radius: 8px;
+            font-weight: 600;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+            min-height: 36px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal [data-income-ledger-update-button="true"]:focus-visible {
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.35), 0 0 12px rgba(168, 85, 247, 0.4);
+            outline: none;
+        }
+
+        #incomeLedgerModal.income-ledger-modal [data-income-ledger-update-button="true"]:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-state {
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-state-loading {
+            color: #cbd5e1;
+            background: rgba(79, 70, 229, 0.16);
+            border-left: 3px solid #6366f1;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-kpi-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(168, 85, 247, 0.25);
+            border-radius: 10px;
+            padding: 10px;
+            height: 100%;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-kpi-card .small {
+            color: #94a3b8;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-kpi-net {
+            color: #c084fc;
+            text-shadow: 0 0 8px rgba(192, 132, 252, 0.35);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-kpi-paid {
+            color: #34d399;
+            text-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-kpi-pending {
+            color: #38bdf8;
+            text-shadow: 0 0 8px rgba(56, 189, 248, 0.35);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-kpi-available {
+            color: #a78bfa;
+            text-shadow: 0 0 8px rgba(167, 139, 250, 0.35);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-note {
+            background: rgba(168, 85, 247, 0.1);
+            border-left: 3px solid #a855f7;
+            color: #cbd5e1;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 12px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-category-totals .badge {
+            background: rgba(30, 41, 59, 0.8);
+            color: #cbd5e1;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            border-radius: 50px;
+            font-weight: 500;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-table-wrap {
+            overflow-x: auto;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-table {
+            min-width: 640px;
+            color: #e2e8f0;
+            margin-bottom: 0;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-table thead th {
+            background: rgba(15, 23, 42, 0.78);
+            color: #a5b4fc;
+            border-bottom: 1px solid rgba(168, 85, 247, 0.3);
+            white-space: nowrap;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-table tbody td {
+            background: rgba(2, 6, 23, 0.42);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+            color: #e2e8f0;
+            vertical-align: top;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-empty-row td {
+            color: #94a3b8;
+            background: rgba(2, 6, 23, 0.28);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-category-pill {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            padding: 4px 10px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-category-pill.tone-commission {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border-color: rgba(56, 189, 248, 0.4);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-category-pill.tone-allowance {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-category-pill.tone-deduction {
+            background: rgba(255, 70, 85, 0.15);
+            color: #ff4655;
+            border-color: rgba(255, 70, 85, 0.4);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-category-pill.tone-fallback {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            border-color: rgba(168, 85, 247, 0.38);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-source-cell {
+            min-width: 200px;
+            white-space: normal;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-source-title {
+            color: #f8fafc;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-source-desc {
+            color: #94a3b8;
+            font-size: 12px;
+            line-height: 1.35;
+            margin-top: 3px;
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .amount-positive,
+        #incomeLedgerModal.income-ledger-modal .amount-negative,
+        #incomeLedgerModal.income-ledger-modal .amount-zero {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .amount-positive {
+            color: #10b981;
+            text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .amount-negative {
+            color: #ff4655;
+            text-shadow: 0 0 8px rgba(255, 70, 85, 0.3);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .amount-zero {
+            color: #94a3b8;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-pagination {
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-page-btn {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            color: #c084fc;
+            border-radius: 6px;
+            min-width: 88px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-page-btn:hover,
+        #incomeLedgerModal.income-ledger-modal .income-ledger-page-btn:focus-visible {
+            border-color: rgba(168, 85, 247, 0.6);
+            color: #e9d5ff;
+            box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.26);
+            outline: none;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-page-btn.disabled,
+        #incomeLedgerModal.income-ledger-modal .income-ledger-page-btn[aria-disabled="true"] {
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-close-btn {
+            background: rgba(30, 41, 59, 0.84);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            color: #cbd5e1;
+            border-radius: 8px;
+            padding-inline: 14px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-ledger-close-btn:hover,
+        #incomeLedgerModal.income-ledger-modal .income-ledger-close-btn:focus-visible {
+            border-color: rgba(168, 85, 247, 0.52);
+            color: #f8fafc;
+            box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+            outline: none;
+        }
+
+        @media (max-width: 390px) {
+            #incomeLedgerModal.income-ledger-modal .income-ledger-filter-summary {
+                text-align: left;
+                width: 100%;
+            }
+
+            #incomeLedgerModal.income-ledger-modal .income-ledger-filter-submit {
+                width: 100%;
+                flex: 1 1 100%;
+            }
+
+            #incomeLedgerModal.income-ledger-modal .income-ledger-table {
+                min-width: 580px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #incomeLedgerModal.income-ledger-modal .income-ledger-page-btn,
+            #incomeLedgerModal.income-ledger-modal [data-income-ledger-update-button="true"] {
+                transition: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -579,6 +897,29 @@
             btnIncomeLedger.addEventListener('click', (e) => {
                 e.preventDefault();
                 safeShowModal('incomeLedgerModal');
+            });
+        }
+
+        const incomeLedgerFilterForm = document.querySelector('#incomeLedgerModal [data-income-ledger-filter-form="true"]');
+        const incomeLedgerUpdateButton = document.querySelector('#incomeLedgerModal [data-income-ledger-update-button="true"]');
+        const incomeLedgerLoadingState = document.getElementById('incomeLedgerLoadingState');
+        if (incomeLedgerFilterForm && incomeLedgerUpdateButton) {
+            let incomeLedgerSubmitting = false;
+            incomeLedgerFilterForm.addEventListener('submit', event => {
+                if (incomeLedgerSubmitting) {
+                    event.preventDefault();
+                    return;
+                }
+                incomeLedgerSubmitting = true;
+                if (incomeLedgerLoadingState) incomeLedgerLoadingState.hidden = false;
+                incomeLedgerUpdateButton.disabled = true;
+                incomeLedgerUpdateButton.textContent = '更新中...';
+            });
+            document.getElementById('incomeLedgerModal')?.addEventListener('hidden.bs.modal', () => {
+                incomeLedgerSubmitting = false;
+                if (incomeLedgerLoadingState) incomeLedgerLoadingState.hidden = true;
+                incomeLedgerUpdateButton.disabled = false;
+                incomeLedgerUpdateButton.textContent = '更新明細';
             });
         }
 
