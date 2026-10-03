@@ -15,7 +15,7 @@
 <div class="main-wrapper">
     <%- include('partials/navbar', { activePage: 'salary_settings' }) %>
 
-    <div class="content-body admin-page-content">
+    <div class="content-body admin-page-content salary-settings-container" style="background:#080612;background-image:radial-gradient(55% 42% at 8% 12%, rgba(109, 40, 217, 0.28), transparent 72%),radial-gradient(48% 38% at 92% 10%, rgba(37, 99, 235, 0.2), transparent 74%),linear-gradient(180deg, rgba(17, 11, 31, 0.96), rgba(9, 7, 19, 0.98));color:#f8fafc;">
         <% const canSalaryAdjust = typeof hasPerm === 'function' ? hasPerm('action_salary_adjust') : userPerms.includes('*') || userPerms.includes('action_salary_adjust'); %>
         <% const canSalaryRuleManage = typeof hasPerm === 'function' ? hasPerm('action_salary_rule_manage') : userPerms.includes('*') || userPerms.includes('action_salary_rule_manage'); %>
         <% const canSalaryDistribute = typeof hasPerm === 'function' ? hasPerm('action_salary_distribute') : userPerms.includes('*') || userPerms.includes('action_salary_distribute'); %>
@@ -27,7 +27,21 @@
         <% const distStatus = distributionStatus || { locked: false, totalRules: 0, pendingRules: 0, committedRules: 0, message: '尚未載入派發狀態' }; %>
         <% const roleNameMap = { admin: '店長', owner: '負責人', cfo: '財務長', aftersales: '售後管理', after_sales: '售後管理', manager: '客服主管', cs_director: '客服主管', cs: '客服', reviewer: '審核', talent: '陪陪', staff: '陪陪', member: '會員' }; %>
         <% const roleBadgeMap = { admin: 'role-badge role-badge-admin', owner: 'role-badge role-badge-owner', cfo: 'role-badge role-badge-cfo', aftersales: 'role-badge role-badge-aftersales', after_sales: 'role-badge role-badge-aftersales', manager: 'role-badge role-badge-manager', cs_director: 'role-badge role-badge-manager', cs: 'role-badge role-badge-cs', reviewer: 'role-badge role-badge-reviewer', talent: 'role-badge role-badge-talent', staff: 'role-badge role-badge-talent', member: 'role-badge role-badge-member' }; %>
-        <%- include('partials/admin_page_header', { icon: 'fa-money-bill-transfer', title: '💵 薪資設定與底薪規則管理', description: '管控員工初次匯入帳目、每月固定底薪派發規則與薪資手動微調' }) %>
+        <% const salaryHeaderActions = `
+            <div class="salary-toolbar-actions salary-top-toolbar" role="group" aria-label="薪資設定工具列">
+                <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#adjustSalaryModal" ${canSalaryAdjust ? '' : 'disabled aria-disabled="true" title="缺少手動調整權限"'}>新增薪資調整</button>
+                <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#monthlySalaryRulesModal" ${canSalaryRuleManage ? '' : 'disabled aria-disabled="true" title="缺少固定月薪規則權限"'}>固定月薪規則</button>
+                <button type="button" class="btn salary-tool-btn salary-tool-btn-warning" data-bs-toggle="modal" data-bs-target="#distributeBaseSalaryModal" ${canSalaryDistribute ? '' : 'disabled aria-disabled="true" title="缺少派發權限"'}>派發本月底薪</button>
+                <button type="button" class="btn salary-tool-btn" data-bs-toggle="modal" data-bs-target="#batchImportSalaryModal" ${canSalaryImport ? '' : 'disabled aria-disabled="true" title="缺少匯入權限"'}>CSV / XLSX 匯入</button>
+                <button type="button" class="btn salary-tool-btn salary-tool-btn-muted" id="openFullSalaryHistoryButton">完整調整紀錄</button>
+            </div>
+        `; %>
+        <%- include('partials/admin_page_header', {
+            icon: 'fa-money-bill-transfer',
+            title: '💵 薪資設定與底薪規則管理',
+            description: '管控員工初次匯入帳目、每月固定底薪派發規則與薪資手動微調',
+            actions: salaryHeaderActions
+        }) %>
 
         <% if (successMsg) { %><div class="alert alert-success"><%= successMsg %></div><% } %>
         <% if (errorMsg) { %><div class="alert alert-danger"><%= errorMsg %></div><% } %>
