@@ -280,6 +280,24 @@
             width: 180px;
             max-width: 100%;
         }
+        .income-ledger-open-btn {
+            width: 100%;
+            border-radius: 999px;
+            border: 1px solid rgba(56, 189, 248, 0.55);
+            background: linear-gradient(135deg, rgba(17, 24, 39, 0.92), rgba(30, 41, 59, 0.9));
+            color: #67e8f9 !important;
+            font-weight: 700;
+            box-shadow: 0 0 14px rgba(56, 189, 248, 0.24), inset 0 0 12px rgba(56, 189, 248, 0.1);
+            transition: all 0.2s ease;
+        }
+        .income-ledger-open-btn:hover,
+        .income-ledger-open-btn:focus-visible {
+            color: #ecfeff !important;
+            border-color: rgba(103, 232, 249, 0.92);
+            transform: translateY(-1px);
+            box-shadow: 0 0 22px rgba(56, 189, 248, 0.35), inset 0 0 14px rgba(56, 189, 248, 0.18);
+            outline: none;
+        }
         .income-summary-month-label {
             display: block;
             font-size: 0.76rem;
@@ -496,6 +514,46 @@
             border-radius: 6px;
             padding: 10px 14px;
             font-size: 12px;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-neon-badge-btn {
+            border-radius: 999px;
+            border: 1px solid rgba(56, 189, 248, 0.62);
+            background: rgba(8, 47, 73, 0.4);
+            color: #67e8f9;
+            font-weight: 700;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.24), inset 0 0 10px rgba(56, 189, 248, 0.12);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-neon-badge-btn:hover,
+        #incomeLedgerModal.income-ledger-modal .income-neon-badge-btn:focus-visible {
+            color: #ecfeff;
+            border-color: rgba(103, 232, 249, 0.92);
+            background: rgba(8, 47, 73, 0.6);
+            box-shadow: 0 0 18px rgba(56, 189, 248, 0.36), inset 0 0 12px rgba(56, 189, 248, 0.2);
+            outline: none;
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-neon-detail-btn {
+            border-radius: 999px;
+            border: 1px solid rgba(192, 132, 252, 0.78);
+            background: rgba(88, 28, 135, 0.25);
+            color: #d8b4fe;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            padding: 4px 11px;
+            white-space: nowrap;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.22), inset 0 0 8px rgba(167, 139, 250, 0.12);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .income-neon-detail-btn:hover,
+        #incomeLedgerModal.income-ledger-modal .income-neon-detail-btn:focus-visible {
+            color: #f5d0fe;
+            border-color: rgba(216, 180, 254, 0.92);
+            background: rgba(107, 33, 168, 0.35);
+            box-shadow: 0 0 18px rgba(192, 132, 252, 0.3), inset 0 0 10px rgba(216, 180, 254, 0.18);
+            outline: none;
         }
 
         #incomeLedgerModal.income-ledger-modal .income-ledger-category-totals .badge {
@@ -774,7 +832,7 @@
                     <p class="income-summary-sub">明細、分類統計與分頁已整合到同一個薪資明細視窗。</p>
                 </div>
                 <div class="income-summary-actions">
-                    <button type="button" class="btn btn-outline-warning rounded-pill px-3 py-2 small fw-semibold" data-bs-toggle="modal" data-bs-target="#incomeLedgerModal" id="openIncomeLedgerButton">
+                    <button type="button" class="btn income-ledger-open-btn px-3 py-2 small fw-semibold" data-bs-toggle="modal" data-bs-target="#incomeLedgerModal" id="openIncomeLedgerButton">
                         <i class="fa-solid fa-file-invoice-dollar me-1"></i>
                         <span>薪資與分潤明細</span>
                     </button>
@@ -1234,6 +1292,7 @@
         const summaryContract = document.getElementById('incomeSummaryContractNotice');
         const monthlyNetAmountEl = document.getElementById('incomeMonthlyNetAmount');
         const paidAmountEl = document.getElementById('incomePaidAmount');
+        const pendingAmountEl = document.getElementById('incomePendingAmount');
         const availableAmountEl = document.getElementById('incomeAvailableAmount');
         const categoryModalEl = document.getElementById('incomeCategoryDetailModal');
         const categoryDetailBody = document.getElementById('incomeCategoryDetailBody');
@@ -1316,7 +1375,7 @@
                 actionTd.className = 'text-center';
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.className = 'btn btn-sm btn-outline-warning income-open-detail';
+                btn.className = 'btn btn-sm income-neon-detail-btn income-open-detail';
                 btn.setAttribute('data-source-type', item.sourceType || '');
                 btn.setAttribute('data-category', item.category || '');
                 btn.textContent = '查看明細';
@@ -1341,8 +1400,10 @@
 
         function renderSummary(snapshot) {
             const totals = snapshot && snapshot.totals ? snapshot.totals : {};
-            if (monthlyNetAmountEl) monthlyNetAmountEl.textContent = `$${Number(totals.monthlyNetAmount || 0).toLocaleString()}`;
+            const netSalary = Number((snapshot && snapshot.netSalary) || totals.netSalary || totals.monthlyNetAmount || 0);
+            if (monthlyNetAmountEl) monthlyNetAmountEl.textContent = `$${netSalary.toLocaleString()}`;
             if (paidAmountEl) paidAmountEl.textContent = `$${Number(totals.paidAmount || 0).toLocaleString()}`;
+            if (pendingAmountEl) pendingAmountEl.textContent = `$${Number(totals.pendingAmount || 0).toLocaleString()}`;
             if (availableAmountEl) availableAmountEl.textContent = `$${Number(totals.availableAmount || 0).toLocaleString()}`;
             renderSummaryRows(snapshot && Array.isArray(snapshot.rows) ? snapshot.rows : []);
             renderLimitations(snapshot && snapshot.limitations ? snapshot.limitations : []);

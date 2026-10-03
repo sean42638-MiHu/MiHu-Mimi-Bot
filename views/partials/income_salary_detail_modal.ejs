@@ -66,13 +66,13 @@
 %>
 
 <div class="modal fade income-ledger-modal" id="incomeLedgerModal" tabindex="-1" aria-labelledby="incomeLedgerModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width: 820px;">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="incomeLedgerModalLabel"><i class="fa-solid fa-file-invoice-dollar text-warning me-2"></i>薪資與分潤明細</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
                 <form method="GET" action="/income" class="income-ledger-filter-bar" data-income-ledger-filter-form="true">
                     <input type="hidden" name="income_modal" value="1">
                     <input type="hidden" name="income_page" value="1">
@@ -96,7 +96,7 @@
                 <div class="d-flex justify-content-end mb-2">
                     <button
                         type="button"
-                        class="btn btn-sm btn-outline-warning"
+                        class="btn btn-sm income-neon-badge-btn"
                         data-bs-toggle="collapse"
                         data-bs-target="#incomeLedgerNoticeCollapse"
                         aria-expanded="false"
@@ -117,12 +117,13 @@
                     <div class="income-summary-header">
                         <div>
                             <h6 class="text-white mb-1" id="incomeSummaryModalTitle"><i class="fa-solid fa-chart-column text-warning me-2"></i>薪資摘要（按分類統計）</h6>
-                            <p class="income-summary-sub">本表顯示當月收入與扣減分類；「本月薪資淨額」為 signed 加總，並不等於已撥款實領。</p>
+                            <p class="income-summary-sub">本表顯示當月收入與扣減分類；淨薪資採用 總收入 - 總扣減，並不等於已撥款實領。</p>
                         </div>
                     </div>
                     <div class="income-summary-kpis">
                         <span class="income-summary-kpi">本月薪資淨額：<strong id="incomeMonthlyNetAmount">$<%= Number(summaryTotals.monthlyNetAmount || 0).toLocaleString() %></strong></span>
                         <span class="income-summary-kpi">已實領：<strong id="incomePaidAmount">$<%= Number(summaryTotals.paidAmount || 0).toLocaleString() %></strong></span>
+                        <span class="income-summary-kpi">申請中：<strong id="incomePendingAmount">$<%= Number(summaryTotals.pendingAmount || 0).toLocaleString() %></strong></span>
                         <span class="income-summary-kpi">可提領：<strong id="incomeAvailableAmount">$<%= Number(summaryTotals.availableAmount || 0).toLocaleString() %></strong></span>
                     </div>
                     <div class="table-responsive income-summary-table-wrap">
@@ -146,12 +147,12 @@
                                     <tr>
                                         <td><span class="income-category-chip"><%= item.category %></span></td>
                                         <td class="text-center"><%= item.countLabel %></td>
-                                        <td class="text-end <%= signedClass %>"><%= signedAmount > 0 ? '+' : '' %>$<%= Math.abs(signedAmount).toLocaleString() %></td>
+                                        <td class="text-end <%= signedClass %>"><%= signedAmount > 0 ? '+' : (signedAmount < 0 ? '-' : '') %>$<%= Math.abs(signedAmount).toLocaleString() %></td>
                                         <td><%= (item.descriptions || []).join('、') || '-' %></td>
                                         <td class="text-center">
                                             <button
                                                 type="button"
-                                                class="btn btn-sm btn-outline-warning income-open-detail"
+                                                class="btn btn-sm income-neon-detail-btn income-open-detail"
                                                 data-source-type="<%= item.sourceType %>"
                                                 data-category="<%= item.category %>">
                                                 查看明細
@@ -164,33 +165,6 @@
                     </div>
                     <p class="text-danger small mt-2 mb-0" id="incomeSummaryError" hidden></p>
                 </section>
-
-                <div class="row g-2 mb-3 income-ledger-kpi-grid">
-                    <div class="col-6 col-lg-3">
-                        <div class="income-ledger-kpi-card">
-                            <div class="small text-secondary">淨薪資</div>
-                            <div class="fw-bold income-ledger-kpi-net">$<%= Number(summary.netSalary || 0).toLocaleString() %></div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-lg-3">
-                        <div class="income-ledger-kpi-card">
-                            <div class="small text-secondary">已實領</div>
-                            <div class="fw-bold income-ledger-kpi-paid">$<%= Number(summary.paidAmount || 0).toLocaleString() %></div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-lg-3">
-                        <div class="income-ledger-kpi-card">
-                            <div class="small text-secondary">申請中</div>
-                            <div class="fw-bold income-ledger-kpi-pending">$<%= Number(summary.pendingAmount || 0).toLocaleString() %></div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-lg-3">
-                        <div class="income-ledger-kpi-card">
-                            <div class="small text-secondary">可提領</div>
-                            <div class="fw-bold income-ledger-kpi-available">$<%= Number(summary.availableAmount || 0).toLocaleString() %></div>
-                        </div>
-                    </div>
-                </div>
 
                 <div class="small text-secondary mb-2">薪資流水明細（含分潤、固定月薪、津貼與扣減分錄）</div>
 

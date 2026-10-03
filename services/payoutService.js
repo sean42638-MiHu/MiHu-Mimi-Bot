@@ -574,10 +574,14 @@ async function buildMonthlyIncomeEntries({ userId, studioId, month = null, date 
 async function listMonthlyIncomeSummary({ userId, studioId, month = null, date = new Date() }) {
     const dataset = await buildMonthlyIncomeEntries({ userId, studioId, month, date });
     const grouped = new Map();
+    let totalIncome = 0;
+    let totalDeduction = 0;
 
     for (const entry of dataset.entries) {
         const sourceType = String(entry.sourceType || 'unknown');
         const category = String(entry.category || '未分類收入');
+        const entryType = String(entry.entryType || '').trim().toLowerCase();
+        const amount = Number(entry.amount || 0);
         const groupKey = `${sourceType}|${category}`;
         if (!grouped.has(groupKey)) {
             grouped.set(groupKey, {
@@ -585,12 +589,19 @@ async function listMonthlyIncomeSummary({ userId, studioId, month = null, date =
                 category,
                 count: 0,
                 totalAmount: 0,
-                descriptions: new Set()
+                descriptions: new Set(),
+                hasDeductionType: false
             });
         }
         const target = grouped.get(groupKey);
         target.count += 1;
-        target.totalAmount = Number((target.totalAmount + Number(entry.amount || 0)).toFixed(2));
+        target.totalAmount = Number((target.totalAmount + amount).toFixed(2));
+        if (entryType === 'deduction' || entryType === 'penalty' || amount < 0) {
+            target.hasDeductionType = true;
+            totalDeduction += Math.abs(amount);
+        } else {
+            totalIncome += amount;
+        }
         if (entry.description) target.descriptions.add(String(entry.description));
     }
 
@@ -600,6 +611,7 @@ async function listMonthlyIncomeSummary({ userId, studioId, month = null, date =
             category: item.category,
             count: item.count,
             totalAmount: item.totalAmount,
+            type: item.hasDeductionType || Number(item.totalAmount || 0) < 0 ? 'deduction' : 'income',
             descriptions: [...item.descriptions].slice(0, 3),
             countLabel: item.sourceType === 'order' ? `${item.count} 單` : `${item.count} 筆`
         }))
@@ -609,7 +621,9 @@ async function listMonthlyIncomeSummary({ userId, studioId, month = null, date =
             return `${left.sourceType}:${left.category}`.localeCompare(`${right.sourceType}:${right.category}`);
         });
 
-    const monthlyNetAmount = Number(dataset.entries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0).toFixed(2));
+    totalIncome = Number(totalIncome.toFixed(2));
+    totalDeduction = Number(totalDeduction.toFixed(2));
+    const netSalary = Number((totalIncome - totalDeduction).toFixed(2));
 
     return {
         month: dataset.month,
@@ -621,7 +635,10 @@ async function listMonthlyIncomeSummary({ userId, studioId, month = null, date =
             endUtcText: dataset.monthWindow.endUtcText
         },
         totals: {
-            monthlyNetAmount,
+            monthlyNetAmount: netSalary,
+            netSalary,
+            totalIncome,
+            totalDeduction,
             paidAmount: Number(dataset.payoutSummary.paidAmount || 0),
             pendingAmount: Number(dataset.payoutSummary.pendingAmount || 0),
             availableAmount: Number(dataset.payoutSummary.availableAmount || 0)
