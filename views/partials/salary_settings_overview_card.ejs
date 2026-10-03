@@ -5,23 +5,26 @@
     </div>
 
     <div class="salary-overview-controls">
-        <form method="get" action="/management/salary-settings" class="row g-2 align-items-end salary-filter-form">
-            <div class="col-12 col-md-3">
-                <label class="small text-secondary" for="monthFilter">月份</label>
-                <input id="monthFilter" class="form-control form-control-sm admin-form-control" type="month" name="month" value="<%= month %>">
+        <form method="get" action="/management/salary-settings" class="salary-filter-form">
+            <div class="salary-filter-field salary-filter-month">
+                <label for="monthFilter">月份</label>
+                <input id="monthFilter" class="salary-filter-input" type="month" name="month" value="<%= month %>">
             </div>
-            <div class="col-12 col-md-6">
-                <label class="small text-secondary" for="salarySearch">搜尋員工</label>
-                <input id="salarySearch" class="form-control form-control-sm admin-form-control" type="search" name="q" value="<%= search %>" placeholder="名稱、暱稱或 Discord ID">
+            <div class="salary-filter-field salary-filter-search">
+                <label for="salarySearch">搜尋員工</label>
+                <input id="salarySearch" class="salary-filter-input" type="search" name="q" value="<%= search %>" placeholder="名稱、暱稱或 Discord ID">
             </div>
-            <div class="col-12 col-md-3 text-md-end">
-                <button class="btn btn-sm rounded-pill text-white fw-semibold salary-filter-submit" type="submit">套用篩選</button>
+            <div class="salary-filter-actions">
+                <button class="btn salary-filter-submit" type="submit">套用篩選</button>
             </div>
         </form>
 
         <div class="salary-distribute-status <%= distStatus.locked ? 'is-locked' : 'is-open' %>">
-            <div class="salary-distribute-title"><%= distStatus.message %></div>
-            <div class="small text-secondary">規則：<%= distStatus.totalRules %>，已完成：<%= distStatus.committedRules %>，待派發：<%= distStatus.pendingRules %></div>
+            <div class="salary-distribute-title">
+                <span class="salary-distribute-title-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+                <span><%= distStatus.message %></span>
+            </div>
+            <div class="salary-distribute-description">規則：<%= distStatus.totalRules %>，已完成：<%= distStatus.committedRules %>，待派發：<%= distStatus.pendingRules %></div>
         </div>
     </div>
 
