@@ -404,17 +404,29 @@
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-content {
-            background: rgba(10, 7, 22, 0.95);
+            background: #120a1f;
             border: 1px solid rgba(168, 85, 247, 0.4);
             box-shadow: 0 0 25px rgba(168, 85, 247, 0.3);
             color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-header,
         #incomeLedgerModal.income-ledger-modal .modal-body,
         #incomeLedgerModal.income-ledger-modal .modal-footer {
-            background: rgba(10, 7, 22, 0.95);
+            background: #120a1f;
             border-color: rgba(168, 85, 247, 0.24);
+        }
+
+        #incomeLedgerModal.income-ledger-modal .modal-body {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
 
         #incomeLedgerModal.income-ledger-modal .modal-header {
@@ -591,6 +603,13 @@
             overflow-x: auto;
         }
 
+        #incomeLedgerModal.income-ledger-modal .income-ledger-table-scroller {
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
+
         #incomeLedgerModal.income-ledger-modal .income-ledger-table {
             min-width: 640px;
             color: #e2e8f0;
@@ -739,6 +758,11 @@
         }
 
         @media (max-width: 390px) {
+            #incomeLedgerModal.income-ledger-modal .modal-body {
+                max-height: calc(100vh - 150px);
+                padding: 16px;
+            }
+
             #incomeLedgerModal.income-ledger-modal .income-ledger-filter-summary {
                 text-align: left;
                 width: 100%;
